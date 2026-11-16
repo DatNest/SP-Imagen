@@ -1,0 +1,74 @@
+.spi-settings { padding: 10px 0; }
+.spi-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.spi-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.spi-actions .menu_button { margin: 0; min-width: 0; }
+.spi-new {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 18px; padding: 1px 6px; border-radius: 999px;
+  background: var(--SmartThemeQuoteColor, #8b5cf6); color: var(--SmartThemeBodyColor, #fff);
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+}
+.spi-overlay {
+  position: fixed; inset: 0; z-index: 2147482500; display: grid; place-items: center;
+  padding: 12px; background: color-mix(in srgb, #000 56%, transparent);
+}
+.spi-dialog {
+  width: min(760px, 100%); max-height: min(86vh, 860px); overflow: auto;
+  padding: 14px; border: 1px solid var(--SmartThemeBorderColor, #777);
+  border-radius: 10px; background: var(--SmartThemeBlurTintColor, #222);
+  color: var(--SmartThemeBodyColor, #eee); box-shadow: 0 8px 28px rgba(0,0,0,.35);
+}
+.spi-dialog.spi-prompt-window { width: min(920px, 100%); }
+.spi-dialog h2, .spi-dialog h3 { margin: 0 0 8px; }
+.spi-dialog p { margin: 6px 0 12px; line-height: 1.45; }
+.spi-prompt-list { display: grid; gap: 8px; }
+.spi-prompt-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  padding: 10px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 8px;
+}
+.spi-prompt-row strong { display: flex; align-items: center; gap: 7px; }
+.spi-dialog textarea {
+  width: 100%; resize: vertical; box-sizing: border-box;
+  padding: 10px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 7px;
+  background: var(--black30a, rgba(0,0,0,.3)); color: inherit; font: 13px/1.45 ui-monospace, monospace;
+}
+.spi-prompt-window > textarea { min-height: min(58vh, 580px); }
+.spi-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.spi-conflict { border-inline-start: 4px solid var(--SmartThemeQuoteColor, #8b5cf6); padding-inline-start: 10px; }
+.spi-status { min-height: 1.4em; color: var(--SmartThemeQuoteColor, #c4b5fd); }
+.spi-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.spi-field { display: grid; align-content: start; gap: 5px; min-width: 0; font-weight: 600; }
+.spi-field small { color: var(--SmartThemeEmColor, #aaa); font-weight: 400; line-height: 1.35; }
+.spi-field input:not([type="checkbox"]), .spi-field select, .spi-field textarea {
+  width: 100%; min-width: 0; box-sizing: border-box; padding: 8px;
+  border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 7px;
+  background: var(--black30a, rgba(0,0,0,.3)); color: inherit;
+}
+.spi-field input[type="checkbox"] { justify-self: start; width: 22px; height: 22px; }
+.spi-field:has(.spi-token-row), .spi-field:has(.spi-short-area) { grid-column: 1 / -1; }
+.spi-token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.spi-short-area { min-height: 92px !important; resize: vertical; }
+.spi-style-layout { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(0, 1.3fr); gap: 12px; }
+.spi-style-library, .spi-style-editor {
+  min-width: 0; padding: 10px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 9px;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 80%, #fff 4%);
+}
+.spi-style-library { display: grid; align-content: start; gap: 7px; max-height: 62vh; overflow: auto; }
+.spi-style-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 5px; align-items: center; padding: 5px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 8px; }
+.spi-style-row.spi-selected { border-width: 2px; border-color: var(--SmartThemeQuoteColor, #8b5cf6); }
+.spi-style-summary { display: grid; min-width: 0; padding: 3px; border: 0; background: transparent; color: inherit; text-align: start; cursor: pointer; }
+.spi-style-summary strong, .spi-style-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spi-style-summary small { color: var(--SmartThemeEmColor, #aaa); }
+.spi-style-library > .spi-active { outline: 2px solid var(--SmartThemeQuoteColor, #8b5cf6); }
+.spi-style-editor { display: grid; align-content: start; gap: 9px; }
+.spi-style-editor textarea { min-height: 360px; }
+@media (max-width: 620px) {
+  .spi-actions { grid-template-columns: 1fr; }
+  .spi-overlay { align-items: end; padding: 0; }
+  .spi-dialog { width: 100%; max-height: 92dvh; border-radius: 12px 12px 0 0; }
+  .spi-prompt-row { grid-template-columns: 1fr; }
+  .spi-form-grid, .spi-style-layout { grid-template-columns: 1fr; }
+  .spi-field:has(.spi-token-row), .spi-field:has(.spi-short-area) { grid-column: auto; }
+  .spi-style-library { max-height: 38dvh; }
+  .spi-style-editor textarea { min-height: 220px; }
+}

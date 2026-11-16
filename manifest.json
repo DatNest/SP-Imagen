@@ -1,0 +1,11 @@
+{
+  "display_name": "SP Imagen",
+  "loading_order": 7,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Tane4ka",
+  "version": "2.0.0",
+  "auto_update": true
+}
