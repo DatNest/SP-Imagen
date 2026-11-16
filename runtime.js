@@ -1363,42 +1363,80 @@ function createNpcCards(D) {
 }
 
 // Module: image_transport
-function parseImageHtml(raw) {
-  const text=String(raw||'').trim().replace(/^```(?:html|json)?\s*/i,'').replace(/\s*```$/,'').trim();
-  const wrapper=text.match(/^<(naicom|image_lite)>\s*<img\s+([\s\S]*?)\/?\s*>\s*<\/\1>$/i);
-  if(!wrapper)throw Error('Ответ режиссёра не завершён или не содержит один naicom/image_lite с img. Исходный ответ сохранён в naicom_last_director_raw.');
-  const attrs=wrapper[2].trim();
-  // Anchor the closing attribute quote to the NEXT attribute/end of the tag,
-  // not to the first apostrophe within the actual prompt text.
+function unwrapDirectorResponse(raw){
+ const text=String(raw??'').trim();
+ const fenced=text.match(/^```(?:html|json|xml)?\s*\r?\n?([\s\S]*?)\r?\n?```$/i);
+ return (fenced?fenced[1]:text).trim();
+}
+function decodeDirectorAttribute(value){
+ return String(value).replace(/&quot;/gi,'"').replace(/&#(?:0*39|x0*27);|&apos;/gi,"'").replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&amp;/gi,'&');
+}
+function extractBalancedDirectorObject(text){
+ const objects=[];let start=-1,depth=0,quoted=false,escaped=false;
+ for(let i=0;i<text.length;i++){
+  const c=text[i];
+  if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;continue;}
+  if(c==='"'){quoted=true;continue;}
+  if(c==='{'){if(depth===0)start=i;depth++;continue;}
+  if(c==='}'&&depth>0){depth--;if(depth===0){objects.push(text.slice(start,i+1));start=-1;}}
+ }
+ return depth===0&&objects.length===1?objects[0]:'';
+}
+function extractDirectorJson(raw){
+ const text=unwrapDirectorResponse(raw);
+ const wrappers=[...text.matchAll(/<(naicom|image_lite)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi)];
+ if(wrappers.length>1)throw Error('Ответ режиссёра содержит несколько блоков изображения. Исходный ответ сохранён.');
+ const body=wrappers.length===1?wrappers[0][2]:text;
+ const images=[...body.matchAll(/<img\b/gi)];
+ if(images.length>1)throw Error('Ответ режиссёра содержит несколько тегов img. Исходный ответ сохранён.');
+ if(images.length===1){
+  const start=images[0].index+images[0][0].length,end=body.lastIndexOf('>');
+  if(end<start)throw Error('Тег img в ответе режиссёра не завершён. Исходный ответ сохранён.');
+  const attrs=body.slice(start,end).replace(/\/\s*$/,'').trim();
   const forward=attrs.match(/^data-iig-instruction\s*=\s*(['"])([\s\S]*)\1\s+src\s*=\s*(['"])\[IMG:GEN\]\3\s*$/i);
   const reverse=attrs.match(/^src\s*=\s*(['"])\[IMG:GEN\]\1\s+data-iig-instruction\s*=\s*(['"])([\s\S]*)\2\s*$/i);
   const encoded=forward?forward[2]:reverse?reverse[3]:null;
-  if(encoded===null)throw Error('Неверный HTML режиссёра: ожидаются data-iig-instruction и src="[IMG:GEN]". Исходный ответ сохранён.');
-  // Decode attribute entities once. JSON escaping is handled independently.
-  const json=encoded.replace(/&quot;/gi,'"').replace(/&#39;|&apos;/gi,"'").replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&amp;/gi,'&');
-  let config,repaired=false;
-  try{config=JSON.parse(json);}catch{
-    // Recover only the known envelope. A missing closing prompt/attribute or
-    // unrelated/missing fields are never completed using invented content.
-    const shape=json.match(/^\s*\{\s*"prompt"\s*:\s*"([\s\S]*)"\s*,\s*"aspect_ratio"\s*:\s*"(1:1|2:3|9:16)"\s*,\s*"image_size"\s*:\s*"1K"\s*\}\s*$/);
-    if(!shape)throw Error('Режиссёр вернул повреждённый или обрезанный JSON. Исправить только экранирование невозможно. Повтори запуск; исходный ответ сохранён в naicom_last_director_raw.');
-    const body=shape[1];let escaped='';
-    for(let i=0;i<body.length;i++){
-      const c=body[i];
-      if(c==='\\'){
-        const next=body[i+1];
-        if(next&&/["\\/bfnrt]/.test(next)){escaped+=c+next;i++;}
-        else if(next==='u'&&/^[0-9a-f]{4}$/i.test(body.slice(i+2,i+6))){escaped+=body.slice(i,i+6);i+=5;}
-        else escaped+='\\\\';
-      }else if(c==='"')escaped+='\\"';
-      else if(c.charCodeAt(0)<32)escaped+=JSON.stringify(c).slice(1,-1);
-      else escaped+=c;
-    }
-    config={prompt:JSON.parse('"'+escaped+'"'),aspect_ratio:shape[2],image_size:'1K'};
-    repaired=true;
-  }
-  if(!config||Array.isArray(config)||typeof config!=='object'||Object.keys(config).sort().join(',')!=='aspect_ratio,image_size,prompt'||typeof config.prompt!=='string'||!config.prompt.trim()||config.prompt.length>45000||/[\r\n]/.test(config.prompt.split('Text:')[0].trimEnd())||!['1:1','2:3','9:16'].includes(config.aspect_ratio)||config.image_size!=='1K')throw Error('Неверные параметры картинки в ответе режиссёра. Исходный ответ сохранён.');
-  return {config,repaired};
+  if(encoded===null)throw Error('В ответе режиссёра повреждены параметры изображения. Исходный ответ сохранён.');
+  return decodeDirectorAttribute(encoded);
+ }
+ if(wrappers.length)throw Error('В блоке режиссёра нет одного тега img. Исходный ответ сохранён.');
+ const json=extractBalancedDirectorObject(text);
+ if(json)return json;
+ throw Error('Ответ режиссёра не содержит данных изображения. Исходный ответ сохранён в naicom_last_director_raw.');
+}
+function repairDirectorJson(json){
+ const shape=json.match(/^\s*\{\s*"prompt"\s*:\s*"([\s\S]*)"\s*,\s*"aspect_ratio"\s*:\s*"(1:1|2:3|9:16)"\s*,\s*"image_size"\s*:\s*"1K"\s*\}\s*$/);
+ if(!shape)return null;
+ const body=shape[1];let escaped='';
+ for(let i=0;i<body.length;i++){
+  const c=body[i];
+  if(c==='\\'){
+   const next=body[i+1];
+   if(next&&/["\\/bfnrt]/.test(next)){escaped+=c+next;i++;}
+   else if(next==='u'&&/^[0-9a-f]{4}$/i.test(body.slice(i+2,i+6))){escaped+=body.slice(i,i+6);i+=5;}
+   else escaped+='\\\\';
+  }else if(c==='"')escaped+='\\"';
+  else if(c.charCodeAt(0)<32)escaped+=JSON.stringify(c).slice(1,-1);
+  else escaped+=c;
+ }
+ return {prompt:JSON.parse('"'+escaped+'"'),aspect_ratio:shape[2],image_size:'1K'};
+}
+function validateDirectorConfig(config){
+ const keys=config&&!Array.isArray(config)&&typeof config==='object'?Object.keys(config).sort().join(','):'';
+ const prompt=typeof config?.prompt==='string'?config.prompt:'';
+ if(keys!=='aspect_ratio,image_size,prompt'||!prompt.trim()||prompt.length>45000||/[\r\n]/.test(prompt.split('Text:')[0].trimEnd())||!['1:1','2:3','9:16'].includes(config.aspect_ratio)||config.image_size!=='1K'){
+  throw Error('Ответ режиссёра содержит неверные параметры изображения. Исходный ответ сохранён.');
+ }
+ return config;
+}
+function parseDirectorResponse(raw){
+ const json=extractDirectorJson(raw);let config,repaired=false;
+ try{config=JSON.parse(json);}catch{
+  config=repairDirectorJson(json);
+  if(!config)throw Error('Режиссёр вернул повреждённый или обрезанный JSON. Повтори запуск; исходный ответ сохранён в naicom_last_director_raw.');
+  repaired=true;
+ }
+ return {config:validateDirectorConfig(config),repaired};
 }
 
 // Module: services
@@ -1436,7 +1474,7 @@ async function requestNessText(kind,messages){
   return text;
  }catch(cause){
   if(cause?.code==='NESS_TIMEOUT')throw cause;
-  throw new Error('Запрос к текстовой модели завершился ошибкой. Проверь endpoint, ключ и модель в настройках SP Imagen: '+String(cause?.message||cause),{cause});
+  throw new Error('Запрос к текстовой модели завершился ошибкой. Проверь выбранное подключение в SP Imagen → Настройки → Текстовая модель: '+String(cause?.message||cause),{cause});
  }
 }
 async function lastRpIndex(chat){
@@ -2189,179 +2227,88 @@ validateKind(kind);scene=String(scene||'');
 }
 
 // Module: render_image
+function nessSlotManager(kind){
+ if(typeof window==='undefined')return null;
+ for(const getHost of [()=>window.top,()=>window.parent,()=>window]){try{
+  const manager=getHost()?.__nessImageSlotsV4;
+  if(manager?.installed&&Number(manager.version)>=43&&manager.supportedKinds?.includes(kind)&&typeof manager.publish==='function'&&typeof manager.focus==='function')return manager;
+ }catch{}}
+ return null;
+}
 async function renderImage(kind){
-validateKind(kind);
-
-const st=SillyTavern.getContext();
-if(!st?.chatMetadata||!Array.isArray(st.chat))throw Error('Нет контекста чата');
-const v=st.chatMetadata.variables||={};
-  const slotManager=(()=>{
-    if (typeof window==='undefined') return null;
-    for (const getHost of [()=>window.top,()=>window.parent,()=>window]) {
-      try {
-        const host=getHost();
-        const m=host?.__nessImageSlotsV4;
-        if (m?.installed && Number(m.version)>=43 &&
-            Array.isArray(m.supportedKinds) &&
-            m.supportedKinds.includes(kind) &&
-            typeof m.publish==='function' && typeof m.focus==='function') return m;
-      } catch (_) {}
-    }
-    return null;
-  })();
-  if (!slotManager) throw new Error('SP Imagen: галерея не загрузилась. Перезагрузи SillyTavern и убедись, что старый Tavern Helper-скрипт Media Slots отключён.');
-
-const ticket=String(v.naicom_run_ticket||'');
-if(v.naicom_preview_status!=='approved'||!ticket||v.naicom_prepared_ticket!==ticket)throw Error('Подтвердите данные и подготовьте библиотеку');
-const lockedChat=st.chat;
-if(generationLocks.has(lockedChat))throw Error('Генерация уже выполняется');
-generationLocks.add(lockedChat);
-try{
-const beforeChat=st.chat,beforeId=st.chatId,beforeCount=st.chat.length;
-const requireOrigin=()=>{
- const now=SillyTavern.getContext();
- if(now.chat!==beforeChat||now.chatId!==beforeId||now.chat.length!==beforeCount)
-  throw Error('Чат изменился во время подготовки итогового промпта. Запусти генерацию заново.');
-};
-v.naicom_preview_status='cancelled';
-await saveNessGenerationMetadata(st,'запуск режиссёра');
-requireOrigin();
-const director=getNessDirector(kind);
-const runtimeSettings=loadGen2Settings();
-const source={
-'RP POSTS':String(v.naicom_tracker_scene||''),
-'FIXED CHARACTER APPEARANCE':String(v.naicom_structured_library||''),
-'CURRENT WARDROBE':String(v.naicom_tracker_outfits||''),
-'COMPOSITION WISHES':String(v.naicom_composition_wishes||'')};
-const prepared=nessPreparedVisibility.get(lockedChat);
-const visibility=prepared?.ticket===ticket?prepared.records:new Map();
-if(!visibility.size&&/^NESS_VIS character ID:/m.test(source['FIXED CHARACTER APPEARANCE']))throw Error('Разметка внешности устарела. Запусти подготовку заново.');
-const identityInstruction=/^(?:Prompt name|Subject):/m.test(source['FIXED CHARACTER APPEARANCE'])
- ?'\n\nLIBRARY IDENTITY FIELDS\nFor a visible library character, use the supplied Subject as the entry category and for the corresponding subject count. Use Prompt name as the name immediately after that category, retaining any needed canon identity. For example, Subject boy and Prompt name Kian give | boy, Kian, ... . Do not repeat the same subject or name from Fixed appearance. Preserve the other applicable source wording.'
- :'';
-const appearancePunctuation='\n\nSeparate fixed appearance tags with commas and end the final fixed appearance tag with one semicolon before any clothing, pose or other content.';
-const npcLanguage=String(v.naicom_tracker_npcs||'').trim()?'\n\nNPC LANGUAGE OVERRIDE: Write NPC names (transliterated when needed), appearance and clothing in English in every descriptive section. Translate Russian NPC descriptions even when other rules require verbatim copying. Preserve the original language of in-image dialogue, messages and lettering and their Text: entries.':'';
-const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules)+npcLanguage;
-const raw=await requestNessText(kind,[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(source).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}]);
-requireOrigin();
-v.naicom_last_director_raw=raw;
-await saveNessGenerationMetadata(st,'получен ответ режиссёра');
-requireOrigin();
-const parsedTransport=parseImageHtml(raw);
-const config=parsedTransport.config;
-v.naicom_last_transport_repaired=parsedTransport.repaired;
-config.prompt=normalizeImagePrompt(config.prompt);
-if(npcLanguage){
- config.prompt=await repairNpcPromptLanguage(kind,config.prompt);
- requireOrigin();
-}
-if(visibility.size)config.prompt=insertVisibleAppearance(config.prompt,visibility);
-if(v.naicom_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.naicom_skip_prompt_preview!==true){
- const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
- if(!accepted)return 'Отправка в NAI5 отменена';
-}
-const imagePrompt=config.prompt,cast=Array.isArray(v.naicom_present_ids)?v.naicom_present_ids:[];
-// Rebuild only the transport HTML; never execute arbitrary model markup.
-const attr=JSON.stringify(config).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const html='<naicom>\n<img data-iig-instruction=\''+attr+'\' src="[IMG:GEN]" />\n</naicom>';
-const live = SillyTavern.getContext();
-  if (live.chatId !== beforeId || live.chat !== beforeChat || live.chat.length !== beforeCount)
-    throw new Error('Imagen: чат изменился во время подготовки');
-  // The last REAL roleplay message may be either authored by the user or the character.
-  // Never attach imagery to hidden GlassPhone entries, meta or a prior IIG-only post.
-  const selected=nessGenerationTargets.get(live.chat);
-  if(selected&&(selected.chatId!==live.chatId||live.chat[selected.index]!==selected.message||selected.message.mes!==selected.text))throw Error("Выбранный пост изменился. Подготовь картинку заново.");
-  const targetIndex=selected?selected.index:await lastRpIndex(live.chat);
-  if (targetIndex < 0) throw new Error('Imagen: настоящий RP-пост не найден');
-  const target = live.chat[targetIndex];
-  const targetChatId = live.chatId;
-  let directExtension=null;
-  for(const getHost of [()=>window.top,()=>window.parent,()=>window]){try{const candidate=getHost()?.__spImagenExtension;if(candidate?.installed){directExtension=candidate;break;}}catch{}}
-  if(directExtension?.directGenerationEnabled?.()){
-    const generated=await directExtension.generateImage(config);
-    const after=SillyTavern.getContext();
-    if(after.chatId!==targetChatId||after.chat!==live.chat||after.chat.length!==beforeCount||after.chat[targetIndex]!==target)
-      throw new Error('SP Imagen: чат изменился во время прямой генерации. Повтори запуск из нужного поста.');
-    const stored=await slotManager.publish(targetIndex,kind,generated);
-    const persisted=live.chat[targetIndex]?.extra?.ness_media_slots_v2?.[kind]?.versions;
-    if(!Array.isArray(persisted)||!persisted.some(item=>item?.src===stored?.src))throw new Error('SP Imagen: готовая картинка не подтвердилась в галерее.');
-    try{await slotManager.focus(targetIndex,kind,true);}catch(error){console.warn('SP Imagen: gallery focus skipped',error);}
-    live.chatMetadata.variables.naicom_last_final_image_prompt=imagePrompt;
-    live.chatMetadata.variables.naicom_last_rendered_ids=cast.join(', ');
-    if(typeof live.saveMetadata==='function')await live.saveMetadata();
-    return 'SP Imagen: '+kind+' сохранён в слоте RP-поста #'+targetIndex+' через прямое подключение NovelAI';
-  }
-  if (typeof live.addOneMessage !== 'function' || typeof live.saveChat !== 'function' ||
-      typeof live.eventSource?.emit !== 'function' || !live.event_types?.CHARACTER_MESSAGE_RENDERED)
-    throw new Error('Imagen: недоступен механизм обновления SillyImages');
-  // We cannot feed a pending [IMG:GEN] into an existing post directly:
-  // sillyimages only reacts to CHARACTER_MESSAGE_RENDERED and explicitly skips is_user.
-  // A new temporary, non-user message reuses the proven native image pipeline.
-  const transport = {
-    name:'System', is_user:false, is_system:true, mes:html,
-    extra:{type:'narrator',bias:null,gen_id:Date.now(),api:'manual',model:'slash command',sp_imagen_transport:true,sp_ness_kind:kind,sp_ness_target_index:targetIndex}
+ validateKind(kind);
+ const st=SillyTavern.getContext();
+ if(!st?.chatMetadata||!Array.isArray(st.chat))throw Error('Нет контекста чата.');
+ const slotManager=nessSlotManager(kind);
+ if(!slotManager)throw Error('Галерея SP Imagen не загрузилась. Перезагрузи SillyTavern.');
+ const extension=spImagenExtension();
+ if(!extension.directGenerationEnabled?.())throw Error('Включи подключение NovelAI в SP Imagen → Настройки → NovelAI.');
+ const variables=st.chatMetadata.variables||={};
+ const ticket=String(variables.naicom_run_ticket||'');
+ if(variables.naicom_preview_status!=='approved'||!ticket||variables.naicom_prepared_ticket!==ticket)throw Error('Подтверди данные и подготовь библиотеку.');
+ const lockedChat=st.chat;
+ if(generationLocks.has(lockedChat))throw Error('Генерация уже выполняется.');
+ generationLocks.add(lockedChat);
+ try{
+  const beforeChat=st.chat,beforeId=st.chatId,beforeCount=st.chat.length;
+  const requireOrigin=()=>{
+   const now=SillyTavern.getContext();
+   if(now.chat!==beforeChat||now.chatId!==beforeId||now.chat.length!==beforeCount)throw Error('Чат изменился во время подготовки итогового промпта. Запусти генерацию заново.');
   };
-  const transportIndex = live.chat.length;
-  live.chat.push(transport);
-  live.addOneMessage(transport);
-
-  // Invoke exactly the event SillyImages subscribes to. Its async callback
-  // generates, uploads, rewrites src, and saves the chat before this completes.
-  await live.eventSource.emit(live.event_types.CHARACTER_MESSAGE_RENDERED, transportIndex);
-
-  const check = SillyTavern.getContext();
-  if (check.chatId !== targetChatId || check.chat !== live.chat ||
-      check.chat[transportIndex] !== transport || check.chat[targetIndex] !== target)
-    throw new Error('Imagen: чат изменился во время генерации. Временный пост сохранён, чтобы не потерять картинку.');
-
-  const completed = String(transport.mes || '').match(/<naicom\b[^>]*>[\s\S]*?<\/naicom>/i)?.[0] || '';
-  const src = completed.match(/<img\b[^>]*\bsrc=(['"])([^'"]+)\1/i)?.[2] || '';
-  if (!src || src.includes('[IMG:GEN]')) {
-    throw new Error('Imagen: SillyImages ещё не завершил генерацию. Временное сообщение оставлено для сохранения результата.');
+  variables.naicom_preview_status='cancelled';
+  await saveNessGenerationMetadata(st,'запуск режиссёра');
+  requireOrigin();
+  const director=getNessDirector(kind),runtimeSettings=loadGen2Settings();
+  const source={
+   'RP POSTS':String(variables.naicom_tracker_scene||''),
+   'FIXED CHARACTER APPEARANCE':String(variables.naicom_structured_library||''),
+   'CURRENT WARDROBE':String(variables.naicom_tracker_outfits||''),
+   'COMPOSITION WISHES':String(variables.naicom_composition_wishes||''),
+  };
+  const prepared=nessPreparedVisibility.get(lockedChat);
+  const visibility=prepared?.ticket===ticket?prepared.records:new Map();
+  if(!visibility.size&&/^NESS_VIS character ID:/m.test(source['FIXED CHARACTER APPEARANCE']))throw Error('Разметка внешности устарела. Запусти подготовку заново.');
+  const identityInstruction=/^(?:Prompt name|Subject):/m.test(source['FIXED CHARACTER APPEARANCE'])
+   ?'\n\nLIBRARY IDENTITY FIELDS\nFor a visible library character, use the supplied Subject as the entry category and for the corresponding subject count. Use Prompt name as the name immediately after that category, retaining any needed canon identity. For example, Subject boy and Prompt name Kian give | boy, Kian, ... . Do not repeat the same subject or name from Fixed appearance. Preserve the other applicable source wording.'
+   :'';
+  const appearancePunctuation='\n\nSeparate fixed appearance tags with commas and end the final fixed appearance tag with one semicolon before any clothing, pose or other content.';
+  const npcLanguage=String(variables.naicom_tracker_npcs||'').trim()?'\n\nNPC LANGUAGE OVERRIDE: Write NPC names (transliterated when needed), appearance and clothing in English in every descriptive section. Translate Russian NPC descriptions even when other rules require verbatim copying. Preserve the original language of in-image dialogue, messages and lettering and their Text: entries.':'';
+  const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules)+npcLanguage;
+  const raw=await requestNessText(kind,[
+   {role:'system',content:systemPrompt},
+   {role:'user',content:Object.entries(source).map(([name,value])=>name+':\n'+value).join('\n\n====\n\n')},
+  ]);
+  requireOrigin();
+  variables.naicom_last_director_raw=raw;
+  await saveNessGenerationMetadata(st,'получен ответ режиссёра');
+  requireOrigin();
+  const parsed=parseDirectorResponse(raw),config=parsed.config;
+  variables.naicom_last_transport_repaired=parsed.repaired;
+  config.prompt=normalizeImagePrompt(config.prompt);
+  if(npcLanguage){config.prompt=await repairNpcPromptLanguage(kind,config.prompt);requireOrigin();}
+  if(visibility.size)config.prompt=insertVisibleAppearance(config.prompt,visibility);
+  if(variables.naicom_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:variables.naicom_skip_prompt_preview!==true){
+   const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
+   if(!accepted)return 'Отправка в NovelAI отменена';
   }
-  if (src.includes('/error.svg') || src.includes('[IMG:ERROR:')) {
-    throw new Error('Imagen: SillyImages сообщил об ошибке генерации. Временное сообщение оставлено для повторной попытки.');
-  }
-
-
-  // Commit-first gallery handoff. The generated temporary image is our recovery copy.
-  // Do not remove it until the durable slot is saved and a gallery card is present.
-  if (live.chat.length !== transportIndex + 1 || live.chat[transportIndex] !== transport)
-    throw new Error('Imagen: во время генерации изменился чат. Готовое временное изображение сохранено.');
-
-  const storedItem=await slotManager.publish(targetIndex, kind, { src, config });
-  const storedSrc=storedItem?.src||src;
-  const persisted = live.chat[targetIndex]?.extra?.ness_media_slots_v2?.[kind]?.versions;
-  if (!Array.isArray(persisted) || !persisted.some(it => it?.src === storedSrc))
-    throw new Error('Imagen: сохранение слота не подтверждено; готовая картинка оставлена во временном сообщении.');
-
-  // When the target RP post is mounted in the chat, confirm the gallery has
-  // actually painted it. A hidden GlassPhone entry may follow the real RP post.
-  const galleryState = await slotManager.focus(targetIndex, kind, false);
-  if (galleryState === false)
-    throw new Error('Imagen: слот сохранён, но карточка галереи не появилась. Временная картинка сохранена для восстановления. Проверь Media Slots v4.3.');
-
-  if (live.chat.length !== transportIndex + 1 || live.chat[transportIndex] !== transport ||
-      live.chat[targetIndex] !== target)
-    throw new Error('Imagen: чат изменился после сохранения. Временная картинка оставлена для безопасности.');
-
-  live.chat.pop();
-  document.querySelector('#chat .mes[mesid="' + transportIndex + '"]')?.remove();
-  try { await live.saveChat(); }
-  catch (error) {
-    // The gallery was already committed; never erase a valid slot on a later save error.
-    throw new Error('Imagen: галерея сохранена, но окончательное сохранение чата не подтвердилось: ' + String(error?.message||error));
-  }
-  try { await slotManager.focus(targetIndex, kind, true); }
-  catch (error) { console.warn('SP Imagen: gallery focus skipped',error); }
-
-  live.chatMetadata.variables.naicom_last_final_image_prompt=imagePrompt;
-  live.chatMetadata.variables.naicom_last_rendered_ids=cast.join(', ');
-  if (typeof live.saveMetadata === 'function') await live.saveMetadata();
-  return 'SP Imagen: '+kind+' сохранён в отдельном слоте RP-поста #' + targetIndex;
-
-}finally{generationLocks.delete(lockedChat);}
-
+  requireOrigin();
+  const selected=nessGenerationTargets.get(beforeChat);
+  if(selected&&(selected.chatId!==beforeId||beforeChat[selected.index]!==selected.message||selected.message.mes!==selected.text))throw Error('Выбранный пост изменился. Подготовь картинку заново.');
+  const targetIndex=selected?selected.index:await lastRpIndex(beforeChat);
+  if(targetIndex<0)throw Error('Настоящий RP-пост не найден.');
+  const target=beforeChat[targetIndex];
+  const generated=await extension.generateImage(config);
+  requireOrigin();
+  if(beforeChat[targetIndex]!==target)throw Error('Целевой пост изменился во время генерации.');
+  const stored=await slotManager.publish(targetIndex,kind,generated);
+  const persisted=target.extra?.ness_media_slots_v2?.[kind]?.versions;
+  if(!Array.isArray(persisted)||!persisted.some(item=>item?.src===stored?.src))throw Error('Готовая картинка не подтвердилась в галерее.');
+  await slotManager.focus(targetIndex,kind,true).catch(error=>console.warn('SP Imagen: gallery focus skipped',error));
+  variables.naicom_last_final_image_prompt=config.prompt;
+  variables.naicom_last_rendered_ids=(Array.isArray(variables.naicom_present_ids)?variables.naicom_present_ids:[]).join(', ');
+  await saveNessGenerationMetadata(st,'готовая картинка');
+  return 'SP Imagen: '+kind+' сохранён в слоте RP-поста #'+targetIndex;
+ }finally{generationLocks.delete(lockedChat);}
 }
 
 // Module: generate_at
@@ -2382,6 +2329,6 @@ async function generateAt(){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{cleanRpVisualText,normalizeImagePrompt,parseDirectorResponse,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }

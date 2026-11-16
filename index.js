@@ -44,14 +44,6 @@ function settings() {
     value.novelai = normalizeNovelAISettings(value.novelai);
     value.textApi = normalizeTextApiSettings(value.textApi);
     value.prompts ??= {};
-    if (value.legacyPromptMigration !== 1) {
-        const sets = root.ExtBlocks?.sets;
-        if (Array.isArray(sets)) for (const name of Object.keys(PROFILE_LABELS)) {
-            const legacy = sets.flatMap(set => Array.isArray(set?.global_blocks) ? set.global_blocks : []).find(block => block?.name === name && typeof block.prompt === 'string' && block.prompt.trim());
-            if (legacy && !value.prompts[name]) value.prompts[name] = legacy.prompt;
-        }
-        value.legacyPromptMigration = 1;
-    }
     return value;
 }
 
@@ -311,10 +303,10 @@ async function openTextApiSettings({ back = false } = {}) {
     const { dialog, close, closed } = shell('SP Imagen · Текстовая модель', 'spi-connection-window', { back });
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const mode = select({ st: 'Профиль подключения SillyTavern', direct: 'Прямой OpenAI-совместимый API' }, draft.mode);
-    formField(grid, 'Откуда брать модель', mode);
+    formField(grid, 'Откуда брать модель', mode, 'SP Imagen отправляет только собственное задание.');
     const profile = document.createElement('select');
     const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Выбери дешёвый профиль'; profile.append(placeholder);
-    const profileControl = formField(grid, 'Профиль SillyTavern', profile, 'Основной RP-чат не переключается.');
+    const profileControl = formField(grid, 'Профиль SillyTavern', profile, 'Берутся только подключение и модель. Пресет и история чата не отправляются. Последние RP-посты SP Imagen добавляет само.');
     const profiles = await listSillyTavernProfiles(context()).catch(() => []);
     for (const item of profiles) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; profile.append(option); }
     profile.value = profiles.some(item => item.id === draft.profileId) ? draft.profileId : '';
@@ -335,11 +327,11 @@ async function openTextApiSettings({ back = false } = {}) {
     mode.onchange = refreshMode; refreshMode();
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
     button('Проверить подключение', actions, async event => {
-        const control = event.currentTarget; control.disabled = true; status.textContent = 'Проверяю список моделей…';
+        const control = event.currentTarget; control.disabled = true; status.textContent = 'Проверяю подключение…';
         try {
             const next = readDraft();
             if (next.mode === 'st') { await testSillyTavernProfile(context(), next); status.textContent = 'Выбранный профиль SillyTavern ответил.'; }
-            else { const models = await testTextApi(next); status.textContent = models.length ? `Подключение работает. Моделей найдено: ${models.length}.` : 'Подключение ответило, но список моделей пуст.'; }
+            else { await testTextApi(next); status.textContent = 'Текстовый API ответил.'; }
         }
         catch (error) { status.textContent = String(error?.message || error); }
         finally { control.disabled = false; }
@@ -360,7 +352,7 @@ function openNovelAISettings({ back = false } = {}) {
     const { dialog, close, closed } = shell('SP Imagen · Подключение NovelAI', 'spi-connection-window', { back });
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const enabled = input('', 'checkbox'); enabled.checked = draft.enabled;
-    formField(grid, 'Генерировать напрямую через NovelAI', enabled, 'Если выключено, SP Imagen использует прежний путь через SillyImages.');
+    formField(grid, 'Использовать NovelAI', enabled, 'Нужно для создания и повторной генерации изображений.');
     const neverSpend = input('', 'checkbox'); neverSpend.checked = draft.neverSpendAnlas;
     formField(grid, 'Ни в коем случае не тратить Anlas', neverSpend, 'Проверяет Opus и доступный лимит перед каждой отправкой.');
     const token = input(draft.apiKey, 'password'); token.autocomplete = 'off';
@@ -398,7 +390,7 @@ function openNovelAISettings({ back = false } = {}) {
     button('Отмена', actions, close);
     button('Сохранить', actions, () => {
         const next = readDraft();
-        if (next.enabled && !next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Вставь токен или выключи прямую генерацию.'; token.focus(); return; }
+        if (next.enabled && !next.apiKey) { status.textContent = 'Вставь API-токен NovelAI.'; token.focus(); return; }
         const root = settings(); root.novelai = next; saveSettings(); close();
     }, true);
     dialog.append(grid, status, actions);
@@ -442,23 +434,6 @@ function openStyleLibrary({ back = false } = {}) {
             const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '' };
             novelai.styles.push(style); selectedId = style.id; persist(); renderList(); syncEditor(); name.focus(); name.select();
         }, true);
-        button('Импорт из Inline Images', library, () => {
-            const source = context().extensionSettings?.inline_image_gen;
-            const sourceStyles = Array.isArray(source?.styles) ? source.styles : [];
-            if (!sourceStyles.length) { editorStatus.textContent = 'В Inline Images не найдены стили.'; return; }
-            const signatures = new Set(novelai.styles.map(style => `${style.name}\n${style.value}`));
-            let added = 0, importedActive = '';
-            for (const item of sourceStyles) {
-                const candidate = { id: `spi-style-${Date.now()}-${added}-${Math.random().toString(36).slice(2, 8)}`, name: String(item?.name || '').trim() || `Стиль ${novelai.styles.length + 1}`, value: String(item?.value || '').trim() };
-                const signature = `${candidate.name}\n${candidate.value}`;
-                if (signatures.has(signature)) continue;
-                signatures.add(signature); novelai.styles.push(candidate); added++;
-                if (item?.id && item.id === source.activeStyleId) importedActive = candidate.id;
-            }
-            if (importedActive) novelai.activeStyleId = importedActive;
-            if (added) { selectedId = importedActive || novelai.styles.at(-1).id; persist(); renderList(); syncEditor(); }
-            editorStatus.textContent = added ? `Импортировано стилей: ${added}.` : 'Все стили Inline Images уже есть в SP Imagen.';
-        });
         const none = button('◉ Без стиля', library, () => { novelai.activeStyleId = ''; persist(); renderList(); syncEditor(); });
         none.classList.toggle('spi-active', !novelai.activeStyleId);
         for (const style of novelai.styles) {
@@ -571,7 +546,8 @@ function activeStyle(novelai = settings().novelai) {
 }
 
 function directGenerationEnabled() {
-    return settings().novelai.enabled === true;
+    const novelai = settings().novelai;
+    return novelai.enabled === true && Boolean(novelai.apiKey);
 }
 
 async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
@@ -662,7 +638,7 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.1.0',
+    version: '2.2.1',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,

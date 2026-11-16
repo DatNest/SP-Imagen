@@ -273,7 +273,7 @@ export async function installSpImagenMediaSlots() {
 
   function eligible(message) {
     return message && !message.is_system && typeof message.mes === 'string' && message.mes.trim()
-      && message.name !== 'GlassPhone' && !message.extra?.isSmsSilent && !message.extra?.sp_imagen_transport;
+      && message.name !== 'GlassPhone' && !message.extra?.isSmsSilent;
   }
 
   function mountPost(anchor, index, message) {
@@ -464,10 +464,6 @@ export async function installSpImagenMediaSlots() {
     host.URL.revokeObjectURL(url);
   }
 
-  function instruction(config) {
-    return JSON.stringify(config).replace(/&/g, '\\u0026').replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
-  }
-
   async function regenerate(index, kind) {
     const current = context();
     const chat = current.chat;
@@ -480,35 +476,11 @@ export async function installSpImagenMediaSlots() {
     busy.add(lock);
     paint();
     const extension = host.__spImagenExtension;
-    if (item.config.spImagenDirect && extension?.directGenerationEnabled?.() && typeof extension.generateImage === 'function') {
-      try {
-        const generated = await extension.generateImage(item.config, { reuseSnapshot: true });
-        if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) throw new Error('Чат изменился во время повторной генерации.');
-        await publish(index, kind, generated);
-        return;
-      } finally {
-        busy.delete(lock);
-        paint();
-      }
-    }
-    const temporary = {
-      name: 'System', is_user: false, is_system: true,
-      mes: `<naicom>\n<img data-iig-instruction='${instruction(item.config)}' src="[IMG:GEN]" />\n</naicom>`,
-      extra: { type: 'narrator', api: 'manual', model: 'slash command', sp_imagen_transport: true },
-    };
-    const temporaryIndex = chat.length;
+    if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') throw new Error('Включи подключение NovelAI в настройках SP Imagen.');
     try {
-      chat.push(temporary);
-      current.addOneMessage(temporary);
-      await current.eventSource.emit(current.event_types.CHARACTER_MESSAGE_RENDERED, temporaryIndex);
-      if (context().chat !== chat || chat[temporaryIndex] !== temporary || chat[index] !== message) throw new Error('Чат изменился.');
-      const src = String(temporary.mes || '').match(/<img\b[^>]*\bsrc=(['"])([^'"]+)\1/i)?.[2];
-      if (!safeUrl(src)) throw new Error('Генератор не вернул готовое изображение.');
-      await publish(index, kind, { src, config: item.config });
-      if (chat.length !== temporaryIndex + 1 || chat[temporaryIndex] !== temporary) throw new Error('Чат изменился.');
-      chat.pop();
-      doc.querySelector(`#chat .mes[mesid="${temporaryIndex}"]`)?.remove();
-      await current.saveChat();
+      const generated = await extension.generateImage(item.config, { reuseSnapshot: true });
+      if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) throw new Error('Чат изменился во время повторной генерации.');
+      await publish(index, kind, generated);
     } finally {
       busy.delete(lock);
       paint();

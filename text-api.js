@@ -18,10 +18,91 @@ export function normalizeTextApiSettings(value) {
 }
 
 let connectionServicePromise;
+let requestServicesPromise;
+let proxyPresetsPromise;
 async function connectionService(context) {
     if (context?.ConnectionManagerRequestService) return context.ConnectionManagerRequestService;
     if (!connectionServicePromise) connectionServicePromise = import('../../shared.js').then(module => module.ConnectionManagerRequestService || null).catch(() => null);
     return await connectionServicePromise;
+}
+
+async function requestServices(context) {
+    if (context?.ChatCompletionService && context?.TextCompletionService) {
+        return { chat: context.ChatCompletionService, text: context.TextCompletionService };
+    }
+    if (!requestServicesPromise) {
+        requestServicesPromise = import('../../../custom-request.js').then(module => ({
+            chat: module.ChatCompletionService || null,
+            text: module.TextCompletionService || null,
+        })).catch(() => ({ chat: null, text: null }));
+    }
+    const imported = await requestServicesPromise;
+    return {
+        chat: context?.ChatCompletionService || imported.chat,
+        text: context?.TextCompletionService || imported.text,
+    };
+}
+
+function selectedProfile(context, service, profileId) {
+    const profiles = context?.extensionSettings?.connectionManager?.profiles;
+    const profile = Array.isArray(profiles) ? profiles.find(item => item?.id === profileId) : null;
+    if (profile) return profile;
+    return service?.getProfile?.(profileId) || null;
+}
+
+function selectedApiMap(context, service, profile) {
+    const mapped = profile?.api ? context?.CONNECT_API_MAP?.[profile.api] : null;
+    if (mapped) return mapped;
+    return service?.validateProfile?.(profile) || null;
+}
+
+async function selectedProxy(profile) {
+    if (!profile?.proxy) return null;
+    if (!proxyPresetsPromise) {
+        proxyPresetsPromise = import('../../../openai.js').then(module => Array.isArray(module.proxies) ? module.proxies : []).catch(() => []);
+    }
+    const presets = await proxyPresetsPromise;
+    return presets.find(item => item?.name === profile.proxy) || null;
+}
+
+async function sendStrictProfileRequest(context, service, profileId, messages, maxTokens, signal) {
+    const profile = selectedProfile(context, service, profileId);
+    const apiMap = selectedApiMap(context, service, profile);
+    if (!profile || !apiMap?.selected) return { supported: false };
+    const services = await requestServices(context);
+    if (apiMap.selected === 'openai' && apiMap.source && services.chat?.processRequest) {
+        const proxy = await selectedProxy(profile);
+        const response = await services.chat.processRequest({
+            stream: false,
+            messages,
+            max_tokens: maxTokens,
+            model: profile.model,
+            chat_completion_source: apiMap.source,
+            secret_id: profile['secret-id'],
+            custom_url: profile['api-url'],
+            vertexai_region: profile['api-url'],
+            zai_endpoint: profile['api-url'],
+            siliconflow_endpoint: profile['api-url'],
+            minimax_endpoint: profile['api-url'],
+            reverse_proxy: proxy?.url,
+            proxy_password: proxy?.password,
+            custom_prompt_post_processing: profile['prompt-post-processing'],
+        }, { presetName: undefined }, true, signal);
+        return { supported: true, response };
+    }
+    if (apiMap.selected === 'textgenerationwebui' && apiMap.type && services.text?.processRequest) {
+        const response = await services.text.processRequest({
+            stream: false,
+            prompt: messages,
+            max_tokens: maxTokens,
+            model: profile.model,
+            api_type: apiMap.type,
+            api_server: profile['api-url'],
+            secret_id: profile['secret-id'],
+        }, { presetName: undefined, instructName: undefined, instructSettings: undefined }, true, signal);
+        return { supported: true, response };
+    }
+    return { supported: false };
 }
 
 export async function listSillyTavernProfiles(context) {
@@ -32,29 +113,39 @@ export async function listSillyTavernProfiles(context) {
         : { id: String(profile?.id || ''), name: String(profile?.name || profile?.id || 'Профиль') }).filter(profile => profile.id);
 }
 
+export function extractCompletionText(response) {
+    if (typeof response === 'string') return response.trim();
+    if (response?.data && typeof response.data === 'object' && response.data !== response) {
+        const nested = extractCompletionText(response.data);
+        if (nested) return nested;
+    }
+    const direct = [response?.content, response?.text, response?.data, response?.output_text].find(value => typeof value === 'string');
+    if (direct?.trim()) return direct.trim();
+    const message = response?.choices?.[0]?.message?.content ?? response?.choices?.[0]?.text ?? response?.message?.content;
+    if (typeof message === 'string' && message.trim()) return message.trim();
+    const blocks = Array.isArray(message) ? message : Array.isArray(response?.content) ? response.content : Array.isArray(response?.output) ? response.output : [];
+    const text = blocks.flatMap(block => Array.isArray(block?.content) ? block.content : [block])
+        .filter(block => !['reasoning', 'thinking', 'analysis'].includes(String(block?.type || '').toLowerCase()))
+        .map(block => typeof block === 'string' ? block : block?.text ?? block?.content ?? '')
+        .filter(value => typeof value === 'string' && value.trim()).join('\n').trim();
+    return text;
+}
+
 async function generateWithSillyTavernProfile(context, settings, messages, signal) {
     if (!settings.profileId) throw new Error('Выбери отдельный профиль подключения SillyTavern для SP Imagen.');
     const service = await connectionService(context);
-    if (!service?.sendRequest) throw new Error('Менеджер профилей SillyTavern недоступен. Выбери «Прямой API».');
-    const response = await service.sendRequest(settings.profileId, messages, settings.maxTokens, {
-        stream: false, signal, extractData: true, includePreset: false, includeInstruct: true,
-    });
-    const content = typeof response === 'string' ? response : response?.content ?? response?.text;
-    if (typeof content !== 'string' || !content.trim()) throw new Error('Профиль SillyTavern вернул пустой ответ.');
-    return content.trim();
+    if (!service) throw new Error('Менеджер профилей SillyTavern недоступен. Выбери «Прямой API».');
+    const isolated = await sendStrictProfileRequest(context, service, settings.profileId, messages, settings.maxTokens, signal);
+    if (!isolated.supported) throw new Error('Эта версия SillyTavern не поддерживает изолированный запрос. Обнови SillyTavern или выбери «Прямой API».');
+    const response = isolated.response;
+    const content = extractCompletionText(response);
+    if (!content) throw new Error('Профиль SillyTavern вернул пустой ответ.');
+    return content;
 }
 
 function chatUrl(endpoint) {
     if (/\/chat\/completions$/i.test(endpoint)) return endpoint;
     return `${endpoint}/chat/completions`;
-}
-
-function modelsUrl(endpoint) {
-    try {
-        const url = new URL(chatUrl(endpoint));
-        url.pathname = url.pathname.replace(/\/chat\/completions$/i, '/models');
-        return url.href;
-    } catch { return `${endpoint}/models`; }
 }
 
 async function fetchWithTimeout(url, options, timeoutMs, outerSignal) {
@@ -90,9 +181,9 @@ export async function generateTextCompletion(input, messages, signal, context = 
     }
     let data;
     try { data = await response.json(); } catch { throw new Error('Текстовый API вернул нечитаемый JSON.'); }
-    const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? data?.output_text;
-    if (typeof content !== 'string' || !content.trim()) throw new Error('Текстовый API не вернул текст.');
-    return content.trim();
+    const content = extractCompletionText(data);
+    if (!content) throw new Error('Текстовый API не вернул текст.');
+    return content;
 }
 
 export async function testSillyTavernProfile(context, input, signal) {
@@ -105,15 +196,8 @@ export async function testSillyTavernProfile(context, input, signal) {
 
 export async function testTextApi(input, signal) {
     const settings = normalizeTextApiSettings(input);
-    if (!settings.endpoint || !settings.apiKey) throw new Error('Укажи endpoint и API-ключ.');
-    const response = await fetchWithTimeout(modelsUrl(settings.endpoint), {
-        cache: 'no-store', headers: { Authorization: `Bearer ${settings.apiKey}`, Accept: 'application/json' },
-    }, 15000, signal);
-    if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(`Текстовый API ${response.status}: ${detail.slice(0, 500)}`);
-    }
-    const data = await response.json();
-    const models = Array.isArray(data?.data) ? data.data.map(item => String(item?.id || '')).filter(Boolean) : [];
-    return models;
+    return await generateTextCompletion({ ...settings, mode: 'direct', maxTokens: 1000 }, [
+        { role: 'system', content: 'Проверка подключения. Ответь только OK.' },
+        { role: 'user', content: 'OK' },
+    ], signal);
 }
