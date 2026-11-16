@@ -807,7 +807,7 @@ function createLibraryView(D){
  ui.tip(exportButton,'Экспорт всей текущей библиотеки в JSON: записи, внешность, псевдонимы, теги и их цвета.');
  const upload=input('','file');upload.hidden=true;upload.accept='.json,application/json';upload.setAttribute('data-library-import','');footerLeft.appendChild(upload);importButton.onclick=()=>upload.click();
  const message=el('p','',actions,'ness-status');message.setAttribute('role','status');message.setAttribute('aria-live','polite');
- const close=button('Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
+ const close=button(globalThis.__spImagenHubChild?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
  function resetEditor(){ui.clear(form);const empty=el('div',undefined,form,'ness-library-empty');el('div','✧',empty,'ness-empty-symbol');el('h4','Выбери персонажа',empty);note(empty,'Нажми на строку слева, чтобы открыть запись.');panel.setAttribute('data-view','list');}
  function showEditor(){panel.setAttribute('data-view','editor');form.scrollTop=0;}
  function selection(n){count.textContent='Выбрано: '+n;bulk.hidden=n===0;}

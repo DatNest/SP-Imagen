@@ -3,13 +3,16 @@
 .spi-settings .inline-drawer-header b { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .spi-settings .inline-drawer-content { padding: 8px 6px 10px; }
 .spi-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.spi-actions:has(> :only-child) { grid-template-columns: 1fr; }
 .spi-actions .menu_button, .spi-dialog .menu_button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 38px; margin: 0; padding: 7px 11px; border-radius: 9px; white-space: nowrap; line-height: 1.2; }
 .spi-actions .menu_button { width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .spi-new { display: inline-flex; align-items: center; justify-content: center; min-height: 18px; padding: 1px 7px; border-radius: 999px; background: var(--SmartThemeQuoteColor, #8b5cf6); color: var(--SmartThemeBodyColor, #fff); font-size: 10px; font-weight: 800; letter-spacing: .04em; }
 .spi-overlay { position: fixed; inset: 0; z-index: 2147482500; display: grid; place-items: center; padding: 12px; background: color-mix(in srgb, #000 56%, transparent); }
 .spi-dialog { width: min(760px, 100%); max-height: min(88dvh, 860px); overflow: auto; padding: 16px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 14px; background: var(--SmartThemeBlurTintColor, #222); color: var(--SmartThemeBodyColor, #eee); box-shadow: 0 12px 36px rgba(0,0,0,.34); box-sizing: border-box; }
 .spi-dialog.spi-prompt-window { width: min(920px, 100%); }
-.spi-dialog h2 { margin: 0 0 14px; font-size: 20px; line-height: 1.25; }
+.spi-dialog-head { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; }
+.spi-dialog-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 20px; line-height: 1.25; }
+.spi-dialog-head .spi-back { flex: none; width: 38px; min-width: 38px; padding: 0; font-size: 20px; }
 .spi-dialog h3 { margin: 0 0 9px; font-size: 15px; }
 .spi-dialog p { margin: 5px 0 10px; line-height: 1.4; }
 .spi-prompt-list { display: grid; gap: 8px; }
@@ -42,6 +45,9 @@
 .spi-style-library > .spi-active { outline: 2px solid var(--SmartThemeQuoteColor, #8b5cf6); outline-offset: -2px; }
 .spi-style-editor { display: grid; align-content: start; gap: 9px; }
 .spi-style-editor textarea { min-height: 360px; }
+.spi-hub { width: min(430px, 100%); }
+.spi-hub-menu { display: grid; gap: 8px; }
+.spi-hub-menu .menu_button { width: 100%; min-height: 46px; justify-content: flex-start; padding-inline: 14px; font-size: 14px; }
 .spi-dialog :is(button,input,select,textarea):focus-visible, .spi-settings :is(button,.inline-drawer-toggle):focus-visible { outline: 2px solid var(--SmartThemeQuoteColor, #8b5cf6); outline-offset: 2px; }
 @media (max-width: 620px) {
   .spi-overlay { align-items: end; padding: 0; }

@@ -541,9 +541,7 @@ export async function installSpImagenMediaSlots() {
     wand = component('wand');
     const isNew = Boolean(host.__spImagenExtension?.hasNew);
     for (const [command, label] of [
-      ['sp_ness_library_editor', '📚 SP Imagen · Библиотека'],
-      ['sp_ness_settings', '⚙ SP Imagen · Настройки'],
-      ['sp_ness_prompt_editor', `✎ SP Imagen · Промпты${isNew ? '  NEW!' : ''}`],
+      ['sp_imagen_menu', `✧ SP Imagen${isNew ? '  NEW!' : ''}`],
     ]) {
       const entry = element('button', 'option', label);
       entry.addEventListener('click', () => void executeCommand(command));

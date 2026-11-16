@@ -118,7 +118,7 @@ function refreshNewIndicators() {
     globalThis.__nessImageSlotsV4?.refreshMenu?.();
 }
 
-function shell(title, className = '') {
+function shell(title, className = '', options = {}) {
     const overlay = document.createElement('div');
     overlay.className = 'spi-overlay';
     const dialog = document.createElement('section');
@@ -126,15 +126,26 @@ function shell(title, className = '') {
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
     dialog.setAttribute('aria-label', title);
+    const head = document.createElement('header');
+    head.className = 'spi-dialog-head';
+    const backButton = document.createElement('button');
+    backButton.type = 'button';
+    backButton.className = 'menu_button spi-back';
+    backButton.textContent = '←';
+    backButton.setAttribute('aria-label', 'Назад');
+    backButton.hidden = !options.back;
     const heading = document.createElement('h2');
     heading.textContent = title;
-    dialog.append(heading);
+    head.append(backButton, heading);
+    dialog.append(head);
     overlay.append(dialog);
     document.body.append(overlay);
     const background = [...document.body.children].filter(node => node !== overlay).map(node => [node, node.inert]);
     for (const [node] of background) node.inert = true;
     const previous = document.activeElement;
     let closed = false;
+    let resolveClosed;
+    const closedPromise = new Promise(resolve => { resolveClosed = resolve; });
     const close = () => {
         if (closed) return;
         closed = true;
@@ -142,8 +153,12 @@ function shell(title, className = '') {
         for (const [node, inert] of background) node.inert = inert;
         overlay.remove();
         previous?.focus?.();
+        options.onClose?.();
+        resolveClosed();
     };
+    backButton.addEventListener('click', () => typeof options.back === 'function' ? options.back() : close());
     const onKey = event => {
+        if (overlay.inert || [...document.querySelectorAll('.spi-overlay')].at(-1) !== overlay) return;
         if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); close(); return; }
         if (event.key !== 'Tab') return;
         const nodes = [...dialog.querySelectorAll('button,textarea,input,select')].filter(node => !node.disabled && node.getClientRects().length);
@@ -154,7 +169,7 @@ function shell(title, className = '') {
     };
     document.addEventListener('keydown', onKey, true);
     overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
-    return { overlay, dialog, close };
+    return { overlay, dialog, close, closed: closedPromise, heading, backButton };
 }
 
 function button(label, parent, action, primary = false) {
@@ -182,7 +197,7 @@ async function savePrompt(name, prompt) {
 function openPromptWindow(name) {
     const prompt = settings().prompts[name];
     if (typeof prompt !== 'string') return toastr.error(`Профиль ${PROFILE_LABELS[name] || name} не найден.`, 'SP Imagen');
-    const { dialog, close } = shell(`SP Imagen · ${PROFILE_LABELS[name]}`, 'spi-prompt-window');
+    const { dialog, close } = shell(`SP Imagen · ${PROFILE_LABELS[name]}`, 'spi-prompt-window', { back: true });
     const area = document.createElement('textarea');
     area.value = prompt;
     area.setAttribute('aria-label', `Промпт ${PROFILE_LABELS[name]}`);
@@ -215,13 +230,15 @@ async function resolvePromptUpdate(name, useShipped) {
     saveSettings();
 }
 
-function openPromptCenter({ askUpdates = false } = {}) {
+function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     if (promptCenterOpen) return;
     promptCenterOpen = true;
     const state = settings();
     const pending = new Set(Object.keys(state.pendingPrompts));
-    const { dialog, close: closeShell } = shell('SP Imagen · Промпты');
-    const close = () => { promptCenterOpen = false; closeShell(); refreshNewIndicators(); };
+    const { dialog, close, closed } = shell('SP Imagen · Промпты', 'spi-prompt-center', {
+        back: backToHub,
+        onClose: () => { promptCenterOpen = false; refreshNewIndicators(); if (backToHub) openHub(); },
+    });
     const copy = document.createElement('p');
     copy.textContent = 'Промпты обновлены. Выберите версию.';
     const list = document.createElement('div');
@@ -260,6 +277,7 @@ function openPromptCenter({ askUpdates = false } = {}) {
     if (pending.size) dialog.append(copy);
     dialog.append(list, footer);
     if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
+    return closed;
 }
 
 function formField(parent, labelText, control, note = '') {
@@ -288,9 +306,9 @@ function select(options, value) {
     return node;
 }
 
-async function openTextApiSettings() {
+async function openTextApiSettings({ back = false } = {}) {
     const draft = clone(settings().textApi || defaultTextApiSettings());
-    const { dialog, close } = shell('SP Imagen · Текстовая модель', 'spi-connection-window');
+    const { dialog, close, closed } = shell('SP Imagen · Текстовая модель', 'spi-connection-window', { back });
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const mode = select({ st: 'Профиль подключения SillyTavern', direct: 'Прямой OpenAI-совместимый API' }, draft.mode);
     formField(grid, 'Откуда брать модель', mode);
@@ -334,11 +352,12 @@ async function openTextApiSettings() {
         settings().textApi = next; saveSettings(); close();
     }, true);
     dialog.append(grid, status, actions);
+    return closed;
 }
 
-function openNovelAISettings() {
+function openNovelAISettings({ back = false } = {}) {
     const draft = clone(settings().novelai || defaultNovelAISettings());
-    const { dialog, close } = shell('SP Imagen · Подключение NovelAI', 'spi-connection-window');
+    const { dialog, close, closed } = shell('SP Imagen · Подключение NovelAI', 'spi-connection-window', { back });
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const enabled = input('', 'checkbox'); enabled.checked = draft.enabled;
     formField(grid, 'Генерировать напрямую через NovelAI', enabled, 'Если выключено, SP Imagen использует прежний путь через SillyImages.');
@@ -384,12 +403,13 @@ function openNovelAISettings() {
     }, true);
     dialog.append(grid, status, actions);
     requestAnimationFrame(() => enabled.focus());
+    return closed;
 }
 
-function openStyleLibrary() {
+function openStyleLibrary({ back = false } = {}) {
     const rootSettings = settings();
     let novelai = rootSettings.novelai;
-    const { dialog, close } = shell('SP Imagen · Стили', 'spi-style-window');
+    const { dialog, close, closed } = shell('SP Imagen · Стили', 'spi-style-window', { back });
     const layout = document.createElement('div'); layout.className = 'spi-style-layout';
     const library = document.createElement('section'); library.className = 'spi-style-library';
     const editor = document.createElement('section'); editor.className = 'spi-style-editor';
@@ -479,10 +499,53 @@ function openStyleLibrary() {
     renderList(); syncEditor(); layout.append(library, editor);
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions'; button('Готово', actions, close, true);
     dialog.append(layout, actions);
+    return closed;
 }
 
 async function openLibrary() {
     return (await getLibraryRuntime()).openLibraryEditor();
+}
+
+function openHub(page = 'home') {
+    const existing = document.querySelector('.spi-hub');
+    if (existing) { existing.querySelector('button:not([hidden])')?.focus(); return; }
+    let currentPage = page;
+    const render = nextPage => {
+        currentPage = nextPage;
+        body.replaceChildren();
+        backButton.hidden = currentPage === 'home';
+        heading.textContent = currentPage === 'home' ? 'SP Imagen' : 'SP Imagen · Настройки';
+        if (currentPage === 'home') {
+            button('⚙ Настройки', body, () => render('settings'));
+            const prompts = button(`✎ Промпты${hasNew() ? '  NEW!' : ''}`, body, () => void openPromptCenter({ backToHub: true }));
+            prompts.dataset.spiPrompts = '';
+            button('📚 Библиотека', body, () => void openRuntimeChild(openLibrary));
+        } else {
+            button('Генерация', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings())));
+            button('Текстовая модель', body, () => void openTextApiSettings({ back: true }));
+            button('NovelAI', body, () => void openNovelAISettings({ back: true }));
+            button('Стили', body, () => void openStyleLibrary({ back: true }));
+        }
+        body.querySelector('button')?.focus();
+    };
+    const { overlay, dialog, close, heading, backButton } = shell('SP Imagen', 'spi-hub', { back: () => render('home') });
+    const body = document.createElement('nav');
+    body.className = 'spi-hub-menu';
+    body.setAttribute('aria-label', 'Разделы SP Imagen');
+    dialog.append(body);
+    const openRuntimeChild = async opener => {
+        if (overlay.inert) return;
+        overlay.inert = true;
+        globalThis.__spImagenHubChild = true;
+        try { await opener(); }
+        catch (error) { toastr.error(String(error?.message || error), 'SP Imagen'); }
+        finally {
+            delete globalThis.__spImagenHubChild;
+            if (overlay.isConnected) { overlay.inert = false; body.querySelector('button')?.focus(); }
+        }
+    };
+    render(currentPage);
+    return close;
 }
 
 function getDirector(kind) {
@@ -544,6 +607,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
 async function run(command, kind) {
     const api = await getRuntime();
     const calls = {
+        sp_imagen_menu: () => openHub(),
         sp_ness_generate_at: () => api.generateAt(),
         sp_ness_settings: () => api.openSettings(),
         sp_ness_library_editor: () => openLibrary(),
@@ -571,14 +635,7 @@ function settingsPanel() {
     root.className = 'extension_container spi-settings';
     root.innerHTML = `<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>SP Imagen <span class="spi-new" data-spi-new>NEW!</span></b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content"><div class="spi-actions"></div></div></div>`;
     const actions = root.querySelector('.spi-actions');
-    button('Библиотека', actions, () => void openLibrary());
-    button('Генерация', actions, () => void getRuntime().then(api => api.openSettings()));
-    button('Текстовая модель', actions, openTextApiSettings);
-    button('NovelAI', actions, openNovelAISettings);
-    button('Стили', actions, openStyleLibrary);
-    const prompts = button('Промпты', actions, () => openPromptCenter());
-    prompts.dataset.spiPrompts = '';
-    button('Обновления', actions, () => openPromptCenter({ askUpdates: true }));
+    button('Открыть SP Imagen', actions, () => openHub(), true);
     document.getElementById('extensions_settings2')?.append(root);
     refreshNewIndicators();
 }
@@ -605,10 +662,11 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.0.0',
+    version: '2.1.0',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,
+    openHub,
     openLibrary,
     openPrompts: openPromptCenter,
     persistImageSource,

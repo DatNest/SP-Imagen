@@ -1177,7 +1177,7 @@ async function openSettings(){
  const settingsMount=ui.el('div',undefined,scroll);
  const actions=ui.el('footer',undefined,panel);actions.setAttribute('data-review-actions','');
  const message=ui.el('p','',actions,'ness-status');message.setAttribute('role','status');message.setAttribute('aria-live','polite');
- const close=ui.button('Закрыть',actions),save=ui.button('Сохранить настройки',actions,undefined,'primary');
+ const close=ui.button(globalThis.__spImagenHubChild?'← Назад':'Закрыть',actions),save=ui.button('Сохранить настройки',actions,undefined,'primary');
  let dirty=false,busy=false,done=false,discardAsked=false,transferClose=null;
  const markDirty=()=>{dirty=true;discardAsked=false;message.textContent='Не сохранено';};
  let form=createGen2SettingsPanel(document,loadGen2Settings(),st.chatMetadata.variables?.naicom_skip_prompt_preview,markDirty);
