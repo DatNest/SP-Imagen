@@ -5,7 +5,7 @@ import { createSpImagenLibraryRuntime } from './library-runtime.js';
 import { installSpImagenMediaSlots } from './media-slots.js';
 import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
 import { decidePromptUpdate } from './update-policy.js';
-import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings } from './novelai.js';
+import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, getNovelAINegativePresetOptions, normalizeNovelAISettings } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, testSillyTavernProfile, testTextApi } from './text-api.js';
 
 const EXTENSION_KEY = 'spImagen';
@@ -367,14 +367,35 @@ function openNovelAISettings({ back = false } = {}) {
     const rescale = input(draft.cfgRescale, 'number'); rescale.min = '0'; rescale.max = '1'; rescale.step = '0.01'; formField(grid, 'CFG rescale', rescale);
     const sampler = select(NOVELAI_SAMPLERS, draft.sampler); formField(grid, 'Sampler', sampler);
     const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
+    const negativePreset = select(getNovelAINegativePresetOptions(draft.model), draft.negativePreset);
+    const negativePresetControl = formField(grid, 'Встроенный негатив', negativePreset, 'Подбирается для выбранной модели и добавляется перед вашим текстом.');
     const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
-    formField(grid, 'Негативный промпт', negative, 'Для V5 Medium используется обязательный негативный промпт модели.');
+    const negativeControl = formField(grid, 'Дополнительный негатив', negative, 'Ваши теги сохраняются отдельно и не заменяются обновлениями.');
+    const refreshNegativeControls = () => {
+        const medium = model.value === 'nai-diffusion-5-full-medium';
+        const selected = negativePreset.value || draft.negativePreset;
+        negativePreset.replaceChildren();
+        for (const [key, label] of Object.entries(getNovelAINegativePresetOptions(model.value))) {
+            const option = document.createElement('option'); option.value = key; option.textContent = label; negativePreset.append(option);
+        }
+        negativePreset.value = [...negativePreset.options].some(option => option.value === selected) ? selected : 'human';
+        negativePreset.disabled = medium;
+        negative.disabled = medium;
+        negativePresetControl.parentElement.querySelector('small').textContent = medium
+            ? 'V5 Medium использует фиксированный сильный негатив NovelAI.'
+            : 'Подбирается для выбранной модели и добавляется перед вашим текстом.';
+        negativeControl.parentElement.querySelector('small').textContent = medium
+            ? 'V5 Medium не принимает пользовательский негатив; сохранённый текст останется на месте.'
+            : 'Ваши теги сохраняются отдельно и не заменяются обновлениями.';
+    };
+    model.addEventListener('change', refreshNegativeControls);
+    refreshNegativeControls();
     const status = document.createElement('p'); status.className = 'spi-status';
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: enabled.checked, neverSpendAnlas: neverSpend.checked,
         apiKey: token.value, endpoint: endpoint.value, model: model.value, resolution: resolution.value,
         steps: Number(steps.value), cfgScale: Number(cfg.value), cfgRescale: Number(rescale.value),
-        sampler: sampler.value, seed: Number(seed.value), negativePrompt: negative.value,
+        sampler: sampler.value, seed: Number(seed.value), negativePreset: negativePreset.value, negativePrompt: negative.value,
     });
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
     button('Проверить подключение', actions, async event => {
@@ -481,6 +502,31 @@ async function openLibrary() {
     return (await getLibraryRuntime()).openLibraryEditor();
 }
 
+function openLastDirectorResponse() {
+    const raw = String(context()?.chatMetadata?.variables?.naicom_last_director_raw || '');
+    if (!raw.trim()) return toastr.info('В этом чате ещё нет сохранённого ответа режиссёра.', 'SP Imagen');
+    const { dialog, close } = shell('SP Imagen · Ответ режиссёра', 'spi-raw-response', { back: true });
+    const note = document.createElement('p');
+    note.textContent = 'Это исходный ответ модели до разбора.';
+    const area = document.createElement('textarea');
+    area.value = raw;
+    area.readOnly = true;
+    area.setAttribute('aria-label', 'Исходный ответ режиссёра');
+    const status = document.createElement('p');
+    status.className = 'spi-status';
+    const actions = document.createElement('div');
+    actions.className = 'spi-dialog-actions';
+    button('Скопировать', actions, async () => {
+        try {
+            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(raw);
+            else { area.focus(); area.select(); if (!document.execCommand('copy')) throw new Error('copy failed'); }
+            status.textContent = 'Ответ скопирован.';
+        } catch { status.textContent = 'Не удалось скопировать автоматически. Выдели текст вручную.'; area.focus(); area.select(); }
+    }, true);
+    button('Закрыть', actions, close);
+    dialog.append(note, area, status, actions);
+}
+
 function openHub(page = 'home') {
     const existing = document.querySelector('.spi-hub');
     if (existing) { existing.querySelector('button:not([hidden])')?.focus(); return; }
@@ -500,6 +546,7 @@ function openHub(page = 'home') {
             button('Текстовая модель', body, () => void openTextApiSettings({ back: true }));
             button('NovelAI', body, () => void openNovelAISettings({ back: true }));
             button('Стили', body, () => void openStyleLibrary({ back: true }));
+            button('Последний ответ режиссёра', body, openLastDirectorResponse);
         }
         body.querySelector('button')?.focus();
     };
@@ -569,7 +616,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         cfgScale: result.settings.cfgScale, cfgRescale: result.settings.cfgRescale,
         sampler: result.settings.sampler, noiseSchedule: result.settings.noiseSchedule,
         seed: -1, skipCfgAboveSigma: result.settings.skipCfgAboveSigma,
-        negativePrompt: result.settings.negativePrompt,
+        negativePreset: result.settings.negativePreset, negativePrompt: result.settings.negativePrompt,
     };
     return {
         src: result.src,
@@ -638,7 +685,7 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.2.1',
+    version: '2.2.4',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,

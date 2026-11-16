@@ -20,6 +20,7 @@
 .spi-prompt-row strong { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .spi-dialog textarea { width: 100%; resize: vertical; box-sizing: border-box; padding: 10px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 9px; background: var(--black30a, rgba(0,0,0,.3)); color: inherit; font: 13px/1.45 ui-monospace, monospace; }
 .spi-prompt-window > textarea { min-height: min(62dvh, 600px); }
+.spi-raw-response > textarea { min-height: min(56dvh, 520px); }
 .spi-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .spi-prompt-row .spi-dialog-actions { margin-top: 0; }
 .spi-conflict { border-inline-start: 3px solid var(--SmartThemeQuoteColor, #8b5cf6); }

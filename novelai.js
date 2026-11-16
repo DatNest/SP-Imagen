@@ -16,7 +16,21 @@ export const NOVELAI_SAMPLERS = Object.freeze({
 });
 
 const MEDIUM_MODEL = 'nai-diffusion-5-full-medium';
-const MEDIUM_NEGATIVE = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
+const UC_HEAVY_COMMON = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
+const UC_LIGHT_V5 = 'lowres, bad hands, bad anatomy, artistic error, sepia, white haze, worst quality, very displeasing, jpeg artifacts, 0::ai-generated::';
+const UC_FURRY_COMMON = '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic';
+const UC_HUMAN_COMMON = `${UC_HEAVY_COMMON}, @_@, mismatched pupils, glowing eyes, bad anatomy`;
+const UC_LIGHT_V45_FULL = 'lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page';
+const UC_HEAVY_V45_CURATED = 'blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page';
+const UC_LIGHT_V45_CURATED = 'blurry, lowres, upscaled, artistic error, scan artifacts, jpeg artifacts, logo, too many watermarks, negative space, blank page';
+const UC_HUMAN_V45_CURATED = 'blurry, lowres, upscaled, artistic error, film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page';
+const NEGATIVE_PRESETS = Object.freeze({
+    'nai-diffusion-5-full': Object.freeze({ human: UC_HUMAN_COMMON, heavy: UC_HEAVY_COMMON, light: UC_LIGHT_V5, furry: UC_FURRY_COMMON, none: '' }),
+    'nai-diffusion-5-curated': Object.freeze({ human: UC_HUMAN_COMMON, heavy: UC_HEAVY_COMMON, light: UC_LIGHT_V5, furry: UC_FURRY_COMMON, none: '' }),
+    'nai-diffusion-4-5-full': Object.freeze({ human: UC_HUMAN_COMMON, heavy: UC_HEAVY_COMMON, light: UC_LIGHT_V45_FULL, furry: UC_FURRY_COMMON, none: '' }),
+    'nai-diffusion-4-5-curated': Object.freeze({ human: UC_HUMAN_V45_CURATED, heavy: UC_HEAVY_V45_CURATED, light: UC_LIGHT_V45_CURATED, none: '' }),
+});
+const NEGATIVE_PRESET_LABELS = Object.freeze({ human: 'Люди · рекомендуется', heavy: 'Сильный', light: 'Лёгкий', furry: 'Фурри', none: 'Без встроенного негатива' });
 const DIMENSIONS = Object.freeze({
     small: { '1:1': [640, 640], '2:3': [512, 768], '3:2': [768, 512], '9:16': [448, 832], '16:9': [832, 448] },
     normal: { '1:1': [1024, 1024], '2:3': [832, 1216], '3:2': [1216, 832], '9:16': [768, 1344], '16:9': [1344, 768] },
@@ -38,6 +52,7 @@ export function defaultNovelAISettings() {
         noiseSchedule: 'karras',
         seed: -1,
         skipCfgAboveSigma: 0,
+        negativePreset: 'human',
         negativePrompt: '',
         styles: [],
         activeStyleId: '',
@@ -53,6 +68,8 @@ export function normalizeNovelAISettings(value) {
     settings.endpoint = String(settings.endpoint || defaults.endpoint).trim().replace(/\/+$/, '');
     settings.apiKey = String(settings.apiKey || '').trim();
     if (!Object.hasOwn(NOVELAI_MODELS, settings.model)) settings.model = defaults.model;
+    const negativePresets = NEGATIVE_PRESETS[settings.model === MEDIUM_MODEL ? 'nai-diffusion-5-full' : settings.model];
+    if (!negativePresets || !Object.hasOwn(negativePresets, settings.negativePreset)) settings.negativePreset = defaults.negativePreset;
     if (!Object.hasOwn(DIMENSIONS, settings.resolution)) settings.resolution = defaults.resolution;
     if (!Object.hasOwn(NOVELAI_SAMPLERS, settings.sampler)) settings.sampler = defaults.sampler;
     for (const key of ['steps', 'cfgScale', 'cfgRescale', 'seed', 'skipCfgAboveSigma']) settings[key] = Number(settings[key]);
@@ -64,6 +81,11 @@ export function normalizeNovelAISettings(value) {
     })) : [];
     if (!settings.styles.some(style => style.id === settings.activeStyleId)) settings.activeStyleId = '';
     return settings;
+}
+
+export function getNovelAINegativePresetOptions(model) {
+    const presets = NEGATIVE_PRESETS[model === MEDIUM_MODEL ? 'nai-diffusion-5-full' : model] || NEGATIVE_PRESETS['nai-diffusion-5-full'];
+    return Object.fromEntries(Object.keys(presets).map(key => [key, NEGATIVE_PRESET_LABELS[key]]));
 }
 
 function resolveRequestSettings(input) {
@@ -105,7 +127,12 @@ function buildParameters(settings, prompt, negativePrompt, aspectRatio) {
     validate(settings, aspectRatio);
     const positive = splitCharacterPrompts(prompt);
     const medium = settings.model === MEDIUM_MODEL;
-    const negative = splitCharacterPrompts(medium ? MEDIUM_NEGATIVE : negativePrompt);
+    const customNegative = splitCharacterPrompts(medium ? '' : negativePrompt);
+    const presetText = medium ? UC_HEAVY_COMMON : NEGATIVE_PRESETS[settings.model]?.[settings.negativePreset] || '';
+    const negative = {
+        base: [presetText, customNegative.base].filter(Boolean).join(', '),
+        characters: customNegative.characters,
+    };
     const maxCharacters = settings.model.startsWith('nai-diffusion-5-') ? 22 : 6;
     if (Math.max(positive.characters.length, negative.characters.length) > maxCharacters) throw new Error(`Эта модель поддерживает до ${maxCharacters} отдельных секций персонажей.`);
     const caption = (base, characters) => ({

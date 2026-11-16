@@ -1421,6 +1421,43 @@ function repairDirectorJson(json){
  }
  return {prompt:JSON.parse('"'+escaped+'"'),aspect_ratio:shape[2],image_size:'1K'};
 }
+function cleanStructuredDirectorPart(value){
+ return String(value??'').replace(/\s+/g,' ').replace(/\s*\|\s*/g,' — ').trim().replace(/[\s,;]+$/,'');
+}
+function structuredDirectorRatio(config,kind){
+ if(['1:1','2:3','9:16'].includes(config.aspect_ratio))return config.aspect_ratio;
+ const framing=[config.image_type,config.composition,config.framing].map(cleanStructuredDirectorPart).join(' ');
+ if(kind==='snapshot'&&/\b(?:wide|landscape|horizontal|panoramic|radial)\b/i.test(framing))return '1:1';
+ if(kind==='snapshot'&&/\b(?:vertical|tall portrait|full-length portrait)\b/i.test(framing))return '9:16';
+ return '2:3';
+}
+function convertStructuredDirectorConfig(config,kind){
+ if(!config||Array.isArray(config)||typeof config!=='object'||typeof config.scene!=='string'||!Array.isArray(config.people))return null;
+ const allowedRoot=new Set(['image_type','composition','framing','scene','people','aspect_ratio','image_size']);
+ if(Object.keys(config).some(key=>!allowedRoot.has(key)))return null;
+ const people=[];
+ for(const person of config.people){
+  if(!person||Array.isArray(person)||typeof person!=='object')return null;
+  const allowedPerson=new Set(['id','name','gender','details','actions']);
+  if(Object.keys(person).some(key=>!allowedPerson.has(key)))return null;
+  const id=String(person.id||'').trim(),name=cleanStructuredDirectorPart(person.name),details=cleanStructuredDirectorPart(person.details),actions=cleanStructuredDirectorPart(person.actions);
+  const rawGender=String(person.gender||'').trim().toLowerCase();
+  const gender=rawGender==='person'?'other':rawGender;
+  if(!/^[a-z][a-z0-9_]*$/.test(id)||!name||!['boy','girl','cat','other'].includes(gender)||(!details&&!actions))return null;
+  people.push({id,name,gender,details,actions});
+ }
+ if(!people.length)return null;
+ const counts=new Map();
+ for(const person of people)counts.set(person.gender,(counts.get(person.gender)||0)+1);
+ const countText=[...counts].map(([gender,count])=>String(count)+gender+(count===1?'':'s')).join(', ');
+ const base=[countText,config.image_type,config.composition,config.framing,config.scene].map(cleanStructuredDirectorPart).filter(Boolean).join('; ');
+ const entries=people.map(person=>{
+  const body=[person.gender,person.name,person.details,person.actions].filter(Boolean).join(', ');
+  return body.replace(/[,;\s]+$/,'');
+ });
+ const prompt=base+entries.map(entry=>' | '+entry).join('');
+ return {prompt,aspect_ratio:structuredDirectorRatio(config,kind),image_size:'1K'};
+}
 function validateDirectorConfig(config){
  const keys=config&&!Array.isArray(config)&&typeof config==='object'?Object.keys(config).sort().join(','):'';
  const prompt=typeof config?.prompt==='string'?config.prompt:'';
@@ -1429,13 +1466,15 @@ function validateDirectorConfig(config){
  }
  return config;
 }
-function parseDirectorResponse(raw){
+function parseDirectorResponse(raw,kind='snapshot'){
  const json=extractDirectorJson(raw);let config,repaired=false;
  try{config=JSON.parse(json);}catch{
   config=repairDirectorJson(json);
   if(!config)throw Error('Режиссёр вернул повреждённый или обрезанный JSON. Повтори запуск; исходный ответ сохранён в naicom_last_director_raw.');
   repaired=true;
  }
+ const structured=convertStructuredDirectorConfig(config,kind);
+ if(structured){config=structured;repaired=true;}
  return {config:validateDirectorConfig(config),repaired};
 }
 
@@ -2282,7 +2321,7 @@ async function renderImage(kind){
   variables.naicom_last_director_raw=raw;
   await saveNessGenerationMetadata(st,'получен ответ режиссёра');
   requireOrigin();
-  const parsed=parseDirectorResponse(raw),config=parsed.config;
+  const parsed=parseDirectorResponse(raw,kind),config=parsed.config;
   variables.naicom_last_transport_repaired=parsed.repaired;
   config.prompt=normalizeImagePrompt(config.prompt);
   if(npcLanguage){config.prompt=await repairNpcPromptLanguage(kind,config.prompt);requireOrigin();}
