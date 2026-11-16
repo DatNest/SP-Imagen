@@ -138,6 +138,7 @@ export async function installSpImagenMediaSlots() {
       text-align: inherit;
       cursor: pointer;
       touch-action: manipulation;
+      white-space: nowrap;
     }
     button:focus-visible {
       outline: 2px solid currentColor;
@@ -161,7 +162,8 @@ export async function installSpImagenMediaSlots() {
       min-block-size: 36px;
       padding: .45em .65em;
       text-align: start;
-      overflow-wrap: anywhere;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     @media (hover: hover) {
       .generate:hover { opacity: 1; }

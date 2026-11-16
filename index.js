@@ -183,8 +183,6 @@ function openPromptWindow(name) {
     const prompt = settings().prompts[name];
     if (typeof prompt !== 'string') return toastr.error(`Профиль ${PROFILE_LABELS[name] || name} не найден.`, 'SP Imagen');
     const { dialog, close } = shell(`SP Imagen · ${PROFILE_LABELS[name]}`, 'spi-prompt-window');
-    const copy = document.createElement('p');
-    copy.textContent = 'Это рабочий промпт профиля. Он хранится в самом SP Imagen и не зависит от ExtBlocks.';
     const area = document.createElement('textarea');
     area.value = prompt;
     area.setAttribute('aria-label', `Промпт ${PROFILE_LABELS[name]}`);
@@ -192,7 +190,7 @@ function openPromptWindow(name) {
     status.className = 'spi-status';
     const actions = document.createElement('div');
     actions.className = 'spi-dialog-actions';
-    button('Вернуть промпт из этой версии', actions, () => {
+    button('Сбросить', actions, () => {
         if (confirm(`Заменить текущий промпт ${PROFILE_LABELS[name]} официальным из установленной версии SP Imagen?`)) area.value = shippedPrompt(name);
     });
     button('Отмена', actions, close);
@@ -203,7 +201,7 @@ function openPromptWindow(name) {
             setTimeout(close, 250);
         } catch (error) { status.textContent = String(error?.message || error); }
     }, true);
-    dialog.append(copy, area, status, actions);
+    dialog.append(area, status, actions);
     requestAnimationFrame(() => area.focus());
 }
 
@@ -225,9 +223,7 @@ function openPromptCenter({ askUpdates = false } = {}) {
     const { dialog, close: closeShell } = shell('SP Imagen · Промпты');
     const close = () => { promptCenterOpen = false; closeShell(); refreshNewIndicators(); };
     const copy = document.createElement('p');
-    copy.textContent = pending.size
-        ? 'В обновлении есть новые промпты. Там, где вы меняли текст, SP Imagen ничего не заменил и ждёт вашего решения.'
-        : 'Каждый профиль открывается в отдельном окне. Пользовательские изменения сохраняются между обновлениями.';
+    copy.textContent = 'Промпты обновлены. Выберите версию.';
     const list = document.createElement('div');
     list.className = 'spi-prompt-list';
     for (const [name, label] of Object.entries(PROFILE_LABELS)) {
@@ -261,7 +257,8 @@ function openPromptCenter({ askUpdates = false } = {}) {
         if (!Object.keys(state.pendingPrompts).length) state.seenRelease = SP_IMAGEN_RELEASE;
         saveSettings(); close();
     }, true);
-    dialog.append(copy, list, footer);
+    if (pending.size) dialog.append(copy);
+    dialog.append(list, footer);
     if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
 }
 
@@ -294,8 +291,6 @@ function select(options, value) {
 async function openTextApiSettings() {
     const draft = clone(settings().textApi || defaultTextApiSettings());
     const { dialog, close } = shell('SP Imagen · Текстовая модель', 'spi-connection-window');
-    const intro = document.createElement('p');
-    intro.textContent = 'Эта отдельная дешёвая модель пишет итоговый промпт, разбирает NPC, композицию и сложные правила. Можно выбрать сохранённый профиль SillyTavern или указать прямой OpenAI-совместимый API.';
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const mode = select({ st: 'Профиль подключения SillyTavern', direct: 'Прямой OpenAI-совместимый API' }, draft.mode);
     formField(grid, 'Откуда брать модель', mode);
@@ -338,14 +333,12 @@ async function openTextApiSettings() {
         if (next.mode === 'direct' && (!next.endpoint || !next.apiKey || !next.model)) { status.textContent = 'Заполни endpoint, API-ключ и модель.'; return; }
         settings().textApi = next; saveSettings(); close();
     }, true);
-    dialog.append(intro, grid, status, actions);
+    dialog.append(grid, status, actions);
 }
 
 function openNovelAISettings() {
     const draft = clone(settings().novelai || defaultNovelAISettings());
     const { dialog, close } = shell('SP Imagen · Подключение NovelAI', 'spi-connection-window');
-    const intro = document.createElement('p');
-    intro.textContent = 'Прямое подключение отправляет готовый промпт в NovelAI без временного поста. Токен хранится только в настройках расширения SillyTavern и не попадает в экспорт библиотеки или настроек генерации.';
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const enabled = input('', 'checkbox'); enabled.checked = draft.enabled;
     formField(grid, 'Генерировать напрямую через NovelAI', enabled, 'Если выключено, SP Imagen использует прежний путь через SillyImages.');
@@ -389,7 +382,7 @@ function openNovelAISettings() {
         if (next.enabled && !next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Вставь токен или выключи прямую генерацию.'; token.focus(); return; }
         const root = settings(); root.novelai = next; saveSettings(); close();
     }, true);
-    dialog.append(intro, grid, status, actions);
+    dialog.append(grid, status, actions);
     requestAnimationFrame(() => enabled.focus());
 }
 
@@ -397,8 +390,6 @@ function openStyleLibrary() {
     const rootSettings = settings();
     let novelai = rootSettings.novelai;
     const { dialog, close } = shell('SP Imagen · Стили', 'spi-style-window');
-    const intro = document.createElement('p');
-    intro.textContent = 'Активный стиль отправляется обычным префиксом перед готовым промптом. Без скрытых обёрток и без изменения текста стиля.';
     const layout = document.createElement('div'); layout.className = 'spi-style-layout';
     const library = document.createElement('section'); library.className = 'spi-style-library';
     const editor = document.createElement('section'); editor.className = 'spi-style-editor';
@@ -487,7 +478,7 @@ function openStyleLibrary() {
     name.addEventListener('input', saveEditor); value.addEventListener('input', saveEditor);
     renderList(); syncEditor(); layout.append(library, editor);
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions'; button('Готово', actions, close, true);
-    dialog.append(intro, layout, actions);
+    dialog.append(layout, actions);
 }
 
 async function openLibrary() {
@@ -578,16 +569,16 @@ function settingsPanel() {
     const root = document.createElement('div');
     root.id = 'spi-extension-settings';
     root.className = 'extension_container spi-settings';
-    root.innerHTML = `<h3 class="inline-drawer-header"><span>SP Imagen</span><span class="spi-new" data-spi-new>NEW!</span></h3><div class="spi-actions"></div>`;
+    root.innerHTML = `<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>SP Imagen <span class="spi-new" data-spi-new>NEW!</span></b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content"><div class="spi-actions"></div></div></div>`;
     const actions = root.querySelector('.spi-actions');
     button('Библиотека', actions, () => void openLibrary());
-    button('Настройки генерации', actions, () => void getRuntime().then(api => api.openSettings()));
+    button('Генерация', actions, () => void getRuntime().then(api => api.openSettings()));
     button('Текстовая модель', actions, openTextApiSettings);
     button('NovelAI', actions, openNovelAISettings);
     button('Стили', actions, openStyleLibrary);
     const prompts = button('Промпты', actions, () => openPromptCenter());
     prompts.dataset.spiPrompts = '';
-    button('Проверить обновление', actions, () => openPromptCenter({ askUpdates: true }));
+    button('Обновления', actions, () => openPromptCenter({ askUpdates: true }));
     document.getElementById('extensions_settings2')?.append(root);
     refreshNewIndicators();
 }
