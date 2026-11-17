@@ -104,33 +104,15 @@ function resolveRequestSettings(input) {
     return settings;
 }
 
-// The director uses " | boy, ... | girl, ..." as structured subject delimiters.
-// Bare pipes in descriptions and the Text: appendix are not character delimiters.
+// To stay faithful to the working ExtBlocks flow, send the director prompt to
+// NovelAI as ONE intact line. Do not split characters, bubbles or Text: into
+// separate client-side structures. ExtBlocks passed one finished prompt line to
+// the image backend; reproducing that path keeps speech-bubble instructions and
+// printed text exactly where the director placed them.
 export function splitCharacterPrompts(prompt) {
-    let source = String(prompt || '').trim();
-    const textSection = source.match(/\n\s*Text\s*:\s*([\s\S]*)$/i);
-    let letters = '';
-    if (textSection) {
-        letters = 'Text: ' + textSection[1].trim();
-        source = source.slice(0, textSection.index).trim();
-    }
-    const parts = source.split(/(?<!\\)\s*\|\s*(?=(?:boy|girl|cat|other)\s*,)/iu).map(part => part.trim());
-    const [before = '', ...characters] = parts;
-    // In the original ExtBlocks format, bubbles follow the LAST character.
-    // Keep their placement and text in the shared NovelAI caption, not in that
-    // character's physical appearance. No extra model call or text rewriting.
-    let bubbles = '';
-    if (characters.length) {
-        const last = characters.length - 1;
-        const marker = /;\s*(?=Speech bubble\s+\d+\s*:)/iu.exec(characters[last]);
-        if (marker) {
-            bubbles = characters[last].slice(marker.index + marker[0].length).trim();
-            characters[last] = characters[last].slice(0, marker.index).trim();
-        }
-    }
-    const base = [before, bubbles, letters].filter(Boolean).join('\n\n');
-    return { base, characters };
+    return { base: String(prompt || '').trim(), characters: [] };
 }
+
 
 function validate(settings, aspectRatio) {
     const errors = [];
