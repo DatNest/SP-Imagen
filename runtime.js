@@ -1276,9 +1276,15 @@ function formatStructuredBubbles(bubbles,limits=null){
  if(bubbles===undefined)return {description:'',text:[]};
  if(!Array.isArray(bubbles)||bubbles.length>8)return null;
  const descriptions=[],text=[];
- // The live word limit is given to the director, as in ExtBlocks.
- // Only cap the number of whole speech bubbles; never cut their text or abort rendering.
+ // Match the practical ExtBlocks behavior as closely as possible:
+ // the director is asked for short lines, and the fallback converter keeps only
+ // whole bubbles that already fit the current settings. It never truncates text.
  const maxLines=limits&&Number.isInteger(limits.lines)?limits.lines:8;
+ const maxWords=limits&&Number.isInteger(limits.words)?limits.words:40;
+ const countWords=value=>{
+  const m=String(value||'').trim().match(/[^\s]+/g);
+  return m?m.length:0;
+ };
  for(const bubble of bubbles){
   if(!isStructuredDirectorObject(bubble))return null;
   const fields=[];let words='';
@@ -1287,9 +1293,8 @@ function formatStructuredBubbles(bubbles,limits=null){
    if(key==='text'){words=part;continue;}
    if(part)fields.push(part);
   }
-  // Never discard a permitted bubble for exceeding the word target.
-  // A complete spoken line must survive; only omit bubbles beyond the count.
   if(!words||text.length>=maxLines)continue;
+  if(countWords(words)>maxWords)continue;
   text.push(words);
   fields.push('saying "'+words+'"');
   descriptions.push('Speech bubble '+text.length+': '+fields.join(', '));
