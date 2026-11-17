@@ -3,8 +3,7 @@ import { saveBase64AsFile } from '../../../utils.js';
 import { createSpImagenRuntime } from './runtime.js';
 import { createSpImagenLibraryRuntime } from './library-runtime.js';
 import { installSpImagenMediaSlots } from './media-slots.js';
-import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
-import { decidePromptUpdate } from './update-policy.js';
+import { SP_IMAGEN_PROMPTS } from './official-prompts.js';
 import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, getNovelAINegativePresetOptions, normalizeNovelAISettings } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, testSillyTavernProfile, testTextApi } from './text-api.js';
 
@@ -23,12 +22,6 @@ let initializationAttempts = 0;
 let promptCenterOpen = false;
 
 const clone = value => JSON.parse(JSON.stringify(value));
-const hash = async value => {
-    const bytes = new TextEncoder().encode(String(value ?? ''));
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-};
-
 function context() {
     return SillyTavern.getContext();
 }
@@ -38,52 +31,13 @@ function settings() {
     root[EXTENSION_KEY] ??= {};
     const value = root[EXTENSION_KEY];
     value.version ??= 1;
-    value.promptBases ??= {};
-    value.pendingPrompts ??= {};
-    value.seenRelease ??= 0;
     value.novelai = normalizeNovelAISettings(value.novelai);
     value.textApi = normalizeTextApiSettings(value.textApi);
-    value.prompts ??= {};
     return value;
 }
 
 function saveSettings() {
     context().saveSettingsDebounced?.();
-}
-
-async function synchronizePrompts() {
-    const state = settings();
-    let changed = false;
-    for (const [name, shippedPrompt] of Object.entries(SP_IMAGEN_PROMPTS)) {
-        const exists = typeof state.prompts[name] === 'string' && Boolean(state.prompts[name].trim());
-        const currentHash = exists ? await hash(state.prompts[name]) : '';
-        const shippedHash = await hash(shippedPrompt);
-        const previousOfficialHash = state.promptBases[name];
-        const decision = decidePromptUpdate({ exists, currentHash, previousOfficialHash, shippedHash });
-        if (decision === 'install') {
-            state.prompts[name] = shippedPrompt;
-            state.promptBases[name] = shippedHash;
-            changed = true;
-            continue;
-        }
-        if (decision === 'adopt') {
-            state.promptBases[name] = shippedHash;
-            changed = true;
-            continue;
-        }
-        if (decision === 'none') continue;
-        if (decision === 'update') {
-            state.prompts[name] = shippedPrompt;
-            state.promptBases[name] = shippedHash;
-            delete state.pendingPrompts[name];
-            changed = true;
-        } else {
-            state.pendingPrompts[name] = { shippedHash };
-            changed = true;
-        }
-    }
-    if (state.seenRelease !== SP_IMAGEN_RELEASE) changed = true;
-    if (changed) saveSettings();
 }
 
 async function getRuntime() {
@@ -94,18 +48,11 @@ async function getLibraryRuntime() {
     return libraryRuntime ??= createSpImagenLibraryRuntime();
 }
 
-function hasNew() {
-    const state = settings();
-    return state.seenRelease !== SP_IMAGEN_RELEASE || Object.keys(state.pendingPrompts).length > 0;
-}
+function hasNew() { return false; }
 
 function refreshNewIndicators() {
-    const value = hasNew();
-    document.querySelectorAll('[data-spi-new]').forEach(node => { node.hidden = !value; });
-    document.querySelectorAll('[data-spi-prompts]').forEach(node => {
-        node.textContent = `Промпты${value ? '  NEW!' : ''}`;
-    });
-    globalThis.__spImagenExtension.hasNew = value;
+    document.querySelectorAll('[data-spi-new]').forEach(node => { node.hidden = true; });
+    document.querySelectorAll('[data-spi-prompts]').forEach(node => { node.textContent = 'Промпты'; });
     globalThis.__nessImageSlotsV4?.refresh?.();
     globalThis.__nessImageSlotsV4?.refreshMenu?.();
 }
@@ -185,98 +132,43 @@ function shippedPrompt(name) {
     return SP_IMAGEN_PROMPTS[name] ?? '';
 }
 
-async function savePrompt(name, prompt) {
-    if (!Object.hasOwn(SP_IMAGEN_PROMPTS, name)) throw new Error(`Не найден профиль ${PROFILE_LABELS[name] || name}.`);
-    const text = String(prompt || '').trim();
-    if (!text) throw new Error('Промпт не может быть пустым.');
-    settings().prompts[name] = text;
-    saveSettings();
-}
-
 function openPromptWindow(name) {
-    const prompt = settings().prompts[name];
-    if (typeof prompt !== 'string') return toastr.error(`Профиль ${PROFILE_LABELS[name] || name} не найден.`, 'SP Imagen');
+    const prompt = shippedPrompt(name);
+    if (!prompt) return toastr.error(`Профиль ${PROFILE_LABELS[name] || name} не найден.`, 'SP Imagen');
     const { dialog, close } = shell(`SP Imagen · ${PROFILE_LABELS[name]}`, 'spi-prompt-window', { back: true });
     const area = document.createElement('textarea');
     area.value = prompt;
-    area.setAttribute('aria-label', `Промпт ${PROFILE_LABELS[name]}`);
+    area.readOnly = true;
+    area.setAttribute('aria-label', `Оригинальный промпт ${PROFILE_LABELS[name]}`);
     const status = document.createElement('p');
     status.className = 'spi-status';
+    status.textContent = 'Оригинальный промпт ExtBlocks защищён от изменений.';
     const actions = document.createElement('div');
     actions.className = 'spi-dialog-actions';
-    button('Сбросить', actions, () => {
-        if (confirm(`Заменить текущий промпт ${PROFILE_LABELS[name]} официальным из установленной версии SP Imagen?`)) area.value = shippedPrompt(name);
-    });
-    button('Отмена', actions, close);
-    button('Сохранить', actions, async () => {
-        try {
-            await savePrompt(name, area.value);
-            status.textContent = 'Промпт сохранён.';
-            setTimeout(close, 250);
-        } catch (error) { status.textContent = String(error?.message || error); }
-    }, true);
+    button('Закрыть', actions, close, true);
     dialog.append(area, status, actions);
-    requestAnimationFrame(() => area.focus());
 }
 
-async function resolvePromptUpdate(name, useShipped) {
-    const official = shippedPrompt(name);
-    if (!official) return;
-    const state = settings();
-    if (useShipped) state.prompts[name] = official;
-    state.promptBases[name] = await hash(official);
-    delete state.pendingPrompts[name];
-    saveSettings();
-}
-
-function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
+function openPromptCenter({ backToHub = false } = {}) {
     if (promptCenterOpen) return;
     promptCenterOpen = true;
-    const state = settings();
-    const pending = new Set(Object.keys(state.pendingPrompts));
-    const { dialog, close, closed } = shell('SP Imagen · Промпты', 'spi-prompt-center', {
+    const { dialog, close } = shell('SP Imagen · Оригинальные промпты', 'spi-prompt-center', {
         back: backToHub,
-        onClose: () => { promptCenterOpen = false; refreshNewIndicators(); if (backToHub) openHub(); },
+        onClose: () => { promptCenterOpen = false; if (backToHub) openHub(); },
     });
-    const copy = document.createElement('p');
-    copy.textContent = 'Промпты обновлены. Выберите версию.';
     const list = document.createElement('div');
     list.className = 'spi-prompt-list';
     for (const [name, label] of Object.entries(PROFILE_LABELS)) {
         const row = document.createElement('div');
-        row.className = `spi-prompt-row${pending.has(name) ? ' spi-conflict' : ''}`;
-        const title = document.createElement('strong');
-        title.textContent = label;
-        if (pending.has(name)) {
-            const badge = document.createElement('span');
-            badge.className = 'spi-new'; badge.textContent = 'NEW!'; title.append(badge);
-        }
-        const actions = document.createElement('div');
-        actions.className = 'spi-dialog-actions';
-        if (pending.has(name)) {
-            button('Оставить мой', actions, async () => {
-                await resolvePromptUpdate(name, false); row.remove();
-                if (!Object.keys(settings().pendingPrompts).length) state.seenRelease = SP_IMAGEN_RELEASE;
-                saveSettings(); refreshNewIndicators();
-            });
-            button('Поставить новый', actions, async () => {
-                await resolvePromptUpdate(name, true); row.remove();
-                if (!Object.keys(settings().pendingPrompts).length) state.seenRelease = SP_IMAGEN_RELEASE;
-                saveSettings(); refreshNewIndicators();
-            }, true);
-        } else button('Открыть', actions, () => openPromptWindow(name));
+        row.className = 'spi-prompt-row';
+        const title = document.createElement('strong'); title.textContent = label;
+        const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
+        button('Открыть', actions, () => openPromptWindow(name));
         row.append(title, actions); list.append(row);
     }
-    const footer = document.createElement('div');
-    footer.className = 'spi-dialog-actions';
-    button('Закрыть', footer, () => {
-        if (!Object.keys(state.pendingPrompts).length) state.seenRelease = SP_IMAGEN_RELEASE;
-        saveSettings(); close();
-    }, true);
-    if (pending.size) dialog.append(copy);
+    const footer = document.createElement('div'); footer.className = 'spi-dialog-actions';
+    button('Закрыть', footer, close, true);
     dialog.append(list, footer);
-    if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
-    return closed;
 }
 
 function formField(parent, labelText, control, note = '') {
@@ -312,8 +204,8 @@ async function openTextApiSettings({ back = false } = {}) {
     const mode = select({ st: 'Профиль подключения SillyTavern', direct: 'Прямой OpenAI-совместимый API' }, draft.mode);
     formField(grid, 'Откуда брать модель', mode, 'SP Imagen отправляет только собственное задание.');
     const profile = document.createElement('select');
-    const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Выбери дешёвый профиль'; profile.append(placeholder);
-    const profileControl = formField(grid, 'Профиль SillyTavern', profile, 'Берутся только подключение и модель. Пресет и история чата не отправляются. Последние RP-посты SP Imagen добавляет само.');
+    const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Выбери профиль ExtBlocks Big'; profile.append(placeholder);
+    const profileControl = formField(grid, 'Профиль SillyTavern', profile, 'Выбери то же подключение и модель, что использовались в пресете Big ExtBlocks. История чата не отправляется.');
     const profiles = await listSillyTavernProfiles(context()).catch(() => []);
     for (const item of profiles) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; profile.append(option); }
     profile.value = profiles.some(item => item.id === draft.profileId) ? draft.profileId : '';
@@ -579,7 +471,7 @@ function openHub(page = 'home') {
 
 function getDirector(kind) {
     const name = `sp_ness_${kind}_director`;
-    const prompt = settings().prompts[name];
+    const prompt = SP_IMAGEN_PROMPTS[name];
     return typeof prompt === 'string' && prompt.trim() ? { name, prompt } : null;
 }
 
@@ -675,12 +567,10 @@ async function initialize() {
     if (initialized || initializing) return;
     initializing = true;
     try {
-        await synchronizePrompts();
         await installSpImagenMediaSlots();
         settingsPanel();
         refreshNewIndicators();
         initialized = true;
-        if (Object.keys(settings().pendingPrompts).length) setTimeout(() => openPromptCenter({ askUpdates: true }), 800);
     } catch (error) {
         console.error('[SP Imagen]', error);
         initializationAttempts++;
@@ -693,7 +583,7 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.3.5',
+    version: '2.4.0',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,

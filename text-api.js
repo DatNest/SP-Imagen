@@ -65,7 +65,7 @@ async function selectedProxy(profile) {
     return presets.find(item => item?.name === profile.proxy) || null;
 }
 
-async function sendStrictProfileRequest(context, service, profileId, messages, maxTokens, signal) {
+async function sendStrictProfileRequest(context, service, profileId, messages, maxTokens, temperature, signal) {
     const profile = selectedProfile(context, service, profileId);
     const apiMap = selectedApiMap(context, service, profile);
     if (!profile || !apiMap?.selected) return { supported: false };
@@ -76,6 +76,7 @@ async function sendStrictProfileRequest(context, service, profileId, messages, m
             stream: false,
             messages,
             max_tokens: maxTokens,
+            temperature,
             model: profile.model,
             chat_completion_source: apiMap.source,
             secret_id: profile['secret-id'],
@@ -95,6 +96,7 @@ async function sendStrictProfileRequest(context, service, profileId, messages, m
             stream: false,
             prompt: messages,
             max_tokens: maxTokens,
+            temperature,
             model: profile.model,
             api_type: apiMap.type,
             api_server: profile['api-url'],
@@ -135,7 +137,7 @@ async function generateWithSillyTavernProfile(context, settings, messages, signa
     if (!settings.profileId) throw new Error('Выбери отдельный профиль подключения SillyTavern для SP Imagen.');
     const service = await connectionService(context);
     if (!service) throw new Error('Менеджер профилей SillyTavern недоступен. Выбери «Прямой API».');
-    const isolated = await sendStrictProfileRequest(context, service, settings.profileId, messages, settings.maxTokens, signal);
+    const isolated = await sendStrictProfileRequest(context, service, settings.profileId, messages, settings.maxTokens, settings.temperature, signal);
     if (!isolated.supported) throw new Error('Эта версия SillyTavern не поддерживает изолированный запрос. Обнови SillyTavern или выбери «Прямой API».');
     const response = isolated.response;
     const content = extractCompletionText(response);

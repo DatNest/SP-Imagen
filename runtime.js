@@ -1173,38 +1173,16 @@ function unwrapDirectorResponse(raw){
 function decodeDirectorAttribute(value){
  return String(value).replace(/&quot;/gi,'"').replace(/&#(?:0*39|x0*27);|&apos;/gi,"'").replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&amp;/gi,'&');
 }
-function extractBalancedDirectorObject(text){
- const objects=[];let start=-1,depth=0,quoted=false,escaped=false;
- for(let i=0;i<text.length;i++){
-  const c=text[i];
-  if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;continue;}
-  if(c==='"'){quoted=true;continue;}
-  if(c==='{'){if(depth===0)start=i;depth++;continue;}
-  if(c==='}'&&depth>0){depth--;if(depth===0){objects.push(text.slice(start,i+1));start=-1;}}
- }
- return depth===0&&objects.length===1?objects[0]:'';
-}
 function extractDirectorJson(raw){
  const text=unwrapDirectorResponse(raw);
- const wrappers=[...text.matchAll(/<(naicom|image_lite)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi)];
- if(wrappers.length>1)throw Error('Ответ режиссёра содержит несколько блоков изображения. Исходный ответ сохранён.');
- const body=wrappers.length===1?wrappers[0][2]:text;
- const images=[...body.matchAll(/<img\b/gi)];
- if(images.length>1)throw Error('Ответ режиссёра содержит несколько тегов img. Исходный ответ сохранён.');
- if(images.length===1){
-  const start=images[0].index+images[0][0].length,end=body.lastIndexOf('>');
-  if(end<start)throw Error('Тег img в ответе режиссёра не завершён. Исходный ответ сохранён.');
-  const attrs=body.slice(start,end).replace(/\/\s*$/,'').trim();
-  const forward=attrs.match(/^data-iig-instruction\s*=\s*(['"])([\s\S]*)\1\s+src\s*=\s*(['"])\[IMG:GEN\]\3\s*$/i);
-  const reverse=attrs.match(/^src\s*=\s*(['"])\[IMG:GEN\]\1\s+data-iig-instruction\s*=\s*(['"])([\s\S]*)\2\s*$/i);
-  const encoded=forward?forward[2]:reverse?reverse[3]:null;
-  if(encoded===null)throw Error('В ответе режиссёра повреждены параметры изображения. Исходный ответ сохранён.');
-  return decodeDirectorAttribute(encoded);
- }
- if(wrappers.length)throw Error('В блоке режиссёра нет одного тега img. Исходный ответ сохранён.');
- const json=extractBalancedDirectorObject(text);
- if(json)return json;
- throw Error('Ответ режиссёра не содержит данных изображения. Исходный ответ сохранён в naicom_last_director_raw.');
+ const wrapper=text.match(/^<(naicom|image_lite)>\s*<img\s+([\s\S]*?)\/?\s*>\s*<\/\1>$/i);
+ if(!wrapper)throw Error('Режиссёр не вернул исходный формат ExtBlocks: один <naicom>/<image_lite> с img. Проверь, что выбран тот же профиль модели, что у ExtBlocks Big; исходный ответ сохранён.');
+ const attrs=wrapper[2].trim();
+ const forward=attrs.match(/^data-iig-instruction\s*=\s*(['"])([\s\S]*)\1\s+src\s*=\s*(['"])\[IMG:GEN\]\3\s*$/i);
+ const reverse=attrs.match(/^src\s*=\s*(['"])\[IMG:GEN\]\1\s+data-iig-instruction\s*=\s*(['"])([\s\S]*)\2\s*$/i);
+ const encoded=forward?forward[2]:reverse?reverse[3]:null;
+ if(encoded===null)throw Error('Режиссёр вернул HTML с повреждённым data-iig-instruction. Исходный ответ сохранён.');
+ return decodeDirectorAttribute(encoded);
 }
 function repairDirectorJson(json){
  const shape=json.match(/^\s*\{\s*"prompt"\s*:\s*"([\s\S]*)"\s*,\s*"aspect_ratio"\s*:\s*"(1:1|2:3|9:16)"\s*,\s*"image_size"\s*:\s*"1K"\s*\}\s*$/);
@@ -1223,144 +1201,6 @@ function repairDirectorJson(json){
  }
  return {prompt:JSON.parse('"'+escaped+'"'),aspect_ratio:shape[2],image_size:'1K'};
 }
-function cleanStructuredDirectorPart(value){
- return String(value??'').replace(/\s+/g,' ').replace(/\s*\|\s*/g,' — ').trim().replace(/[\s,;]+$/,'');
-}
-function isStructuredDirectorObject(value){return Boolean(value&&!Array.isArray(value)&&typeof value==='object');}
-function structuredDirectorScalar(value){return typeof value==='string'||typeof value==='number'&&Number.isFinite(value)?cleanStructuredDirectorPart(value):'';}
-function structuredDirectorVisibilityMarker(value){
- const text=String(value||'').trim(),match=text.match(/^\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]$/);
- return match?{id:match[1],spec:match[2],text}:null;
-}
-function normalizeStructuredDirectorPerson(person){
- const rawId=String(person.id||'').trim(),idMarker=structuredDirectorVisibilityMarker(rawId);
- let details=cleanStructuredDirectorPart(person.details);
- const detailMatches=[...details.matchAll(/\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]/g)];
- if(detailMatches.length>1)return null;
- const detailMarker=detailMatches[0]?{id:detailMatches[0][1],spec:detailMatches[0][2],text:detailMatches[0][0]}:null;
- const id=idMarker?.id||(/^[a-z][a-z0-9_]*$/.test(rawId)?rawId:detailMarker?.id||'');
- if(!id||idMarker&&detailMarker&&(idMarker.id!==detailMarker.id||idMarker.spec!==detailMarker.spec))return null;
- if(idMarker&&!detailMarker)details=(idMarker.text+' '+details).trim();
- return {id,details};
-}
-function formatStructuredScene(scene){
- if(typeof scene==='string')return cleanStructuredDirectorPart(scene);
- if(!isStructuredDirectorObject(scene))return '';
- const parts=[],used=new Set(['panels']);
- const add=(key,prefix='')=>{const value=structuredDirectorScalar(scene[key]);if(value){parts.push(prefix+value);used.add(key);}};
- add('setting');
- const panelCount=Number(scene.panel_count);
- if(Number.isInteger(panelCount)&&panelCount>0&&panelCount<=12){parts.push(panelCount+' panels');used.add('panel_count');}
- add('layout');add('borders','panel borders: ');
- if(scene.panels!==undefined){
-  if(!Array.isArray(scene.panels)||scene.panels.length>12)return '';
-  if(Number.isInteger(panelCount)&&panelCount>0&&panelCount<=12&&scene.panels.length!==panelCount)throw Error('Режиссёр запросил '+panelCount+' панелей, но описал '+scene.panels.length+'. Исправь ответ перед повторным запуском.');
-  for(const [index,panel] of scene.panels.entries()){
-   if(!isStructuredDirectorObject(panel))return '';
-   const number=Number.isInteger(Number(panel.number))?Number(panel.number):index+1;
-   const fields=[];
-   for(const [key,value] of Object.entries(panel))if(key!=='number'){
-    const text=structuredDirectorScalar(value);if(text)fields.push(text);
-    else if(value!==undefined&&value!==null)return '';
-   }
-   if(fields.length)parts.push('Panel '+number+': '+fields.join(', '));
-  }
- }
- for(const [key,value] of Object.entries(scene))if(!used.has(key)){
-  const text=structuredDirectorScalar(value);if(text)parts.push(key.replaceAll('_',' ')+': '+text);
-  else if(value!==undefined&&value!==null)return '';
- }
- return parts.join('; ');
-}
-function formatStructuredBubbles(bubbles,limits=null){
- if(bubbles===undefined)return {description:'',text:[]};
- if(!Array.isArray(bubbles)||bubbles.length>8)return null;
- const descriptions=[],text=[];
- // Match the practical ExtBlocks behavior as closely as possible:
- // the director is asked for short lines, and the fallback converter keeps only
- // whole bubbles that already fit the current settings. It never truncates text.
- const maxLines=limits&&Number.isInteger(limits.lines)?limits.lines:8;
- const maxWords=limits&&Number.isInteger(limits.words)?limits.words:40;
- const countWords=value=>{
-  const m=String(value||'').trim().match(/[^\s]+/g);
-  return m?m.length:0;
- };
- for(const bubble of bubbles){
-  if(!isStructuredDirectorObject(bubble))return null;
-  const fields=[];let words='';
-  for(const [key,value] of Object.entries(bubble)){
-   const part=structuredDirectorScalar(value);if(!part&&value!==''&&value!==undefined&&value!==null)return null;
-   if(key==='text'){words=part;continue;}
-   if(part)fields.push(part);
-  }
-  if(!words||text.length>=maxLines)continue;
-  if(countWords(words)>maxWords)continue;
-  text.push(words);
-  fields.push('saying "'+words+'"');
-  descriptions.push('Speech bubble '+text.length+': '+fields.join(', '));
- }
- return {description:descriptions.join('; '),text};
-}
-function formatStructuredText(value,fallback){
- let text=typeof value==='string'?value.trim():fallback.join('\n\n');
- text=text.replace(/^Text:\s*/i,'').replace(/\r\n?/g,'\n').replace(/\|/g,'—').replace(/\n{3,}/g,'\n\n').trim();
- return text;
-}
-function structuredDirectorRatio(config,kind){
- if(['1:1','2:3','9:16'].includes(config.aspect_ratio))return config.aspect_ratio;
- const scene=isStructuredDirectorObject(config.scene)?config.scene:{};
- const panelTypes=Array.isArray(scene.panels)?scene.panels.map(panel=>panel?.type):[];
- const framing=[config.image_type,config.composition,config.framing,scene.layout,...panelTypes].map(cleanStructuredDirectorPart).join(' ');
- if(kind==='snapshot'&&/\b(?:wide|landscape|horizontal|panoramic|radial)\b/i.test(framing))return '1:1';
- if(kind==='snapshot'&&/\b(?:vertical|tall portrait|full-length portrait)\b/i.test(framing))return '9:16';
- return '2:3';
-}
-function convertStructuredDirectorConfig(config,kind,context={}){
- if(!isStructuredDirectorObject(config)||!Array.isArray(config.people)||config.people.length<1||config.people.length>22)return null;
- const scene=formatStructuredScene(config.scene);if(!scene)return null;
- const dialogue=kind==='comic'?{lines:context.dialogue?.comicLines,words:context.dialogue?.comicWords}
-  :kind==='story_page'?{lines:context.dialogue?.storyLines,words:context.dialogue?.storyWords}:null;
- const bubbles=formatStructuredBubbles(config.bubbles,dialogue);if(!bubbles)return null;
- if(config.text!==undefined&&typeof config.text!=='string')return null;
- const people=[];
- for(const person of config.people){
-  if(!isStructuredDirectorObject(person))return null;
-  const normalized=normalizeStructuredDirectorPerson(person);if(!normalized)return null;
-  const {id,details}=normalized,name=cleanStructuredDirectorPart(person.name),actions=cleanStructuredDirectorPart(person.actions);
-  const rawGender=String(person.gender||'').trim().toLowerCase();
-  const gender=rawGender==='person'?'other':rawGender;
-  if(!name||!['boy','girl','cat','other'].includes(gender)||(!details&&!actions))return null;
-  const extras=[];
-  for(const [key,value] of Object.entries(person))if(!['id','name','gender','details','actions'].includes(key)){
-   const text=structuredDirectorScalar(value);if(text)extras.push(text);else if(value!==undefined&&value!==null)return null;
-  }
-  const outfit=cleanStructuredDirectorPart(reviewedWardrobeForPerson(person,context.wardrobe));
-  people.push({id,name,gender,details,actions,extras,outfit});
- }
- const counts=new Map();
- for(const person of people)counts.set(person.gender,(counts.get(person.gender)||0)+1);
- const countText=[...counts].map(([gender,count])=>String(count)+gender+(count===1?'':'s')).join(', ');
- const rootDetails=[];
- for(const [key,value] of Object.entries(config))if(!['scene','people','bubbles','text','aspect_ratio','image_size'].includes(key)){
-  const part=structuredDirectorScalar(value);if(part)rootDetails.push(part);else if(value!==undefined&&value!==null)return null;
- }
- // Use the same visible prompt order as the working ExtBlocks director:
- // scene, character entries, speech bubbles, then the duplicated Text: appendix.
- const base=[countText,...rootDetails,scene].filter(Boolean).join('; ');
- const entries=people.map(person=>{
-  const detailText=person.details.normalize('NFKC').toLowerCase();
-  const exactOutfit=person.outfit&&!detailText.includes(person.outfit.normalize('NFKC').toLowerCase())?'current outfit: '+person.outfit:'';
-  const body=[person.gender,person.name,person.details,exactOutfit,person.actions,...person.extras].filter(Boolean).join(', ');
-  return body.replace(/[,;\s]+$/,'');
- });
- // When bubble objects are supplied, use ONLY the selected bubbles for printed dialogue.
- // config.text often duplicates ALL original bubbles and would reintroduce lines we filtered out.
- const visibleText=formatStructuredText(Array.isArray(config.bubbles)?undefined:config.text,bubbles.text);
- const prompt=base+entries.map(entry=>' | '+entry).join('')+
-  (bubbles.description?'; '+bubbles.description:'')+
-  (visibleText?'\n\nText: '+visibleText:'');
- return {prompt,aspect_ratio:structuredDirectorRatio(config,kind),image_size:'1K'};
-}
 function validateDirectorConfig(config){
  const keys=config&&!Array.isArray(config)&&typeof config==='object'?Object.keys(config).sort().join(','):'';
  const prompt=typeof config?.prompt==='string'?config.prompt:'';
@@ -1369,18 +1209,16 @@ function validateDirectorConfig(config){
  }
  return config;
 }
-function parseDirectorResponse(raw,kind='snapshot',context={}){
+function parseDirectorResponse(raw){
  const json=extractDirectorJson(raw);let config,repaired=false;
  try{config=JSON.parse(json);}catch{
   config=repairDirectorJson(json);
-  if(!config)throw Error('Режиссёр вернул повреждённый или обрезанный JSON. Повтори запуск; исходный ответ сохранён в naicom_last_director_raw.');
+  if(!config)throw Error('Режиссёр вернул повреждённый JSON внутри HTML. Исходный ответ сохранён в naicom_last_director_raw.');
   repaired=true;
  }
- const source=config;
- const structured=convertStructuredDirectorConfig(config,kind,context);
- if(structured){config=structured;repaired=true;}
- return {config:validateDirectorConfig(config),repaired,structuredSource:structured?source:null};
+ return {config:validateDirectorConfig(config),repaired};
 }
+
 
 // Module: services
 function validateKind(kind){if(!['snapshot','comic','story_page'].includes(kind))throw Error('Неизвестный профиль: '+kind);}
@@ -2223,7 +2061,14 @@ async function renderImage(kind){
    :'';
   const appearancePunctuation=visibility.size?'\n\nSeparate fixed appearance tags with commas and end the final fixed appearance tag with one semicolon before any clothing, pose or other content.':'';
   const npcLanguage=String(variables.naicom_tracker_npcs||'').trim()?'\n\nNPC LANGUAGE OVERRIDE: Write NPC names (transliterated when needed), appearance and clothing in English in every descriptive section. Translate Russian NPC descriptions even when other rules require verbatim copying. Preserve the original language of in-image dialogue, messages and lettering and their Text: entries.':'';
-  const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules)+npcLanguage;
+  // A compact runtime reminder carries CURRENT settings into the same director request.
+  // It never modifies the three original stored director prompts or invokes a parser model.
+  const dialogueLimit=kind==='comic'
+   ?{lines:runtimeSettings.dialogue.comicLines,words:runtimeSettings.dialogue.comicWords}
+   :kind==='story_page'
+   ?{lines:runtimeSettings.dialogue.storyLines,words:runtimeSettings.dialogue.storyWords}:null;
+  const currentContract=dialogueLimit?'\n\nCURRENT IMAGE TEXT LIMITS: At most '+dialogueLimit.lines+' speech bubbles on the entire page; each printed bubble text has at most '+dialogueLimit.words+' words. These are maximums, not targets. Select complete, meaningful, contiguous verbatim speech fragments within both limits before composing the image prompt. Duplicate exactly those selected fragments in Text:; do not introduce additional printed dialogue. Follow the original OUTPUT CONTRACT: return only the HTML <naicom> block with its img data-iig-instruction attribute, never a scene/people/bubbles JSON object.':'';
+  const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules)+npcLanguage+currentContract;
   const raw=await requestNessText(kind,[
    {role:'system',content:systemPrompt},
    {role:'user',content:Object.entries(source).map(([name,value])=>name+':\n'+value).join('\n\n====\n\n')},
@@ -2232,10 +2077,9 @@ async function renderImage(kind){
   variables.naicom_last_director_raw=raw;
   await saveNessGenerationMetadata(st,'получен ответ режиссёра');
   requireOrigin();
-  const parsed=parseDirectorResponse(raw,kind,{wardrobe:prepared?.wardrobe||[],dialogue:runtimeSettings.dialogue}),config=parsed.config;
+  const parsed=parseDirectorResponse(raw),config=parsed.config;
   variables.naicom_last_transport_repaired=parsed.repaired;
-  // Director controls the length of each line; conversion only caps bubble count.
-  // Official prompts stay byte-for-byte unchanged.
+  // Use the director's one finished prompt unchanged, as the original ExtBlocks did.
   config.prompt=normalizeImagePrompt(config.prompt);
   // Do not send the complete final director prompt through another model rewrite.
   // This would alter protected appearance details, dialogue, and panel instructions.
