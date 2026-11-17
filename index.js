@@ -604,7 +604,7 @@ function directGenerationEnabled() {
     return novelai.enabled === true && Boolean(novelai.apiKey);
 }
 
-async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
+async function generateImage(config, { reuseSnapshot = false, kind = 'snapshot', signal } = {}) {
     const saved = settings().novelai;
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
     const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
@@ -615,6 +615,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         prompt: config.prompt,
         style: style.value,
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
+        kind: snapshot?.kind || kind,
         signal,
     });
     const publicSettings = {
@@ -629,7 +630,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         src: result.src,
         config: {
             ...config,
-            spImagenDirect: { version: 1, provider: 'novelai', style: clone(style), settings: publicSettings, generatedSeed: result.seed },
+            spImagenDirect: { version: 1, kind: snapshot?.kind || kind, provider: 'novelai', style: clone(style), settings: publicSettings, generatedSeed: result.seed },
         },
     };
 }
@@ -692,7 +693,7 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.2.9',
+    version: '2.3.0',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,

@@ -104,8 +104,20 @@ function resolveRequestSettings(input) {
     return settings;
 }
 
-function splitCharacterPrompts(prompt) {
-    const [base = '', ...characters] = String(prompt || '').split(/\\?\|/u).map(part => part.trim());
+// The director uses " | boy, ... | girl, ..." as structured subject delimiters.
+// Bare pipes in descriptions and the Text: appendix are not character delimiters.
+export function splitCharacterPrompts(prompt) {
+    let source = String(prompt || '').trim();
+    const textSection = source.match(/\n\s*Text\s*:\s*([\s\S]*)$/i);
+    let letters = '';
+    if (textSection) {
+        letters = 'Text: ' + textSection[1].trim();
+        source = source.slice(0, textSection.index).trim();
+    }
+    const parts = source.split(/(?<!\\)\s+\|\s+(?=(?:boy|girl|cat|other)\s*,)/iu).map(part => part.trim());
+    const [before = '', ...characters] = parts;
+    // In-image lettering is global scene information, not a trait of the last actor.
+    const base = [before, letters].filter(Boolean).join('\n\n');
     return { base, characters };
 }
 
@@ -129,6 +141,8 @@ function buildParameters(settings, prompt, negativePrompt, aspectRatio) {
     const medium = settings.model === MEDIUM_MODEL;
     const customNegative = splitCharacterPrompts(medium ? '' : negativePrompt);
     const presetText = medium ? UC_HEAVY_COMMON : NEGATIVE_PRESETS[settings.model]?.[settings.negativePreset] || '';
+    // Use the ORIGINAL stored negative preset byte-for-byte for every mode.
+    // Do not filter, edit, rephrase or auto-correct any prompt text.
     const negative = {
         base: [presetText, customNegative.base].filter(Boolean).join(', '),
         characters: customNegative.characters,
@@ -142,7 +156,7 @@ function buildParameters(settings, prompt, negativePrompt, aspectRatio) {
     const [width, height] = DIMENSIONS[settings.resolution][aspectRatio];
     const seed = settings.seed < 0 ? Math.floor(Math.random() * 4294967296) : settings.seed;
     const parameters = {
-        params_version: 4, width, height, steps: settings.steps, scale: settings.cfgScale,
+        params_version: 4, prompt: positive.base, width, height, steps: settings.steps, scale: settings.cfgScale,
         cfg_rescale: settings.cfgRescale, sampler: settings.sampler, noise_schedule: settings.noiseSchedule,
         seed, n_samples: 1, negative_prompt: negative.base, qualityToggle: false,
         ucPreset: medium ? 0 : 3, deliberate_euler_ancestral_bug: false, prefer_brownian: true,
@@ -195,7 +209,7 @@ async function verifyFreeAccess(settings, signal) {
     if (settings.model.startsWith('nai-diffusion-5-') && !regular && !extra) throw new Error('Защита Anlas: доступный лимит V5 не найден.');
 }
 
-export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', signal }) {
+export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', kind = 'snapshot', signal }) {
     const settings = resolveRequestSettings(input);
     const fullPrompt = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
     if (!fullPrompt) throw new Error('Промпт изображения пуст.');
@@ -203,16 +217,101 @@ export async function generateNovelAI({ settings: input, prompt, style = '', asp
     if (settings.neverSpendAnlas) await verifyFreeAccess(settings, signal);
     const response = await fetchWithTimeout(requestUrl(settings), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json', Accept: 'application/zip, application/octet-stream, application/json' },
         body: JSON.stringify({ action: 'generate', model: settings.model, input: basePrompt, parameters }),
     }, 600000, signal);
     if (!response.ok) {
         const detail = await response.text();
         throw new Error(`NovelAI ${response.status}: ${detail.slice(0, 800)}`);
     }
-    let result;
-    try { result = await response.json(); } catch { throw new Error('NovelAI вернул ответ, который не удалось прочитать.'); }
-    const image = result?.images?.[0]?.image;
-    if (typeof image !== 'string' || !image.trim()) throw new Error('NovelAI не вернул картинку.');
-    return { src: `data:image/png;base64,${image}`, seed: parameters.seed, settings };
+    const src = await imageSourceFromNovelAIResponse(response);
+    return { src, seed: parameters.seed, settings };
 }
+
+
+// /ai/generate-image responds with a ZIP containing image_0.png.
+// Read the central directory rather than local header sizes (ZIP bit 3 may be set).
+async function imageSourceFromNovelAIResponse(response) {
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length > 80 * 1024 * 1024) throw new Error('NovelAI вернул слишком большой архив изображения.');
+    if (bytes.length < 4) throw new Error('NovelAI вернул пустой или повреждённый файл.');
+    const magic = (bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) >>> 0;
+    if (magic === 0x04034b50) {
+        const imageBytes = await firstImageFromZip(bytes);
+        return 'data:' + guessImageMime(imageBytes) + ';base64,' + bytesToBase64(imageBytes);
+    }
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'data:image/png;base64,' + bytesToBase64(bytes);
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'data:image/jpeg;base64,' + bytesToBase64(bytes);
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return 'data:image/webp;base64,' + bytesToBase64(bytes);
+    if (bytes[0] === 0x7b) {
+        let result;
+        try { result = JSON.parse(new TextDecoder().decode(bytes)); }
+        catch { throw new Error('NovelAI вернул повреждённый JSON вместо картинки.'); }
+        const image = result?.images?.[0]?.image;
+        if (typeof image === 'string' && image.trim()) return image.startsWith('data:') ? image : 'data:image/png;base64,' + image;
+    }
+    throw new Error('NovelAI вернул неподдерживаемый формат. Ожидался ZIP с PNG.');
+}
+
+function guessImageMime(bytes) {
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/webp';
+    if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png';
+    throw new Error('В архиве NovelAI найден файл с неизвестным типом изображения.');
+}
+
+function bytesToBase64(bytes) {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 32768) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+    }
+    if (typeof btoa === 'function') return btoa(binary);
+    throw new Error('В браузере отсутствует функция Base64 для сохранения изображения.');
+}
+
+async function firstImageFromZip(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const u16 = n => view.getUint16(n, true);
+    const u32 = n => view.getUint32(n, true);
+    let end = -1;
+    // EOCD must appear in the last 65,557 bytes of a conventional ZIP.
+    for (let p = bytes.length - 22; p >= Math.max(0, bytes.length - 65557); p--) {
+        if (u32(p) === 0x06054b50 && p + 22 + u16(p + 20) === bytes.length) { end = p; break; }
+    }
+    if (end < 0) throw new Error('В ответе NovelAI отсутствует таблица ZIP-архива.');
+    const entries = u16(end + 10), centralOffset = u32(end + 16);
+    if (!entries || entries > 64 || centralOffset >= end) throw new Error('Список файлов NovelAI ZIP повреждён.');
+    const decoder = new TextDecoder();
+    let pos = centralOffset;
+    for (let i = 0; i < entries; i++) {
+        if (pos + 46 > bytes.length || u32(pos) !== 0x02014b50) throw new Error('Повреждён индекс архива NovelAI.');
+        const flags = u16(pos + 8), method = u16(pos + 10), compSize = u32(pos + 20), rawSize = u32(pos + 24);
+        const nameSize = u16(pos + 28), extraSize = u16(pos + 30), commentSize = u16(pos + 32), local = u32(pos + 42);
+        if (pos + 46 + nameSize + extraSize + commentSize > bytes.length) throw new Error('Повреждено имя файла NovelAI.');
+        const name = decoder.decode(bytes.subarray(pos + 46, pos + 46 + nameSize));
+        pos += 46 + nameSize + extraSize + commentSize;
+        if (!/\.(png|jpe?g|webp)$/i.test(name) || name.endsWith('/')) continue;
+        if (flags & 1) throw new Error('NovelAI вернул зашифрованный ZIP.');
+        if (![0, 8].includes(method) || compSize > 60 * 1024 * 1024 || rawSize > 60 * 1024 * 1024) throw new Error('Неподдерживаемый метод сжатия ZIP NovelAI.');
+        if (local + 30 > bytes.length || u32(local) !== 0x04034b50) throw new Error('Повреждён локальный заголовок ZIP NovelAI.');
+        const start = local + 30 + u16(local + 26) + u16(local + 28);
+        if (start + compSize > bytes.length) throw new Error('Повреждён файл в ZIP NovelAI.');
+        const compressed = bytes.subarray(start, start + compSize);
+        if (method === 0) return compressed;
+        if (typeof DecompressionStream !== 'function') throw new Error('Браузер не поддерживает распаковку ZIP (DecompressionStream). Обнови браузер.');
+        let data;
+        try {
+            const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+            data = new Uint8Array(await new Response(stream).arrayBuffer());
+        } catch (e) {
+            throw new Error('Не удалось распаковать изображение NovelAI: ' + String(e?.message || e));
+        }
+        if (rawSize !== data.length) throw new Error('Изображение NovelAI не прошло проверку размера ZIP.');
+        return data;
+    }
+    throw new Error('ZIP-архив NovelAI не содержит PNG/JPEG/WebP.');
+}
+
+// Pure helpers for local regression tests.
+export const __spImagenNovelAITest = Object.freeze({ buildParameters, imageSourceFromNovelAIResponse });

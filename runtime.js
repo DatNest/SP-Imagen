@@ -1496,6 +1496,7 @@ function formatStructuredScene(scene){
  add('layout');add('borders','panel borders: ');
  if(scene.panels!==undefined){
   if(!Array.isArray(scene.panels)||scene.panels.length>12)return '';
+  if(Number.isInteger(panelCount)&&panelCount>0&&panelCount<=12&&scene.panels.length!==panelCount)throw Error('Режиссёр запросил '+panelCount+' панелей, но описал '+scene.panels.length+'. Исправь ответ перед повторным запуском.');
   for(const [index,panel] of scene.panels.entries()){
    if(!isStructuredDirectorObject(panel))return '';
    const number=Number.isInteger(Number(panel.number))?Number(panel.number):index+1;
@@ -1571,7 +1572,8 @@ function convertStructuredDirectorConfig(config,kind,context={}){
  for(const [key,value] of Object.entries(config))if(!['scene','people','bubbles','text','aspect_ratio','image_size'].includes(key)){
   const part=structuredDirectorScalar(value);if(part)rootDetails.push(part);else if(value!==undefined&&value!==null)return null;
  }
- const base=[countText,...rootDetails,scene].filter(Boolean).join('; ');
+ // Global panel and lettering layout belongs to the page caption, not to the last person.
+ const base=[countText,...rootDetails,scene,bubbles.description].filter(Boolean).join('; ');
  const entries=people.map(person=>{
   const detailText=person.details.normalize('NFKC').toLowerCase();
   const exactOutfit=person.outfit&&!detailText.includes(person.outfit.normalize('NFKC').toLowerCase())?'current outfit: '+person.outfit:'';
@@ -1579,7 +1581,7 @@ function convertStructuredDirectorConfig(config,kind,context={}){
   return body.replace(/[,;\s]+$/,'');
  });
  const visibleText=formatStructuredText(config.text,bubbles.text);
- const prompt=base+entries.map(entry=>' | '+entry).join('')+(bubbles.description?'; '+bubbles.description:'')+(visibleText?'\n\nText: '+visibleText:'');
+ const prompt=base+entries.map(entry=>' | '+entry).join('')+(visibleText?'\n\nText: '+visibleText:'');
  return {prompt,aspect_ratio:structuredDirectorRatio(config,kind),image_size:'1K'};
 }
 function validateDirectorConfig(config){
@@ -1597,9 +1599,10 @@ function parseDirectorResponse(raw,kind='snapshot',context={}){
   if(!config)throw Error('Режиссёр вернул повреждённый или обрезанный JSON. Повтори запуск; исходный ответ сохранён в naicom_last_director_raw.');
   repaired=true;
  }
+ const source=config;
  const structured=convertStructuredDirectorConfig(config,kind,context);
  if(structured){config=structured;repaired=true;}
- return {config:validateDirectorConfig(config),repaired};
+ return {config:validateDirectorConfig(config),repaired,structuredSource:structured?source:null};
 }
 
 // Module: services
@@ -2447,8 +2450,22 @@ async function renderImage(kind){
   requireOrigin();
   const parsed=parseDirectorResponse(raw,kind,{wardrobe:prepared?.wardrobe||[]}),config=parsed.config;
   variables.naicom_last_transport_repaired=parsed.repaired;
+  // Structured JSON is a nonstandard director response. Never silently remove dialogue.
+  // Tell the user when it bypasses the limits configured for the official director.
+  if(parsed.structuredSource&&(kind==='comic'||kind==='story_page')){
+   const lines=kind==='comic'?runtimeSettings.dialogue.comicLines:runtimeSettings.dialogue.storyLines;
+   const words=kind==='comic'?runtimeSettings.dialogue.comicWords:runtimeSettings.dialogue.storyWords;
+   const speech=Array.isArray(parsed.structuredSource.bubbles)?parsed.structuredSource.bubbles:[];
+   const tooLong=speech.filter(b=>String(b?.text||'').trim().split(/\s+/).filter(Boolean).length>words).length;
+   if(speech.length>lines||tooLong){
+    const explanation='Нестандартный JSON режиссёра: '+speech.length+' реплик (настройка '+lines+'), '+tooLong+' длиннее '+words+' слов. Реплики НЕ обрезаны; проверь итоговый промпт.';
+    console.warn('[SP Imagen]',explanation);
+    try{(window?.toastr||globalThis.toastr)?.warning?.(explanation,'SP Imagen');}catch{}
+   }
+  }
   config.prompt=normalizeImagePrompt(config.prompt);
-  if(npcLanguage){config.prompt=await repairNpcPromptLanguage(kind,config.prompt);requireOrigin();}
+  // Do not send the complete final director prompt through another model rewrite.
+  // This would alter protected appearance details, dialogue, and panel instructions.
   if(visibility.size)config.prompt=insertVisibleAppearance(config.prompt,visibility);
   if(variables.naicom_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:variables.naicom_skip_prompt_preview!==true){
    const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
@@ -2460,7 +2477,7 @@ async function renderImage(kind){
   const targetIndex=selected?selected.index:await lastRpIndex(beforeChat);
   if(targetIndex<0)throw Error('Настоящий RP-пост не найден.');
   const target=beforeChat[targetIndex];
-  const generated=await extension.generateImage(config);
+  const generated=await extension.generateImage(config,{kind});
   requireOrigin();
   if(beforeChat[targetIndex]!==target)throw Error('Целевой пост изменился во время генерации.');
   const stored=await slotManager.publish(targetIndex,kind,generated);

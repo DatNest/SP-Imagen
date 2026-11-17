@@ -399,6 +399,13 @@ export async function installSpImagenMediaSlots() {
 
   async function publish(index, kind, item) {
     if (!KINDS.includes(kind) || !safeUrl(item?.src)) throw new Error('Неверный слот или адрес изображения.');
+    // Snapshot the origin BEFORE the asynchronous file upload. Otherwise a chat
+    // switch during upload could attach an image to the same index in another chat.
+    const origin = context();
+    const originalChat = origin?.chat;
+    const originalChatId = origin?.chatId;
+    const originalMessage = originalChat?.[index];
+    if (!originalMessage) throw new Error('Целевое сообщение не найдено.');
     const extension = host.__spImagenExtension;
     const storedSrc = typeof extension?.persistImageSource === 'function'
       ? await extension.persistImageSource(item.src)
@@ -406,12 +413,23 @@ export async function installSpImagenMediaSlots() {
     const storedItem = { ...item, src: storedSrc };
     if (!safeUrl(storedItem.src)) throw new Error('SP Imagen не смог сохранить файл изображения.');
     const current = context();
-    const message = current.chat?.[index];
-    if (!message) throw new Error('Целевое сообщение не найдено.');
+    if (current?.chat !== originalChat || current?.chatId !== originalChatId || current.chat[index] !== originalMessage) {
+      throw new Error('Чат изменился во время загрузки файла картинки. В другой чат изображение не добавлено.');
+    }
+    const message = originalMessage;
     migrateMessage(message);
     const slots = slotsOf(message, true);
-    addVersion(slots[kind], storedItem);
-    await current.saveChat();
+    const before = { versions: slots[kind].versions.slice(), selected: slots[kind].selected };
+    if (!addVersion(slots[kind], storedItem)) {
+      return slots[kind].versions.find(version => version.src === storedItem.src) || storedItem;
+    }
+    try { await current.saveChat(); }
+    catch (error) {
+      slots[kind].versions = before.versions;
+      slots[kind].selected = before.selected;
+      paint();
+      throw new Error('Не удалось сохранить изображение в чат: ' + String(error?.message || error));
+    }
     paint();
     return storedItem;
   }
@@ -478,7 +496,7 @@ export async function installSpImagenMediaSlots() {
     const extension = host.__spImagenExtension;
     if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') throw new Error('Включи подключение NovelAI в настройках SP Imagen.');
     try {
-      const generated = await extension.generateImage(item.config, { reuseSnapshot: true });
+      const generated = await extension.generateImage(item.config, { reuseSnapshot: true, kind });
       if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) throw new Error('Чат изменился во время повторной генерации.');
       await publish(index, kind, generated);
     } finally {
