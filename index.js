@@ -219,6 +219,26 @@ function formField(parent, labelText, control, note = '') {
     return control;
 }
 
+// Small in-window accordion for less frequently changed options. No nested popup.
+function settingsGroup(grid, title, explanation, controls) {
+    const details = document.createElement('details');
+    details.className = 'spi-settings-section';
+    const summary = document.createElement('summary');
+    summary.textContent = title;
+    const note = document.createElement('p');
+    note.className = 'spi-settings-section-note';
+    note.textContent = explanation;
+    const body = document.createElement('div');
+    body.className = 'spi-settings-section-fields';
+    for (const control of controls) {
+        const label = control?.closest?.('.spi-field');
+        if (label) body.append(label);
+    }
+    details.append(summary, note, body);
+    grid.append(details);
+    return details;
+}
+
 function input(value = '', type = 'text') {
     const node = document.createElement('input');
     node.type = type; node.value = value;
@@ -239,21 +259,22 @@ async function openTextApiSettings({ back = false } = {}) {
     const { dialog, close, closed } = shell('SP Imagen · Текстовая модель', 'spi-connection-window', { back });
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const mode = select({ st: 'Профиль подключения SillyTavern', direct: 'Прямой OpenAI-совместимый API' }, draft.mode);
-    formField(grid, 'Откуда брать модель', mode, 'SP Imagen отправляет только собственное задание.');
+    formField(grid, 'Откуда брать текстовую модель?', mode, 'SP Imagen отправляет только собственное задание.');
     const profile = document.createElement('select');
     const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Выбери профиль ExtBlocks Big'; profile.append(placeholder);
-    const profileControl = formField(grid, 'Профиль SillyTavern', profile, 'Выбери то же подключение и модель, что использовались в пресете Big ExtBlocks. История чата не отправляется.');
+    const profileControl = formField(grid, 'Какой готовый профиль использовать?', profile, 'Выбери то же подключение и модель, что использовались в пресете Big ExtBlocks. История чата не отправляется.');
     const profiles = await listSillyTavernProfiles(context()).catch(() => []);
     for (const item of profiles) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; profile.append(option); }
     profile.value = profiles.some(item => item.id === draft.profileId) ? draft.profileId : '';
-    const endpoint = input(draft.endpoint); const endpointControl = formField(grid, 'Endpoint', endpoint, 'Адрес до /v1; SP Imagen добавит /chat/completions.');
-    const model = input(draft.model); const modelControl = formField(grid, 'Модель', model, 'Точное ID модели вашего API.');
+    const endpoint = input(draft.endpoint); const endpointControl = formField(grid, 'Адрес подключения (для прямого API)', endpoint, 'Адрес до /v1; SP Imagen добавит /chat/completions.');
+    const model = input(draft.model); const modelControl = formField(grid, 'Название модели у провайдера', model, 'Точный идентификатор модели, если используешь прямой API.');
     const token = input(draft.apiKey, 'password'); token.autocomplete = 'off';
     const tokenWrap = document.createElement('div'); tokenWrap.className = 'spi-token-row'; tokenWrap.append(token);
     button('Показать', tokenWrap, () => { token.type = token.type === 'password' ? 'text' : 'password'; tokenWrap.lastElementChild.textContent = token.type === 'password' ? 'Показать' : 'Скрыть'; });
     const tokenControl = formField(grid, 'API-ключ', tokenWrap, 'Не попадает в экспорты SP Imagen.');
-    const temperature = input(draft.temperature, 'number'); temperature.min = '0'; temperature.max = '2'; temperature.step = '0.1'; formField(grid, 'Temperature', temperature);
-    const maxTokens = input(draft.maxTokens, 'number'); maxTokens.min = '1000'; maxTokens.max = '100000'; maxTokens.step = '1000'; formField(grid, 'Максимум токенов', maxTokens);
+    const temperature = input(draft.temperature, 'number'); temperature.min = '0'; temperature.max = '2'; temperature.step = '0.1'; formField(grid, 'Свобода ответов модели (Temperature)', temperature, 'Обычно оставляй значение из рабочего профиля. Чем выше число, тем свободнее ответы.');
+    const maxTokens = input(draft.maxTokens, 'number'); maxTokens.min = '1000'; maxTokens.max = '100000'; maxTokens.step = '1000'; formField(grid, 'Максимальная длина ответа', maxTokens, 'Сколько текста модель может вернуть за один запрос. Если промпт обрывается — увеличь это число.');
+    settingsGroup(grid, 'Дополнительные параметры текстовой модели', 'Обычно их не нужно менять. Оставь значения того профиля, на котором уже работали картинки.', [temperature, maxTokens]);
     const status = document.createElement('p'); status.className = 'spi-status';
     const readDraft = () => normalizeTextApiSettings({ mode: mode.value, profileId: profile.value, endpoint: endpoint.value, apiKey: token.value, model: model.value, temperature: Number(temperature.value), maxTokens: Number(maxTokens.value) });
     const refreshMode = () => {
@@ -303,19 +324,22 @@ function openNovelAISettings({ back = false } = {}) {
     const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution);
     formField(grid, 'Размер', resolution, 'Защита Anlas допускает Small и Normal. Выбор Big сохраняется на случай отключения защиты.');
     const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50';
-    formField(grid, 'Steps', steps);
-    const cfg = input(draft.cfgScale, 'number'); cfg.min = '0'; cfg.max = '10'; cfg.step = '0.1'; formField(grid, 'CFG scale', cfg);
+    formField(grid, 'Шаги генерации (Steps)', steps, 'Сколько шагов делает модель, рисуя картинку. В некоторых моделях значение фиксировано.');
+    const cfg = input(draft.cfgScale, 'number'); cfg.min = '0'; cfg.max = '10'; cfg.step = '0.1'; formField(grid, 'Насколько точно следовать описанию (CFG)', cfg, 'Более высокое значение сильнее привязывает картинку к промпту.');
     const rescale = input(draft.cfgRescale, 'number'); rescale.min = '0'; rescale.max = '1'; rescale.step = '0.01';
-    const rescaleControl = formField(grid, 'CFG rescale', rescale);
+    const rescaleControl = formField(grid, 'Коррекция CFG (дополнительно)', rescale, 'Нужна не всем моделям. Если не знаешь, оставь 0.');
     const sampler = select(NOVELAI_SAMPLERS, draft.sampler);
-    const samplerControl = formField(grid, 'Sampler', sampler);
+    const samplerControl = formField(grid, 'Способ рисования (Sampler)', sampler, 'Выбери алгоритм рисования; Medium использует только Euler Ancestral.');
     const scheduler = select(NOVELAI_SCHEDULES, draft.noiseSchedule);
-    const schedulerControl = formField(grid, 'Scheduler', scheduler, 'Доступен для моделей V4.5. Для V5 этот параметр не отправляется.');
-    const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
+    const schedulerControl = formField(grid, 'Порядок шагов (Scheduler)', scheduler, 'Дополнительная настройка для V4.5. Для V5 не нужна.');
+    const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Номер варианта (Seed)', seed, '-1 — каждый раз новый вариант. Фиксированное число — повторяемый вариант при одинаковом запросе.');
     const negativePreset = select(getNovelAINegativePresetOptions(draft.model), draft.negativePreset);
-    const negativePresetControl = formField(grid, 'Встроенный негатив', negativePreset, 'Пресеты подбираются по выбранной модели.');
+    const negativePresetControl = formField(grid, 'Чего модель должна избегать (готовый набор)', negativePreset, 'Выбери готовый набор нежелательных деталей. В Medium он фиксирован.');
     const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
-    const negativeControl = formField(grid, 'Дополнительный негатив', negative, 'Ваш текст сохраняется при смене модели.');
+    const negativeControl = formField(grid, 'Что ещё не рисовать (дополнительно)', negative, 'Необязательно. Текст сохранится при смене модели.');
+    settingsGroup(grid, 'Подключение NovelAI и ключ', 'Обычно достаточно настроить один раз. Токен никому не отправляется, кроме API NovelAI для генерации.', [token, endpoint]);
+    settingsGroup(grid, 'Как модель будет рисовать?', 'Дополнительные параметры. В режиме Medium неподходящие изменения автоматически недоступны.', [steps, cfg, rescale, sampler, scheduler, seed]);
+    settingsGroup(grid, 'Чего избегать на картинке?', 'Необязательные ограничения изображения. Если всё работает — оставь как есть.', [negativePreset, negative]);
 
     // Keep user-adjustable High/Curated settings while Medium temporarily locks controls.
     const preferred = {

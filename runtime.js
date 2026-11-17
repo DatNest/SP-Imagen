@@ -693,153 +693,295 @@ async function verifyNessCoderExample(result,options){
   result.preview=check.items.slice(0,3).map(formatNessPreservedText).filter(Boolean).join('\n');if(!result.preview)throw Error('После удаления оформления в примере не осталось текста. Уточни группу извлечения.');
  }else{const check=await regexWardrobe(options.text,result.rule,'cleanup');if(check.text===options.text)throw Error('Правило не нашло вставленный фрагмент. Уточни пример.');result.preview=check.text.trim()||'Фрагмент будет удалён целиком.';}
 }
-function openNessCoder(D,panel,{exceptions=false,initialGoal='auto',onAdd,onClose=()=>{}}={}){
- let closed=false;
- const dialog=createNessChildDialog(D,panel,{title:exceptions?'Помогатор исключений':'Помогатор-кодировщик 3000',marker:'data-ness-coder',onClose:()=>{closed=true;onClose();}});
- const {el,field,input,area,button,choice,body:scroll,actions,finish}=dialog,ui=dialog;
- ui.note(scroll,exceptions?'Сохранит нужные данные, даже если окружающая служебная вставка удаляется.':'Подготовит правило по твоему примеру. Писать код самостоятельно не нужно.');
- const goal=exceptions?{value:'preserve'}:field(scroll,'1. Что нужно сделать?',choice([['auto','Пусть помогатор определит сам'],['cleanup','Не передавать этот фрагмент режиссёру'],['wardrobe','Найти имя персонажа и его одежду']],initialGoal),'Задача помогатора');
- const source=field(scroll,(exceptions?'1.':'2.')+' Вставь фрагмент из поста или готовое правило',area(''),'Пример для помогатора');source.placeholder='Скопируй вставку целиком, со скобками или тегами. Например: ⟦SCORE:12⟧';source.setAttribute('data-coder-source','');
- const samples=ui.section(scroll,'? Показать пример'),sampleButtons=ui.row(samples);
- const label=exceptions?field(scroll,'Как назвать извлечённые данные?',input(''),'Название извлечённых данных'):{value:''};if(exceptions)label.placeholder='Например: Шкала отношений';
- const advanced=ui.section(scroll,'Настроить вручную — если автоматический разбор не подошёл');advanced.setAttribute('data-coder-advanced','');
- const format=field(advanced,'Как искать нужный фрагмент',choice([['auto','Определить по вставленному примеру'],['regex','У меня готовое правило поиска (regex)'],['sample','По скобкам или тегам из примера'],['literal','Искать точно такой же текст'],['block','Искать текст между началом и концом']],'auto'),'Способ поиска');
- const boundaries=el('div',undefined,advanced,'ness-grid'),start=field(boundaries,'Текст перед нужным содержимым',input(''),'Начальная метка'),end=field(boundaries,'Текст после нужного содержимого',input(''),'Конечная метка');boundaries.hidden=true;
- const groupSection=ui.section(advanced,'Указать, какую часть готового правила использовать'),groups=el('div',undefined,groupSection,'ness-grid');
- const nameGroup=field(groups,'Часть правила с именем',input(''),'Группа имени'),outfitGroup=field(groups,'Часть правила с одеждой',input(''),'Группа одежды'),group=field(groups,'Часть правила с нужным значением',input(''),'Группа извлечения');
- function refresh(){boundaries.hidden=format.value!=='block';groupSection.hidden=goal.value==='cleanup';nameGroup.parentNode.hidden=outfitGroup.parentNode.hidden=!['auto','wardrobe'].includes(goal.value);group.parentNode.hidden=goal.value!=='preserve';invalidate();}
- const fallback=ui.checkbox(scroll,'Попросить модель помочь, если пример не распознан',true);
- const process=button('Обработать',scroll,undefined,'primary'),message=el('p','',scroll,'ness-status');message.setAttribute('role','status');process.setAttribute('data-coder-process','');
- const problem=ui.section(scroll,'Технические подробности ошибки');problem.hidden=true;const problemText=el('div','',problem,'ness-coder-faq');
- const resultBox=el('div',undefined,scroll,'ness-coder-result');resultBox.hidden=true;
- el('h4',exceptions?'2. Проверь результат':'3. Проверь результат',resultBox);const outcome=el('p','',resultBox,'ness-note'),preview=el('div','',resultBox,'ness-coder-preview'),where=el('p','',resultBox,'ness-note');
- const technical=ui.section(resultBox,'Код правила — только для ручного переноса');technical.setAttribute('data-coder-code','');const output=field(technical,'Готовое правило',area(''),'Готовое правило');output.readOnly=true;const copy=button('Скопировать код',technical);copy.disabled=true;
- ui.note(resultBox,'Нажми «Добавить в настройки». Затем сохрани изменения в основном окне.');
- const faq=ui.section(scroll,'? С чего начать и что означают незнакомые слова?');el('div',nessFieldHelp('Помогатор: справка'),faq,'ness-coder-faq');
- const add=button('Добавить в настройки',actions,undefined,'primary');add.disabled=true;add.setAttribute('data-coder-add','');
- let compiled=null,revision=0;
- function invalidate(){revision++;compiled=null;resultBox.hidden=true;copy.disabled=add.disabled=true;message.textContent='';problem.hidden=true;}
- function showProblem(error){const text=String(error.message||error);problemText.textContent=text;problem.hidden=false;
-  message.textContent=/до 8/.test(text)?'В этом разделе уже восемь правил. Удали ненужное в основном окне, затем добавь новое.':!source.value.trim()&&format.value!=='block'?'Сначала вставь один полный фрагмент в поле примера. Или нажми «Показать пример», чтобы попробовать.':/20 000|20000/.test(text)?'Пример слишком большой. Оставь только один нужный фрагмент, не весь пост.':/слишком долго/.test(text)?'Поиск занял слишком много времени. Вставь более короткий пример с чёткими началом и концом.':/API|модел|подключ/i.test(text)?'Не получилось обратиться к модели. Проверь текстовое подключение SP Imagen или выключи помощь модели и попробуй более простой пример.':/групп|nameGroup|outfitGroup/i.test(text)?'Помогатор не понял, какую часть оставить. Вставь полный пример из поста или укажи нужную часть в разделе «Настроить вручную».':error instanceof SyntaxError?'В готовом правиле поиска есть ошибка. Вставь фрагмент из поста вместо кода — помогатор попробует составить правило сам.':'Не удалось подготовить правило. Вставь один полный фрагмент со всеми скобками или тегами. Если у тебя готовый код, выбери его в разделе «Настроить вручную».';
- }
- for(const node of [source,start,end,nameGroup,outfitGroup,group,label])if(node?.tagName)node.oninput=invalidate;format.onchange=refresh;if(!exceptions)goal.onchange=refresh;
- const examples=exceptions?[['Сохранить число','⟦SCORE:12⟧','preserve'],['Сохранить текст в HTML','<span class="note">Встреча в 15:00</span>','preserve']]:[['Убрать заметку','[PRIVATE]Служебная заметка[/PRIVATE]','cleanup'],['Взять одежду','[OUTFIT:Анна]синяя рубашка[/OUTFIT]','wardrobe']];
- for(const [title,text,task]of examples)button(title,sampleButtons,()=>{source.value=text;if(!exceptions)goal.value=task;else if(!label.value)label.value=task==='preserve'&&title==='Сохранить число'?'Шкала отношений':'Заметка';format.value='auto';refresh();});
- process.onclick=async()=>{if(closed||process.disabled)return;invalidate();const ownRevision=revision,options={text:source.value,goal:goal.value,format:format.value,start:start.value,end:end.value,nameGroup:nameGroup.value,outfitGroup:outfitGroup.value,group:group.value,label:label.value};process.disabled=true;
-  try{let result;try{result=compileNessRule(options);await verifyNessCoderExample(result,options);}catch(e){if(closed||ownRevision!==revision)return;if(!fallback.checked||!options.text.trim()||options.text.length>20000)throw e;message.textContent='Подключённая модель разбирает твой пример…';result=await proposeNessRule(options);if(closed||ownRevision!==revision)return;await verifyNessCoderExample(result,options);}
-   if(closed||ownRevision!==revision)return;compiled=result;output.value=compiled.code;
-   outcome.textContent=compiled.kind==='wardrobe'?'Будут найдены имя персонажа и его одежда. Одежда попадёт в данные для картинки.':compiled.kind==='preserve'?'Нужное содержимое останется, а его служебное оформление будет убрано.':'Такие вставки больше не будут передаваться режиссёру. Сообщения чата останутся прежними.';
-   where.textContent='Правило появится здесь: '+compiled.destination;preview.textContent=compiled.preview?'На твоём примере: '+compiled.preview:'Правило подготовлено. Пример результата появится, если вставить фрагмент из поста вместо готового кода.';resultBox.hidden=false;copy.disabled=add.disabled=false;message.textContent='Готово. Ниже показано, что получится.';resultBox.scrollIntoView?.({block:'nearest',behavior:'auto'});
-  }catch(e){if(!closed&&ownRevision===revision)showProblem(e);}finally{if(!closed)process.disabled=false;}
+function appendNessRulePreview(D,parent,{kind,getRule,example}){
+ const ui=createUiKit(D),{el,field,area,button}=ui;
+ const wrapper=ui.section(parent,'Проверить на примере');wrapper.classList.add('ness-rule-preview');
+ ui.note(wrapper,'Посмотри, как изменится текст. Исходный пост при этом останется прежним.');
+ const source=field(wrapper,'Было в посте',area(example.replaceAll('\\n','\n')));
+ const result=el('div','',wrapper,'ness-simple-sample');result.hidden=true;
+ const check=button('Показать результат',wrapper);
+ check.onclick=async()=>{
+  const rule=getRule(),raw=source.value;
+  if(!raw.trim()){result.hidden=false;result.textContent='Сначала вставь пример из поста.';return;}
+  check.disabled=true;result.hidden=false;result.textContent='Проверяю…';
+  try{
+   if(kind==='cleanup'){
+    const parsed=await regexWardrobe(raw,{rules:[rule]},'cleanup');
+    result.textContent='Режиссёр увидит:\n'+(parsed.text.trim()||'(заметка удалена целиком)');
+   }else{
+    const parsed=await regexWardrobe(raw,{rules:[rule]},'preserve');
+    result.textContent='Режиссёр увидит:\n'+(parsed.items.map(formatNessPreservedText).join('\n')||'(ничего не найдено)');
+   }
+  }catch(e){result.textContent='Не удалось проверить. Проверь начало и конец блока. '+String(e.message||e);}finally{check.disabled=false;}
  };
- copy.onclick=async()=>{if(closed||!compiled)return;try{if(!window.navigator?.clipboard?.writeText)throw Error('Выдели и скопируй код из поля вручную.');await window.navigator.clipboard.writeText(output.value);if(!closed)message.textContent='Код скопирован.';}catch(e){if(!closed){output.focus();output.select?.();message.textContent=String(e.message||e);}}};
- add.onclick=()=>{if(closed||!compiled)return;try{onAdd(compiled);finish();}catch(e){showProblem(e);}};refresh();return finish;
+ return wrapper;
+}
+
+function openNessCoder(D,parent,{exceptions=false,initialGoal='auto',onAdd,onClose=()=>{}}={}){
+ const ui=createUiKit(D),{el,field,input,area,button,choice}=ui;
+ const root=el('section',undefined,parent,'ness-simple-helper');
+ const heading=el('div',undefined,root,'ness-simple-helper-head');
+ el('strong',exceptions?'Найдём нужный текст вместе':'Найдём нужную часть поста',heading);
+ const close=button('Закрыть',heading,undefined,'quiet');
+ ui.note(root,'Скопируй один небольшой пример прямо из поста. Программа попробует понять его без технических команд.');
+ const goal=exceptions?{value:'preserve'}:field(root,'Что нужно сделать?',choice([
+  ['cleanup','Убрать ненужный текст'],['wardrobe','Найти одежду и имя персонажа'],['preserve','Оставить полезное из служебной метки']
+ ],initialGoal==='wardrobe'?'wardrobe':'cleanup'));
+ const source=field(root,'Пример из поста',area(''));
+ source.placeholder='Например: ⟦СОСТОЯНИЕ:Аанг⟧ Радуется | танцует';
+ const examples=el('div',undefined,root,'ness-simple-examples');
+ button('Пример: убрать заметку',examples,()=>{goal.value='cleanup';source.value='⟦СОСТОЯНИЕ:Аанг⟧ Радуется | танцует';renderGoal();});
+ button('Пример: найти одежду',examples,()=>{goal.value='wardrobe';source.value='⟦ОДЕЖДА:Джи⟧ Коричневые шаровары, вязаный топ';renderGoal();});
+ button('Пример: оставить число',examples,()=>{goal.value='preserve';source.value='⟦LOVE SCORE:4⟧';renderGoal();});
+ const label=field(root,'Как назвать полезный текст? (можно оставить пустым)',input(''));
+ const advanced=ui.section(root,'Если пример не распознан — укажи границы');
+ ui.note(advanced,'Эти поля нужны только если поиск по примеру не сработал. Всё остальное программа сделает сама.');
+ const first=field(advanced,'С каких слов начинается блок?',input(''));
+ const second=field(advanced,'На каких словах заканчивается?',input(''));
+ const technical=ui.section(advanced,'Для старых правил · дополнительно');
+ ui.note(technical,'Используй только если у тебя уже есть своё готовое правило. Новичкам этот раздел не нужен.');
+ const code=field(technical,'Готовое старое правило',area(''));
+ const extra=el('div',undefined,root,'ness-simple-controls');
+ const useAi=ui.checkbox(extra,'Если пример не распознан, спросить мою текстовую модель (расходует токены)',false);
+ const find=button('Проверить пример',extra,undefined,'primary');
+ const status=el('p','',root,'ness-note');status.setAttribute('role','status');
+ const result=el('div',undefined,root,'ness-simple-result');result.hidden=true;
+ el('h4','Посмотри, что получится',result);
+ const before=el('div',undefined,result,'ness-simple-sample');
+ const after=el('div',undefined,result,'ness-simple-sample');
+ const add=button('Использовать это правило',result,undefined,'primary');
+ let disposed=false,revision=0,compiled=null;
+ function invalidate(){revision++;compiled=null;result.hidden=true;status.textContent='';}
+ function renderGoal(){label.parentNode.hidden=goal.value!=='preserve';invalidate();}
+ function dispose(){if(disposed)return;disposed=true;root.remove();onClose();}
+ close.onclick=dispose;
+ for(const control of [source,label,first,second,code])control.addEventListener('input',invalidate);
+ if(!exceptions)goal.onchange=renderGoal;
+ renderGoal();
+ function obviousRule(value,task){
+  const text=value.trim();let rule=null;
+  const pair=text.match(/^\[([A-Z][A-Z0-9_]+)\]([\s\S]*?)\[\/\1\]$/);
+  const statusPrefix=text.match(/^(⟦[^⟧:\n]+:)[^⟧\n]+⟧[^\n]*$/u);
+  const simpleValue=text.match(/^(⟦[^⟧:\n]+:)([^⟧\n]+)(⟧)$/u);
+  if(task==='cleanup'&&statusPrefix)rule={type:'markers',start:statusPrefix[1],end:''};
+  else if(task==='cleanup'&&pair)rule={type:'markers',start:'['+pair[1]+']',end:'[/'+pair[1]+']'};
+  else if(task==='preserve'&&simpleValue)rule={type:'markers',start:simpleValue[1],end:simpleValue[3],label:label.value.trim()};
+  if(!rule)return null;
+  return {rule,kind:task,code:JSON.stringify(rule,null,2)};
+ }
+ find.onclick=async()=>{
+  if(disposed)return;invalidate();const own=revision,task=goal.value;
+  if(!source.value.trim()&&!first.value.trim()){
+   status.textContent='Вставь один пример из поста или укажи начало блока.';return;
+  }
+  find.disabled=true;status.textContent='Проверяю пример…';
+  const options={text:source.value,goal:task,format:code.value.trim()?'regex':first.value&&second.value?'block':'auto',start:first.value,end:second.value,label:label.value};
+  try{
+   let value=code.value.trim()?null:obviousRule(source.value,task);
+   if(!value&&first.value.trim()&&task!=='wardrobe'){
+    value={kind:task,rule:{type:'markers',start:first.value.trim(),end:second.value.trim(),...(task==='preserve'?{label:label.value.trim()}: {})}};
+   }
+   if(!value){
+    try{
+     value=compileNessRule({...options,...(code.value.trim()?{text:code.value.trim(),format:'regex'}:{})});
+     await verifyNessCoderExample(value,options);
+    }
+    catch(e){
+     if(!useAi.checked||!source.value.trim())throw e;
+     status.textContent='Текстовая модель пробует распознать пример…';
+     value=await proposeNessRule(options);await verifyNessCoderExample(value,options);
+    }
+   }
+   if(disposed||own!==revision)return;
+   compiled=value;
+   let seen='';
+   if(value.kind==='wardrobe'){
+    const check=await readConfiguredWardrobe(source.value,{version:1,keepDefault:false,sources:[value.rule]});
+    seen=check.pairs.length?check.pairs.map(([name,outfit])=>'Персонаж: '+name+'\nОдежда: '+outfit).join('\n\n'):'Одежду не удалось выделить из этого примера.';
+   } else if(value.kind==='preserve'){
+    const check=await regexWardrobe(source.value,{rules:[value.rule]},'preserve');
+    seen=check.items.map(formatNessPreservedText).join('\n')||'Нужный текст не найден.';
+   }else{
+    const check=await regexWardrobe(source.value,{rules:[value.rule]},'cleanup');
+    seen=check.text.trim()||'(служебный блок полностью удалён)';
+   }
+   if(disposed||own!==revision)return;
+   before.textContent='Было в посте:\n'+source.value;
+   after.textContent=(value.kind==='wardrobe'?'Режиссёр получит как одежду:':'После обработки:')+'\n'+seen;
+   result.hidden=false;status.textContent='Правило готово. Проверь результат, затем добавь его.';
+  }catch(e){if(!disposed&&own===revision)status.textContent='Не удалось найти правило. Попробуй указать начало и конец или вставить более полный пример. '+String(e.message||e);}finally{if(!disposed)find.disabled=false;}
+ };
+ add.onclick=()=>{if(!compiled||disposed)return;try{onAdd(compiled);dispose();}catch(e){status.textContent=String(e.message||e);}};
+ return dispose;
 }
 
 // Module: settings_ui
 function createGen2SettingsPanel(D,initial,onDirty=()=>{}){
- const ui=createUiKit(D),{el,input,area,field,checkbox,choice,clear}=ui,root=el('div');root.oninput=onDirty;root.onchange=onDirty;
+ const ui=createUiKit(D),{el,input,area,field,checkbox,choice,clear}=ui,root=el('div');
+ root.classList.add('ness-simple-settings');
+ const settingsChanged=e=>{if(!e.target.closest('.ness-simple-helper,.ness-rule-preview,.ness-simple-start'))onDirty();};
+ root.addEventListener('input',settingsChanged);root.addEventListener('change',settingsChanged);
  el('p','Все настройки действуют во всех чатах.',root,'ness-note');
- const introduction=ui.section(root,'? Что делают эти настройки?');el('div',nessFieldHelp('Настройки: с чего начать'),introduction,'ness-coder-faq');
+ const introduction=ui.section(root,'Как всё работает?');
+ ui.note(introduction,'Выбираешь, что режиссёр должен видеть в RP-посте. Правила меняют только текст для картинки — сам чат остаётся прежним.');
+ const top=el('div',undefined,root,'ness-simple-start');
+ const topics=field(top,'Что ты хочешь настроить?',choice([
+  ['all','Посмотреть все разделы'],
+  ['remove','✂ Убрать ненужные заметки'],
+  ['wardrobe','👕 Найти одежду персонажей'],
+  ['keep','📌 Оставить важное из заметок'],
+  ['posts','📖 Сколько постов читать'],
+  ['dialogue','💬 Сколько текста рисовать'],
+  ['preview','🔎 Проверить перед отправкой']
+ ],'all'));
+ ui.note(top,'Все разделы по умолчанию закрыты. Выбери задачу или открой нужный заголовок ниже.');
  const grid=el('div',undefined,root,'ness-settings-grid'),left=el('div',undefined,grid,'ness-settings-column'),right=el('div',undefined,grid,'ness-settings-column');
- const section=(parent,label,help,open=true)=>{const box=ui.section(parent,label,open);ui.help(box.children[0],help||label);return box;},message=ui.note(root,'');
+ const section=(parent,label,help,open=false)=>{const box=ui.section(parent,label,open);return box;},message=ui.note(root,'');
  let closeCoder=null;
- const wardrobe=section(right,'◇ Откуда брать одежду','Источники одежды'),keepSaved=checkbox(wardrobe,'Читать одежду из меток ⟦ОДЕЖДА:Имя⟧',initial.wardrobe.keepDefault);
- const wardrobeActions=el('div',undefined,wardrobe,'ness-settings-actions');ui.button('⌘ Найти одежду по примеру',wardrobeActions,()=>launchCoder(false,'wardrobe'));
- const customSources=section(wardrobe,'Другой формат одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
+ const wardrobe=section(right,'👕 Где искать одежду персонажей?','Источники одежды');
+ ui.note(wardrobe,'Одежда берётся из RP-поста, а не придумывается моделью. Обычные метки работают автоматически. Если разметка другая — покажи один пример.');
+ const keepSaved=checkbox(wardrobe,'Использовать метки ⟦ОДЕЖДА:Имя⟧ из постов',initial.wardrobe.keepDefault);
+ const wardrobeActions=el('div',undefined,wardrobe,'ness-settings-actions');ui.button('Найти одежду по примеру',wardrobeActions,()=>launchCoder(false,'wardrobe'));
+ const customSources=section(wardrobe,'Мои способы поиска одежды','Свои форматы одежды'),sources=el('div',undefined,customSources),sourceRows=[];
  const shapes=WARDROBE_RULE_DEFAULTS;
- const formats={markers:'Простой формат: начало и конец',regex:'Сложное правило (для старых настроек)',html:'Одежда в HTML-разметке'};
- const labels={namePrefix:'Что стоит перед именем? (например ⟦ОДЕЖДА:)',nameSuffix:'Что стоит после имени? (например ⟧)',outfitEnd:'Чем заканчивается одежда? (если есть)',blockStart:'Начало всего блока гардероба (если есть)',blockEnd:'Конец всего блока гардероба (если есть)',pattern:'Старое правило поиска (для опытных)',flags:'Технические флаги',nameGroup:'Где хранится имя',outfitGroup:'Где хранится одежда',rowSelector:'Как найти запись персонажа',nameSelector:'Как найти имя внутри записи',nameAttribute:'Имя хранится в атрибуте',outfitSelector:'Как найти одежду внутри записи',outfitAttribute:'Одежда хранится в атрибуте',stripSelector:'Как найти общий блок для удаления'};
+ const formats={markers:'Одежда отмечена специальными словами',regex:'Старый способ поиска',html:'Одежда в оформленном блоке'};
+ const labels={namePrefix:'Что стоит прямо перед именем?',nameSuffix:'Что стоит прямо после имени?',outfitEnd:'Чем заканчивается описание одежды? (необязательно)',blockStart:'Где начинается общий гардероб? (необязательно)',blockEnd:'Где заканчивается общий гардероб? (необязательно)',pattern:'Сохранённое старое правило',flags:'Настройки старого правила (лучше не менять)',nameGroup:'Где хранится имя',outfitGroup:'Где хранится одежда',rowSelector:'Как найти запись персонажа',nameSelector:'Где находится имя в записи',nameAttribute:'Имя хранится в атрибуте',outfitSelector:'Как найти одежду внутри записи',outfitAttribute:'Одежда хранится в атрибуте',stripSelector:'Как найти общий блок для удаления'};
  function addSource(value={type:'markers',enabled:true,...shapes.markers}){
   if(sourceRows.length>=8){message.textContent='Можно добавить до 8 правил гардероба.';return;}
   const row=ui.section(sources,formats[value.type]+' · '+(sourceRows.length+1),false),heading=row.children[0],remove=ui.button('×',heading,undefined,'icon quiet');remove.setAttribute('aria-label','Удалить правило гардероба');
-  const controls=el('div',undefined,row,'ness-grid'),enabled=checkbox(controls,'Использовать этот источник',value.enabled!==false),type=field(controls,'Формат',choice(Object.entries(formats),value.type)),body=el('div',undefined,row,'ness-rule-fields');
+  ui.note(row,'Пример: ⟦ОДЕЖДА:Джи⟧ шаровары и топ. Программа найдёт имя «Джи» и её одежду.');
+  const controls=el('div',undefined,row,'ness-grid'),enabled=checkbox(controls,'Использовать этот способ',value.enabled!==false);
+  const advancedChoice=ui.section(row,'Другой способ поиска (если обычный не подходит)');
+  ui.note(advancedChoice,'Если ты не знаешь, что это — ничего не меняй. Одежда из меток уже поддерживается.');
+  const type=field(advancedChoice,'Как устроена отметка одежды?',choice(Object.entries(formats),value.type));
+  const body=el('div',undefined,row,'ness-rule-fields');
   const entry={row,type,enabled,fields:{},cache:{[value.type]:{...shapes[value.type],...value}},previous:value.type};
   function render(data){
    clear(body);entry.fields={};
    if(type.value!=='markers'){
-    const help=el('p','Это старый расширенный формат. Если не используешь его, выбери «Простой формат» выше.',body,'ness-note');
+    const help=el('p','Такое правило было сохранено раньше. Его можно оставить как есть. Если оно непонятно, создай новое правило по примеру.',body,'ness-note');
     help.style.gridColumn='1/-1';
    }
+   const optional=ui.section(row,'Дополнительные границы блока (необязательно)');
+   optional.classList.add('ness-wardrobe-advanced');
+   for(const old of row.querySelectorAll(':scope > .ness-wardrobe-advanced'))if(old!==optional)old.remove();
    for(const key of Object.keys(shapes[type.value])){
     const control=key==='pattern'?area(data[key]):input(data[key]);
-    entry.fields[key]=field(body,labels[key],control);
+    const target=['outfitEnd','blockStart','blockEnd','pattern','flags','nameGroup','outfitGroup','rowSelector','nameSelector','nameAttribute','outfitSelector','outfitAttribute','stripSelector'].includes(key)?optional:body;
+    entry.fields[key]=field(target,labels[key],control);
     if(['pattern','rowSelector','stripSelector'].includes(key))control.parentNode.className+=' ness-wide';
     if(key==='flags'||key==='nameGroup'||key==='outfitGroup')control.parentNode.hidden=true;
    }
   }
+  const checkExample=ui.section(row,'Проверить на примере');
+  checkExample.classList.add('ness-rule-preview');
+  ui.note(checkExample,'Вставь строку из поста. Тут же увидишь, какую одежду прочитает режиссёр. Сам чат не изменяется.');
+  const sampleInput=field(checkExample,'Было в посте',area('⟦ОДЕЖДА:Джи⟧ Коричневые шаровары, вязаный топ'));
+  const sampleResult=el('div','',checkExample,'ness-simple-sample');sampleResult.hidden=true;
+  const sampleButton=ui.button('Показать результат',checkExample);
+  sampleButton.onclick=async()=>{
+   const rule={type:type.value,enabled:enabled.checked,...Object.fromEntries(Object.entries(entry.fields).map(([k,v])=>[k,v.value]))};
+   sampleButton.disabled=true;sampleResult.hidden=false;sampleResult.textContent='Проверяю…';
+   try{
+    const found=await readConfiguredWardrobe(sampleInput.value,{version:1,keepDefault:false,sources:[rule]});
+    sampleResult.textContent=found.pairs.length?'Режиссёр получит:\n'+found.pairs.map(([name,outfit])=>'Имя: '+name+'\nОдежда: '+outfit).join('\n\n'):'Не удалось найти имя и одежду. Проверь начало и конец.';
+   }catch(e){sampleResult.textContent='Не удалось проверить: '+String(e.message||e);}finally{sampleButton.disabled=false;}
+  };
   type.onchange=()=>{entry.cache[entry.previous]=Object.fromEntries(Object.entries(entry.fields).map(([k,e])=>[k,e.value]));render(entry.cache[type.value]||shapes[type.value]);entry.previous=type.value;heading.textContent=formats[type.value]+' · '+(sourceRows.indexOf(entry)+1);heading.appendChild(remove);onDirty();};render(entry.cache[value.type]);
   remove.onclick=e=>{e?.preventDefault?.();e?.stopPropagation?.();sourceRows.splice(sourceRows.indexOf(entry),1);row.remove();onDirty();};sourceRows.push(entry);return entry;
  }
- initial.wardrobe.sources.forEach(addSource);ui.button('+ Подключить свой формат',customSources,()=>{const added=addSource();if(added){added.row.open=true;onDirty();}});
+ initial.wardrobe.sources.forEach(addSource);ui.button('+ Добавить способ поиска',customSources,()=>{if(addSource())onDirty();});
  const examples=section(customSources,'Добавить готовый пример','Примеры форматов',false),exampleRow=ui.row(examples);
  const samples={markers:{type:'markers',enabled:true,namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧'},regex:{type:'regex',enabled:true,pattern:'(?<name>[^:\\n]+)_outfit:\\s*(?<outfit>[^\\n]+)',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},html:{type:'html',enabled:true,rowSelector:'.wardrobe-entry',nameSelector:'',nameAttribute:'data-name',outfitSelector:'.outfit',outfitAttribute:'',stripSelector:''}};
- for(const [key,title]of Object.entries(formats))ui.button(title,exampleRow,()=>{const added=addSource(samples[key]);if(added){added.row.open=true;onDirty();}});
- const posts=section(left,'▤ Сколько последних постов читать','Количество постов'),numbers=el('div',undefined,posts,'ness-numbers'),postFields={};
+ for(const [key,title]of Object.entries(formats))ui.button(title,exampleRow,()=>{if(addSource(samples[key]))onDirty();});
+ const posts=section(left,'📖 Сколько сообщений читать для картинки?','Количество постов');
+ ui.note(posts,'Режиссёр смотрит только указанное число последних RP-постов. Например, «2» означает два последних сообщения.');
+ const numbers=el('div',undefined,posts,'ness-numbers'),postFields={};
  for(const [key,title]of [['snapshot','Snapshot'],['comic','Comic'],['story_page','Story Page']]){const control=input(initial.posts[key],'number');control.min='1';control.max='20';control.setAttribute('data-setting','posts.'+key);postFields[key]=field(numbers,title,control);}
- const cleanup=section(right,'✂ Что скрыть от режиссёра','Очистка постов'),checks=el('div',undefined,cleanup,'ness-check-grid'),cleanFields={};
- for(const [key,title]of [['serviceTags','Скрытые мысли и служебные метки'],['comments','Служебные комментарии <!-- … -->'],['html','Скрытые блоки и HTML-оформление'],['mawsFooter','Служебная сводка в конце поста']]){cleanFields[key]=checkbox(checks,title,initial.cleanup[key]);cleanFields[key].setAttribute('data-setting','cleanup.'+key);}
+ const cleanup=section(right,'✂ Убрать ненужный текст из постов','Очистка постов');
+ ui.note(cleanup,'Это не удаляет сообщения из чата. Ненужные заметки просто не попадут к режиссёру, когда он готовит картинку.');
+ const checks=el('div',undefined,cleanup,'ness-check-grid'),cleanFields={};
+ for(const [key,title]of [['serviceTags','Скрытые мысли и служебные метки'],['comments','Скрытые комментарии (не видны в чате)'],['html','Невидимое оформление поста'],['mawsFooter','Служебная сводка в конце поста']]){cleanFields[key]=checkbox(checks,title,initial.cleanup[key]);cleanFields[key].setAttribute('data-setting','cleanup.'+key);}
  const cleanupHelperActions=el('div',undefined,cleanup,'ness-settings-actions');ui.button('Найти блок по примеру',cleanupHelperActions,()=>launchCoder(false),'quiet');
- const customCleanup=section(cleanup,'Убирать свои служебные блоки','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
+ const customCleanup=section(cleanup,'Убирать мои служебные заметки','Свои правила удаления'),filters=el('div',undefined,customCleanup),filterRows=[];
  function addFilter(value={type:'markers',start:'',end:''}){
   if(filterRows.length>=8){message.textContent='Можно добавить до 8 правил удаления.';return;}
   const legacy=value.type!=='markers';
-  const box=ui.section(filters,'Убрать технический блок · '+(filterRows.length+1),true);
+  const box=ui.section(filters,'Убрать блок · '+(filterRows.length+1),false);
   const body=el('div',undefined,box,'ness-rule-fields');
   let first,second;
   if(legacy){
-   ui.note(body,'Сохранено старое техническое правило. Оно продолжит работать.');
+   ui.note(body,'Этот способ поиска уже был настроен и продолжит работать. Можно ничего не менять.');
    first=field(body,'Готовое правило (старый формат)',area(value.pattern));
-   second=field(body,'Технические параметры (не меняй)',input(value.flags||'gm'));
+   second=field(body,'Настройки старого правила (не меняй)',input(value.flags||'gm'));
    second.parentNode.hidden=true;
   }else{
-   ui.note(body,'Вставь обычный текст, как он выглядит в сообщении. Никаких специальных символов писать не нужно.');
-   first=field(body,'Начало ненужного блока',input(value.start||''));
-   second=field(body,'Конец ненужного блока (пусто = до конца строки)',input(value.end||''));
+   ui.note(body,'Просто вставь начало заметки. Если она занимает одну строку — поле конца оставь пустым.');
+   first=field(body,'1. С каких слов начинается заметка?',input(value.start||''));
+   second=field(body,'2. Где заметка заканчивается? (пусто = конец строки)',input(value.end||''));
    first.placeholder='Например: ⟦СОСТОЯНИЕ:';second.placeholder='Например: ⟦/СОСТОЯНИЕ⟧';
   }
   const entry={box,type:legacy?'regex':'markers',first,second};
+  appendNessRulePreview(D,box,{kind:'cleanup',getRule:()=>entry.type==='markers'?{type:'markers',start:first.value,end:second.value}:{pattern:first.value,flags:second.value},example:'⟦СОСТОЯНИЕ:Аанг⟧ Радуется | танцует\n⟦ОДЕЖДА:Аанг⟧ Жёлтая туника'});
   ui.button('Удалить правило',box,()=>{filterRows.splice(filterRows.indexOf(entry),1);box.remove();onDirty();},'quiet');
   filterRows.push(entry);return entry;
  }
  initial.cleanup.customPatterns.forEach(addFilter);
  const cleanupActions=el('div',undefined,customCleanup,'ness-settings-actions');
  ui.button('+ Убирать ещё один блок',cleanupActions,()=>{if(addFilter())onDirty();});
- const exceptionScope=section(cleanup,'Сохранить нужный текст из блока','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
+ const exceptionScope=section(cleanup,'📌 Оставить полезные данные из служебных меток','Исключения'),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
  function addException(value={type:'markers',start:'',end:'',label:''}){
   if(exceptionRows.length>=8)throw Error('Можно добавить до 8 исключений.');
   const legacy=value.type!=='markers';
-  const box=ui.section(exceptionRules,value.label||'Сохранить данные · '+(exceptionRows.length+1),true);
-  ui.note(box,'Исключение не удаляет весь блок: оно оставляет содержимое без служебных меток. Для полного удаления используй раздел выше.');
+  const box=ui.section(exceptionRules,value.label||'Оставить текст · '+(exceptionRows.length+1),false);
+  ui.note(box,'Например, из ⟦LOVE SCORE:4⟧ можно оставить только число 4. Если нужно удалить заметку целиком — используй раздел выше.');
   const label=field(box,'Подпись перед сохранённым текстом (необязательно)',input(value.label||''));
   const body=el('div',undefined,box,'ness-rule-fields');let first,second,group;
   if(legacy){
    first=field(body,'Старое правило поиска',area(value.pattern));
-   second=field(body,'Технические параметры',input(value.flags||'gm'));second.parentNode.hidden=true;
-   group=field(body,'Часть для сохранения',input(value.group||''));group.parentNode.hidden=true;
+   second=field(body,'Настройки старого правила',input(value.flags||'gm'));second.parentNode.hidden=true;
+   group=field(body,'Какую часть оставить (старый способ)',input(value.group||''));group.parentNode.hidden=true;
   }else{
-   first=field(body,'Начало блока, внутри которого нужный текст',input(value.start||''));
-   second=field(body,'Конец блока (пусто = до конца строки)',input(value.end||''));
+   first=field(body,'1. С каких слов начинается полезный блок?',input(value.start||''));
+   second=field(body,'2. Где заканчивается полезный блок?',input(value.end||''));
    first.placeholder='Например: ⟦SCORE:';second.placeholder='Например: ⟧';
   }
   const entry={box,type:legacy?'regex':'markers',label,first,second,group};
+  appendNessRulePreview(D,box,{kind:'preserve',getRule:()=>entry.type==='markers'?{type:'markers',start:first.value,end:second.value,label:label.value.trim()}:{pattern:first.value,flags:second.value,group:group?.value||'',label:label.value.trim()},example:'⟦LOVE SCORE:4⟧'});
   ui.button('Удалить исключение',box,()=>{exceptionRows.splice(exceptionRows.indexOf(entry),1);box.remove();onDirty();},'quiet');exceptionRows.push(entry);
  }
  (initial.cleanup.exceptions||[]).forEach(addException);
  const exceptionActions=el('div',undefined,exceptionScope,'ness-settings-actions');ui.button('+ Сохранить ещё один фрагмент',exceptionActions,()=>{try{addException();onDirty();}catch(e){message.textContent=e.message;}});
  ui.button('Найти текст по примеру',exceptionActions,()=>launchCoder(true),'quiet');
  function launchCoder(exceptions,initialGoal='auto'){
-  if(closeCoder)return;
-  closeCoder=openNessCoder(D,D.querySelector('#sp-imagen-review-panel'),{exceptions,initialGoal,onClose:()=>{closeCoder=null;},onAdd:result=>{
+  if(closeCoder){closeCoder();return;}
+  const target=initialGoal==='wardrobe'?wardrobe:exceptions?exceptionScope:customCleanup;
+  if(initialGoal==='wardrobe')wardrobe.open=true;else cleanup.open=true;
+  if(exceptions)exceptionScope.open=true;else if(initialGoal!=='wardrobe')customCleanup.open=true;
+  closeCoder=openNessCoder(D,target,{exceptions,initialGoal,onClose:()=>{closeCoder=null;},onAdd:result=>{
    if(result.kind==='wardrobe'){if(sourceRows.length>=8)throw Error('Можно добавить до 8 источников одежды.');addSource(result.rule);wardrobe.open=true;customSources.open=false;sourceRows.at(-1).row.open=false;}
    else if(result.kind==='preserve'){addException(result.rule);cleanup.open=exceptionScope.open=true;}
    else{if(filterRows.length>=8)throw Error('Можно добавить до 8 правил удаления.');addFilter(result.rule);cleanup.open=true;customCleanup.open=false;}
    onDirty();message.textContent='Правило добавлено в это окно. Осталось нажать «Сохранить настройки».';
   }});
  }
- const dialogue=section(left,'❞ Текст на картинке','Текст на картинке'),dialogueFields={};
+ const dialogue=section(left,'💬 Сколько текста рисовать в комиксах?','Текст на картинке');
+ ui.note(dialogue,'Эти числа передаются режиссёру перед генерацией. Например, 2 реплики по 7 слов — не больше двух коротких фраз на страницу.');
+ const dialogueFields={};
  for(const [mode,title]of [['comic','Comic'],['story','Story Page']]){const row=el('div',undefined,dialogue,'ness-dialogue-row');el('span',title,row);for(const [suffix,label,max]of [['Lines','Максимум реплик на странице',8],['Words','Максимум слов в реплике',40]]){const key=mode+suffix,control=input(initial.dialogue[key],'number');control.min=suffix==='Lines'?'0':'1';control.max=String(max);control.setAttribute('data-setting','dialogue.'+key);dialogueFields[key]=field(row,label,control);}}
- const previewToggle=checkbox(left,'Показывать промпт перед отправкой',initial.previewEnabled);previewToggle.setAttribute('data-setting','previewEnabled');
+ const beforeSend=section(left,'🔎 Проверка задания перед отправкой','Просмотр промпта');
+ ui.note(beforeSend,'Покажем готовое описание картинки перед обращением к NovelAI. Можно прочитать, исправить и только потом отправить.');
+ const previewToggle=checkbox(beforeSend,'Показывать итоговый промпт перед генерацией',initial.previewEnabled);previewToggle.setAttribute('data-setting','previewEnabled');
+ const categories={wardrobe:[wardrobe],remove:[cleanup],keep:[cleanup,exceptionScope],posts:[posts],dialogue:[dialogue],preview:[beforeSend]};
+ const topSections=[wardrobe,posts,cleanup,dialogue,beforeSend];
+ topics.addEventListener('change',()=>{
+  const selected=categories[topics.value];
+  for(const section of topSections)section.hidden=Boolean(selected&&!selected.includes(section));
+  if(selected){for(const section of selected)section.open=true;
+   if(topics.value==='keep')exceptionScope.open=true;
+   if(topics.value==='remove')customCleanup.open=true;
+  }
+ });
  const number=e=>e.value.trim()?Number(e.value):NaN;
  function getValue(){return {version:1,wardrobe:{version:1,keepDefault:keepSaved.checked,sources:sourceRows.map(r=>({type:r.type.value,enabled:r.enabled.checked,...Object.fromEntries(Object.entries(r.fields).map(([k,e])=>[k,e.value]))}))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>r.type==='markers'?{type:'markers',start:r.first.value,end:r.second.value}:{pattern:r.first.value,flags:r.second.value}),exceptions:exceptionRows.map(r=>r.type==='markers'?{type:'markers',start:r.first.value,end:r.second.value,label:r.label.value.trim()}:{pattern:r.first.value,flags:r.second.value,group:r.group.value,label:r.label.value.trim()})},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),previewEnabled:previewToggle.checked};}
  return {element:root,getValue,dispose:()=>closeCoder?.()};
@@ -1001,17 +1143,19 @@ function createEditablePromptPanel(D, onDirty=()=>{}) {
  const ui=createUiKit(D), ext=globalThis.__spImagenExtension;
  const items=ext.listEditablePrompts(),values=Object.fromEntries(items.map(item=>[item.id,item.text]));
  const root=ui.el('div',undefined,null,'ness-prompt-settings');
- const label=ui.el('label','Выбери промпт',root,'ness-prompt-pick-label');
+ const label=ui.el('label','Что хочешь посмотреть?',root,'ness-prompt-pick-label');
  const select=D.createElement('select');select.className='ness-input';label.append(select);
  for(const item of items){const option=D.createElement('option');option.value=item.id;option.textContent=item.title;select.append(option);}
  const details=ui.el('p','',root,'ness-note'),area=ui.area('');area.className+=' ness-editable-prompt';area.spellcheck=false;
- ui.field(root,'Текст промпта · можно редактировать',area);
+ const editArea=ui.section(root,'Открыть и изменить текст промпта');
+ ui.note(editArea,'Менять текст необязательно. При открытии здесь будет промпт, который действительно используется расширением.');
+ ui.field(editArea,'Текст промпта',area);
  const actions=ui.el('div',undefined,root,'ness-settings-actions');
  const reset=ui.button('Вернуть исходный текст',actions);
  const status=ui.el('p','',root,'ness-note');
  function render(){const item=items.find(item=>item.id===select.value);if(!item)return;area.value=values[item.id];details.textContent=item.description;status.textContent=values[item.id]===item.original?'Исходный текст — без изменений.':'Есть изменения. Нажми «Сохранить настройки».';}
  area.addEventListener('input',()=>{values[select.value]=area.value;onDirty();const item=items.find(item=>item.id===select.value);status.textContent=area.value===item.original?'Исходный текст.':'Не сохранено';});
- select.onchange=render;
+ select.onchange=()=>{editArea.open=false;render();};
  reset.onclick=()=>{const item=items.find(item=>item.id===select.value);values[item.id]=item.original;render();onDirty();};
  render();
  return {element:root,getValue:()=>({...values})};
