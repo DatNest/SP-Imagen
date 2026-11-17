@@ -12,7 +12,7 @@
 .spi-dialog.spi-prompt-window { width: min(920px, 100%); }
 .spi-dialog-head { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; }
 .spi-dialog-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 20px; line-height: 1.25; }
-.spi-dialog-head .spi-back { flex: none; width: 38px; min-width: 38px; padding: 0; font-size: 20px; }
+.spi-dialog-head .spi-back, .spi-dialog-head .spi-close { flex: none; width: 38px; min-width: 38px; min-height: 38px; padding: 0; font-size: 20px; }
 .spi-dialog h3 { margin: 0 0 9px; font-size: 15px; }
 .spi-dialog p { margin: 5px 0 10px; line-height: 1.4; }
 .spi-prompt-list { display: grid; gap: 8px; }

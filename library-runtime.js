@@ -908,8 +908,12 @@ function insertVisibleAppearance(prompt,records){
   if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
   seen.add(id);
   if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
-  const {ranges,selections}=records.get(id);
+  const record=records.get(id),{ranges,selections}=record;
   const tags=visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean);
+  const exposure=reviewedWardrobeExposure(record.outfit);
+  const regions=NESS_APPEARANCE_PRESETS[spec]?.regions||[];
+  if(exposure.upper&&regions.some(region=>NESS_UPPER_REGIONS.includes(region))&&record.nudeUpper)tags.push(record.nudeUpper.replace(/\s+/g,' ').replace(/[,;]+$/,''));
+  if(exposure.lower&&regions.some(region=>region==='lower'||region==='legs')&&record.nudeLower)tags.push(record.nudeLower.replace(/\s+/g,' ').replace(/[,;]+$/,''));
   return tags.length?(before||'')+tags.join(', ')+';':after||'';
  });
  if(result.includes('[[NESS_VIS:'))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');

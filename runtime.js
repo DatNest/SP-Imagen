@@ -3,6 +3,50 @@ export function createSpImagenRuntime(){
 async function openLibrary(){return await globalThis.__spImagenExtension.openLibrary();}
 // Module: wardrobe
 const WARDROBE_RULE_DEFAULTS={markers:{namePrefix:'',nameSuffix:'',outfitEnd:'',blockStart:'',blockEnd:''},regex:{pattern:'',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},html:{rowSelector:'',nameSelector:'',nameAttribute:'',outfitSelector:'',outfitAttribute:'',stripSelector:''}};
+function normalizeReviewedWardrobeName(value){
+ return String(value||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е').replace(/[_\s-]+outfit$/i,'').replace(/\s+/g,' ').trim();
+}
+function parseReviewedWardrobe(value){
+ const records=new Map();let current=null;
+ const chunks=String(value||'').replace(/\r\n?/g,'\n').split(/\n|;\s*(?=[^:;\n]{1,80}[_\s-]+outfit\s*[:：])/i);
+ for(const rawLine of chunks){
+  const line=rawLine.trim();if(!line)continue;
+  const match=line.match(/^([^:：\n]{1,80})\s*[:：]\s*(.*)$/);
+  if(match&&/[_\s-]+outfit\s*$/i.test(match[1])){
+   const name=match[1].replace(/[_\s-]+outfit\s*$/i,'').trim(),key=normalizeReviewedWardrobeName(name);
+   current=key?{name,outfit:match[2].trim()}:null;
+   if(current)records.set(key,current);
+  }else if(current){
+   current.outfit=(current.outfit+' '+line).trim();
+  }
+ }
+ for(const [key,record] of records)if(!record.outfit)records.delete(key);
+ return records;
+}
+function reviewedWardrobeForEntry(entry,records){
+ const names=[entry?.name,...(Array.isArray(entry?.aliases)?entry.aliases:[])].map(normalizeReviewedWardrobeName).filter(Boolean);
+ for(const name of names)if(records.has(name))return records.get(name).outfit;
+ for(const name of names)for(const [candidate,record] of records)if(name.length>2&&candidate.length>2&&(name.startsWith(candidate+' ')||candidate.startsWith(name+' ')))return record.outfit;
+ return '';
+}
+function reviewedWardrobeExposure(value){
+ const text=String(value||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е');
+ const full=/(?:\b(?:fully|completely|entirely)\s+(?:nude|naked)\b|\b(?:nude|naked)\b(?![- ](?:color|colou?r|tone|shade))|без одежды|нагишом|полностью обнажен|полностью обнажён|полностью гол(?:ый|ая|ое))/i.test(text);
+ const upper=full||/(?:\b(?:shirtless|topless|bare[- ]chested|nude upper body|upper body (?:nude|naked)|chest exposed)\b|без (?:рубашки|майки|топа|одежды сверху)|гол(?:ый|ая) торс|обнаженн?(?:ый|ая)? торс|обнажен(?:ный|а)? верх|раздет(?:ый|а)? по пояс|открыт(?:ая|ый) грудь)/i.test(text);
+ const lower=full||/(?:\b(?:bottomless|pantless|no (?:pants|trousers|skirt|underwear)|nude lower body|lower body (?:nude|naked)|genitals exposed)\b|без (?:штанов|брюк|юбки|белья|трусов)|гол(?:ый|ая) низ|обнажен(?:ный|а)? низ|открыт(?:ые|ый) генитал)/i.test(text);
+ return {upper,lower};
+}
+function reviewedWardrobeForPerson(person,records){
+ const id=String(person?.id||'').trim();
+ if(id){const exact=(records||[]).find(record=>record.id===id);if(exact?.outfit)return exact.outfit;}
+ const name=normalizeReviewedWardrobeName(person?.name);
+ if(!name)return '';
+ for(const record of records||[]){
+  const names=[record.promptName,record.name,...(Array.isArray(record.aliases)?record.aliases:[])].map(normalizeReviewedWardrobeName).filter(Boolean);
+  if(names.includes(name))return String(record.outfit||'');
+ }
+ return '';
+}
 function normalizeNessRegexRule(rule){
  let pattern=rule?.pattern,flags=rule?.flags??'';
  if(typeof pattern!=='string'||!pattern||pattern.length>4000)throw Error('Нужно правило поиска длиной от 1 до 4000 символов.');
@@ -1485,7 +1529,7 @@ function structuredDirectorRatio(config,kind){
  if(kind==='snapshot'&&/\b(?:vertical|tall portrait|full-length portrait)\b/i.test(framing))return '9:16';
  return '2:3';
 }
-function convertStructuredDirectorConfig(config,kind){
+function convertStructuredDirectorConfig(config,kind,context={}){
  if(!isStructuredDirectorObject(config)||!Array.isArray(config.people)||config.people.length<1||config.people.length>22)return null;
  const scene=formatStructuredScene(config.scene);if(!scene)return null;
  const bubbles=formatStructuredBubbles(config.bubbles);if(!bubbles)return null;
@@ -1501,7 +1545,8 @@ function convertStructuredDirectorConfig(config,kind){
   for(const [key,value] of Object.entries(person))if(!['id','name','gender','details','actions'].includes(key)){
    const text=structuredDirectorScalar(value);if(text)extras.push(text);else if(value!==undefined&&value!==null)return null;
   }
-  people.push({id,name,gender,details,actions,extras});
+  const outfit=cleanStructuredDirectorPart(reviewedWardrobeForPerson(person,context.wardrobe));
+  people.push({id,name,gender,details,actions,extras,outfit});
  }
  const counts=new Map();
  for(const person of people)counts.set(person.gender,(counts.get(person.gender)||0)+1);
@@ -1512,7 +1557,9 @@ function convertStructuredDirectorConfig(config,kind){
  }
  const base=[countText,...rootDetails,scene].filter(Boolean).join('; ');
  const entries=people.map(person=>{
-  const body=[person.gender,person.name,person.details,person.actions,...person.extras].filter(Boolean).join(', ');
+  const detailText=person.details.normalize('NFKC').toLowerCase();
+  const exactOutfit=person.outfit&&!detailText.includes(person.outfit.normalize('NFKC').toLowerCase())?'current outfit: '+person.outfit:'';
+  const body=[person.gender,person.name,person.details,exactOutfit,person.actions,...person.extras].filter(Boolean).join(', ');
   return body.replace(/[,;\s]+$/,'');
  });
  const visibleText=formatStructuredText(config.text,bubbles.text);
@@ -1527,14 +1574,14 @@ function validateDirectorConfig(config){
  }
  return config;
 }
-function parseDirectorResponse(raw,kind='snapshot'){
+function parseDirectorResponse(raw,kind='snapshot',context={}){
  const json=extractDirectorJson(raw);let config,repaired=false;
  try{config=JSON.parse(json);}catch{
   config=repairDirectorJson(json);
   if(!config)throw Error('Режиссёр вернул повреждённый или обрезанный JSON. Повтори запуск; исходный ответ сохранён в naicom_last_director_raw.');
   repaired=true;
  }
- const structured=convertStructuredDirectorConfig(config,kind);
+ const structured=convertStructuredDirectorConfig(config,kind,context);
  if(structured){config=structured;repaired=true;}
  return {config:validateDirectorConfig(config),repaired};
 }
@@ -1716,8 +1763,12 @@ function insertVisibleAppearance(prompt,records){
   if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
   seen.add(id);
   if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
-  const {ranges,selections}=records.get(id);
+  const record=records.get(id),{ranges,selections}=record;
   const tags=visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean);
+  const exposure=reviewedWardrobeExposure(record.outfit);
+  const regions=NESS_APPEARANCE_PRESETS[spec]?.regions||[];
+  if(exposure.upper&&regions.some(region=>NESS_UPPER_REGIONS.includes(region))&&record.nudeUpper)tags.push(record.nudeUpper.replace(/\s+/g,' ').replace(/[,;]+$/,''));
+  if(exposure.lower&&regions.some(region=>region==='lower'||region==='legs')&&record.nudeLower)tags.push(record.nudeLower.replace(/\s+/g,' ').replace(/[,;]+$/,''));
   return tags.length?(before||'')+tags.join(', ')+';':after||'';
  });
  if(result.includes('[[NESS_VIS:'))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
@@ -2008,21 +2059,9 @@ let wardrobeStatus = 'Одежда не найдена в последних RP-
 let wardrobeCount = 0;
 if (!manualMode) {
   const fallback = String(v.naicom_rp_outfits || '');
-  const canon = s => normalize(s).replace(/[_\s-]+outfit$/i,'').trim();
-  const matchesPerson = (a,b) => {
-    const x=canon(a), y=canon(b);
-    return x===y || (x.length>2 && y.startsWith(x+' ')) ||
-      (y.length>2 && x.startsWith(y+' '));
-  };
-  const candidates=fallback.split(/\n|;\s*(?=[^:;\n]{1,80}[_\s-]outfit\s*[:：])/i);
-  for (const item of candidates) {
-    const match=item.trim().match(/^([^:：\n]{1,80})\s*[:：]\s*(.{1,1800})$/);
-    if (!match || !/[_\s-]outfit\s*$/i.test(match[1])) continue;
-    const name=match[1].replace(/[_\s-]+outfit\s*$/i,'').trim();
-    const value=match[2].trim();
-    if (!name || skipEmpty(value)) continue;
-    if ([...assignments.values()].some(a=>matchesPerson(a.name,name))) continue;
-    assign(name,value,'RP wardrobe tags');
+  for (const {name,outfit} of parseReviewedWardrobe(fallback).values()) {
+    if (skipEmpty(outfit)) continue;
+    assign(name,outfit,'RP wardrobe tags');
     wardrobeCount++;
   }
   wardrobeStatus = wardrobeCount
@@ -2160,7 +2199,8 @@ if(v.naicom_preview_status!=='approved'||!v.naicom_run_ticket)throw Error('Сн�
 if(!masterLibraryRaw())throw Error('Открой «Библиотека» и сохрани записи персонажей.');
 const data=loadMasterLibrary();
 const chosen=new Set(v.naicom_present_ids||[]);
-const lines=[],visibility=new Map();
+const reviewedWardrobe=parseReviewedWardrobe(v.naicom_tracker_outfits);
+const lines=[],visibility=new Map(),wardrobe=[];
 for(const [id,e] of Object.entries({...data.personas,...data.characters})){
  if(!chosen.has(id))continue;
  lines.push('CHARACTER: '+e.name);
@@ -2168,11 +2208,18 @@ for(const [id,e] of Object.entries({...data.personas,...data.characters})){
  if(typeof e.promptName==='string'&&e.promptName.trim())lines.push('Prompt name: '+e.promptName.trim());
  const subject=typeof e.subject==='string'?e.subject.trim().toLowerCase():'';
  if(['girl','boy','cat','other'].includes(subject))lines.push('Subject: '+subject);
+ const outfit=reviewedWardrobeForEntry(e,reviewedWardrobe);
+ wardrobe.push({id,name:String(e.name||'').trim(),promptName:String(e.promptName||'').trim(),aliases:Array.isArray(e.aliases)?e.aliases:[],outfit});
  if(e.appearanceRanges?.length||Object.keys(e.appearanceSelections||{}).length){
-  visibility.set(id,{ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{}});
+  visibility.set(id,{ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{},outfit,nudeUpper:String(e.nudeUpper||'').trim(),nudeLower:String(e.nudeLower||'').trim()});
   lines.push('NESS_VIS character ID: '+id);
  }else lines.push('Fixed appearance: '+e.base);
- for(const [key,label] of [['thighMarks','Thigh marks, only if visible'],['kneeMarks','Knee marks, only if visible'],['shinMarks','Shin marks, only if visible'],['shoulderMarks','Shoulder marks, only if visible'],['forearmMarks','Forearm marks, only if visible'],['nudeUpper','Upper body traits, only if uncovered and visible'],['nudeLower','Lower body traits, only if uncovered and visible']])if(e[key])lines.push(label+': '+e[key]);
+ for(const [key,label] of [['thighMarks','Thigh marks, only if visible'],['kneeMarks','Knee marks, only if visible'],['shinMarks','Shin marks, only if visible'],['shoulderMarks','Shoulder marks, only if visible'],['forearmMarks','Forearm marks, only if visible']])if(e[key])lines.push(label+': '+e[key]);
+ if(!visibility.has(id)){
+  const exposure=reviewedWardrobeExposure(outfit);
+  if(exposure.upper&&e.nudeUpper)lines.push('Upper body traits, only if uncovered and visible: '+e.nudeUpper);
+  if(exposure.lower&&e.nudeLower)lines.push('Lower body traits, only if uncovered and visible: '+e.nudeLower);
+ }
  lines.push('');
 }
 delete v.naicom_attribute_records;
@@ -2183,7 +2230,7 @@ if(npcText)lines.push('CONFIRMED NPC APPEARANCE AND CLOTHING — authoritative v
 
 v.naicom_structured_library=lines.join('\n');
 v.naicom_prepared_ticket=v.naicom_run_ticket;
-nessPreparedVisibility.set(st.chat,{ticket:v.naicom_prepared_ticket,records:visibility,rules:data.appearanceRules});
+nessPreparedVisibility.set(st.chat,{ticket:v.naicom_prepared_ticket,records:visibility,wardrobe,rules:data.appearanceRules});
 await saveNessGenerationMetadata(st,'подготовка внешности');return 'Внешность подготовлена';
 
 }
@@ -2371,7 +2418,7 @@ async function renderImage(kind){
   const identityInstruction=/^(?:Prompt name|Subject):/m.test(source['FIXED CHARACTER APPEARANCE'])
    ?'\n\nLIBRARY IDENTITY FIELDS\nFor a visible library character, use the supplied Subject as the entry category and for the corresponding subject count. Use Prompt name as the name immediately after that category, retaining any needed canon identity. For example, Subject boy and Prompt name Kian give | boy, Kian, ... . Do not repeat the same subject or name from Fixed appearance. Preserve the other applicable source wording.'
    :'';
-  const appearancePunctuation='\n\nSeparate fixed appearance tags with commas and end the final fixed appearance tag with one semicolon before any clothing, pose or other content.';
+  const appearancePunctuation=visibility.size?'\n\nSeparate fixed appearance tags with commas and end the final fixed appearance tag with one semicolon before any clothing, pose or other content.':'';
   const npcLanguage=String(variables.naicom_tracker_npcs||'').trim()?'\n\nNPC LANGUAGE OVERRIDE: Write NPC names (transliterated when needed), appearance and clothing in English in every descriptive section. Translate Russian NPC descriptions even when other rules require verbatim copying. Preserve the original language of in-image dialogue, messages and lettering and their Text: entries.':'';
   const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules)+npcLanguage;
   const raw=await requestNessText(kind,[
@@ -2382,7 +2429,7 @@ async function renderImage(kind){
   variables.naicom_last_director_raw=raw;
   await saveNessGenerationMetadata(st,'получен ответ режиссёра');
   requireOrigin();
-  const parsed=parseDirectorResponse(raw,kind),config=parsed.config;
+  const parsed=parseDirectorResponse(raw,kind,{wardrobe:prepared?.wardrobe||[]}),config=parsed.config;
   variables.naicom_last_transport_repaired=parsed.repaired;
   config.prompt=normalizeImagePrompt(config.prompt);
   if(npcLanguage){config.prompt=await repairNpcPromptLanguage(kind,config.prompt);requireOrigin();}
@@ -2429,6 +2476,6 @@ async function generateAt(){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{cleanRpVisualText,normalizeImagePrompt,parseDirectorResponse,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{cleanRpVisualText,normalizeImagePrompt,parseDirectorResponse,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,parseReviewedWardrobe,reviewedWardrobeForEntry,reviewedWardrobeForPerson,reviewedWardrobeExposure,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }

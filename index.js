@@ -128,7 +128,13 @@ function shell(title, className = '', options = {}) {
     backButton.hidden = !options.back;
     const heading = document.createElement('h2');
     heading.textContent = title;
-    head.append(backButton, heading);
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'menu_button spi-close';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Закрыть');
+    closeButton.hidden = !options.closeButton;
+    head.append(backButton, heading, closeButton);
     dialog.append(head);
     overlay.append(dialog);
     document.body.append(overlay);
@@ -149,6 +155,7 @@ function shell(title, className = '', options = {}) {
         resolveClosed();
     };
     backButton.addEventListener('click', () => typeof options.back === 'function' ? options.back() : close());
+    closeButton.addEventListener('click', close);
     const onKey = event => {
         if (overlay.inert || [...document.querySelectorAll('.spi-overlay')].at(-1) !== overlay) return;
         if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); close(); return; }
@@ -161,7 +168,7 @@ function shell(title, className = '', options = {}) {
     };
     document.addEventListener('keydown', onKey, true);
     overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
-    return { overlay, dialog, close, closed: closedPromise, heading, backButton };
+    return { overlay, dialog, close, closed: closedPromise, heading, backButton, closeButton };
 }
 
 function button(label, parent, action, primary = false) {
@@ -550,7 +557,7 @@ function openHub(page = 'home') {
         }
         body.querySelector('button')?.focus();
     };
-    const { overlay, dialog, close, heading, backButton } = shell('SP Imagen', 'spi-hub', { back: () => render('home') });
+    const { overlay, dialog, close, heading, backButton } = shell('SP Imagen', 'spi-hub', { back: () => render('home'), closeButton: true });
     const body = document.createElement('nav');
     body.className = 'spi-hub-menu';
     body.setAttribute('aria-label', 'Разделы SP Imagen');
@@ -685,7 +692,7 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.2.5',
+    version: '2.2.8',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,
