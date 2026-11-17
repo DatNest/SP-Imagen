@@ -171,14 +171,32 @@ async function readConfiguredWardrobe(raw,settings){
  }
  return {text,pairs};
 }
+// Apply removal rules to the ORIGINAL post, before wardrobe extraction consumes its block.
+// Preservation rules win over overlapping removal rules, as in cleanConfiguredRp.
+async function stripConfiguredNoiseBeforeWardrobe(raw,options){
+ const rules=options.cleanup?.customPatterns||[];
+ if(!rules.length)return String(raw||'');
+ const protectedText=await regexWardrobe(String(raw||''),{
+  exceptions:options.cleanup?.exceptions||[],patterns:rules
+ },'process');
+ let text=protectedText.text;
+ for(const item of protectedText.items||[]){
+  // Preserve requested content rather than the original technical wrapper.
+  text=text.split(item.token).join(formatNessPreservedText(item));
+ }
+ return text;
+}
 async function collectConfiguredRp(kind,settings,options=loadGen2Settings(),endIndex=null){
  const st=SillyTavern.getContext(),history=st.chat||[],recent=[],wardrobe=new Map();
  const count=options.posts[kind];let warning='';
  for(let i=endIndex===null?history.length-1:endIndex;i>=0&&recent.length<count;i--){
   const m=history[i],raw=getCarrierRpText(m,Boolean(options.cleanup.exceptions?.length));if(!raw)continue;
+  // A state marker may be INSIDE a wardrobe wrapper; a later cleanup cannot reach it.
+  // Fail visibly if a configured removal rule fails, rather than leak the marker into clothing.
+  const filteredRaw=await stripConfiguredNoiseBeforeWardrobe(raw,options);
   let read;
-  try{read=await readConfiguredWardrobe(raw,settings);}
-  catch(e){warning='Гардероб: '+String(e?.message||e);read={text:stripWardrobeTags(raw),pairs:[]};}
+  try{read=await readConfiguredWardrobe(filteredRaw,settings);}
+  catch(e){warning='Гардероб: '+String(e?.message||e);read={text:stripWardrobeTags(filteredRaw),pairs:[]};}
   const local=new Map(read.pairs);for(const [name,wear] of local)if(!wardrobe.has(name))wardrobe.set(name,wear);
   let text;try{text=await cleanConfiguredRp(read.text,options);}catch(e){warning='Очистка: '+String(e?.message||e);text=cleanRpVisualText(read.text);}
   if(text)recent.unshift({m,raw,text,index:i});
@@ -1514,11 +1532,13 @@ function formatStructuredScene(scene){
  }
  return parts.join('; ');
 }
-function formatStructuredBubbles(bubbles){
+function formatStructuredBubbles(bubbles,limits=null){
  if(bubbles===undefined)return {description:'',text:[]};
  if(!Array.isArray(bubbles)||bubbles.length>8)return null;
  const descriptions=[],text=[];
- for(const [index,bubble] of bubbles.entries()){
+ const maxLines=limits&&Number.isInteger(limits.lines)?limits.lines:8;
+ const maxWords=limits&&Number.isInteger(limits.words)?limits.words:Infinity;
+ for(const bubble of bubbles){
   if(!isStructuredDirectorObject(bubble))return null;
   const fields=[];let words='';
   for(const [key,value] of Object.entries(bubble)){
@@ -1526,8 +1546,12 @@ function formatStructuredBubbles(bubbles){
    if(key==='text'){words=part;continue;}
    if(part)fields.push(part);
   }
-  if(words){fields.push('saying "'+words+'"');text.push(words);}
-  if(fields.length)descriptions.push('Speech bubble '+(index+1)+': '+fields.join(', '));
+  // A structured response is a compatibility fallback, not authority to exceed user limits.
+  // Skip unsuitable long lines; never fabricate an excerpt or silently split a quote.
+  if(!words||text.length>=maxLines||words.trim().split(/\s+/).length>maxWords)continue;
+  text.push(words);
+  fields.push('saying "'+words+'"');
+  descriptions.push('Speech bubble '+text.length+': '+fields.join(', '));
  }
  return {description:descriptions.join('; '),text};
 }
@@ -1548,7 +1572,9 @@ function structuredDirectorRatio(config,kind){
 function convertStructuredDirectorConfig(config,kind,context={}){
  if(!isStructuredDirectorObject(config)||!Array.isArray(config.people)||config.people.length<1||config.people.length>22)return null;
  const scene=formatStructuredScene(config.scene);if(!scene)return null;
- const bubbles=formatStructuredBubbles(config.bubbles);if(!bubbles)return null;
+ const dialogue=kind==='comic'?{lines:context.dialogue?.comicLines,words:context.dialogue?.comicWords}
+  :kind==='story_page'?{lines:context.dialogue?.storyLines,words:context.dialogue?.storyWords}:null;
+ const bubbles=formatStructuredBubbles(config.bubbles,dialogue);if(!bubbles)return null;
  if(config.text!==undefined&&typeof config.text!=='string')return null;
  const people=[];
  for(const person of config.people){
@@ -1580,7 +1606,9 @@ function convertStructuredDirectorConfig(config,kind,context={}){
   const body=[person.gender,person.name,person.details,exactOutfit,person.actions,...person.extras].filter(Boolean).join(', ');
   return body.replace(/[,;\s]+$/,'');
  });
- const visibleText=formatStructuredText(config.text,bubbles.text);
+ // When bubble objects are supplied, use ONLY the selected bubbles for printed dialogue.
+ // config.text often duplicates ALL original bubbles and would reintroduce lines we filtered out.
+ const visibleText=formatStructuredText(Array.isArray(config.bubbles)?undefined:config.text,bubbles.text);
  const prompt=base+entries.map(entry=>' | '+entry).join('')+(visibleText?'\n\nText: '+visibleText:'');
  return {prompt,aspect_ratio:structuredDirectorRatio(config,kind),image_size:'1K'};
 }
@@ -2448,21 +2476,10 @@ async function renderImage(kind){
   variables.naicom_last_director_raw=raw;
   await saveNessGenerationMetadata(st,'получен ответ режиссёра');
   requireOrigin();
-  const parsed=parseDirectorResponse(raw,kind,{wardrobe:prepared?.wardrobe||[]}),config=parsed.config;
+  const parsed=parseDirectorResponse(raw,kind,{wardrobe:prepared?.wardrobe||[],dialogue:runtimeSettings.dialogue}),config=parsed.config;
   variables.naicom_last_transport_repaired=parsed.repaired;
-  // Structured JSON is a nonstandard director response. Never silently remove dialogue.
-  // Tell the user when it bypasses the limits configured for the official director.
-  if(parsed.structuredSource&&(kind==='comic'||kind==='story_page')){
-   const lines=kind==='comic'?runtimeSettings.dialogue.comicLines:runtimeSettings.dialogue.storyLines;
-   const words=kind==='comic'?runtimeSettings.dialogue.comicWords:runtimeSettings.dialogue.storyWords;
-   const speech=Array.isArray(parsed.structuredSource.bubbles)?parsed.structuredSource.bubbles:[];
-   const tooLong=speech.filter(b=>String(b?.text||'').trim().split(/\s+/).filter(Boolean).length>words).length;
-   if(speech.length>lines||tooLong){
-    const explanation='Нестандартный JSON режиссёра: '+speech.length+' реплик (настройка '+lines+'), '+tooLong+' длиннее '+words+' слов. Реплики НЕ обрезаны; проверь итоговый промпт.';
-    console.warn('[SP Imagen]',explanation);
-    try{(window?.toastr||globalThis.toastr)?.warning?.(explanation,'SP Imagen');}catch{}
-   }
-  }
+  // Structured compatibility responses are constrained by the user's dialogue limits
+  // in convertStructuredDirectorConfig. Official director prompts remain unchanged.
   config.prompt=normalizeImagePrompt(config.prompt);
   // Do not send the complete final director prompt through another model rewrite.
   // This would alter protected appearance details, dialogue, and panel instructions.

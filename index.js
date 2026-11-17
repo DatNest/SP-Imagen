@@ -693,7 +693,7 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.3.0',
+    version: '2.3.2',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,
