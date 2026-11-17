@@ -298,3 +298,61 @@
  #sp-imagen-review-panel .ness-tag-badge{min-height:36px;padding:7px 9px;}
  }
 @media(prefers-reduced-motion:reduce){#sp-imagen-review-panel *{scroll-behavior:auto!important;}}
+
+/* Model-dependent NovelAI controls follow the current SillyTavern theme. */
+.spi-dialog .spi-model-notice {
+  grid-column: 1 / -1; margin: 0; padding: 8px 10px;
+  border-inline-start: 2px solid var(--SmartThemeQuoteColor, currentColor);
+  border-radius: 4px; background: color-mix(in srgb, currentColor 5%, transparent);
+  font-size: 12px; font-weight: 400; line-height: 1.45;
+}
+.spi-dialog .spi-field[hidden] { display: none !important; }
+.spi-dialog :is(input,select,textarea):disabled { opacity: .56; cursor: not-allowed; }
+
+#sp-imagen-review-panel .ness-settings-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px;}
+#sp-imagen-review-panel .ness-settings-tabs button[aria-pressed="true"]{border-color:var(--ness-accent)!important;font-weight:700;}
+#sp-imagen-review-panel .ness-prompt-settings{display:flex;flex-direction:column;gap:8px;min-width:0;}
+#sp-imagen-review-panel .ness-prompt-settings .ness-editable-prompt{height:clamp(240px,50dvh,570px);min-height:240px;resize:vertical;font:14px/1.6 ui-monospace,monospace!important;}
+#sp-imagen-review-panel .ness-prompt-settings .ness-prompt-pick-label{display:flex;flex-direction:column;gap:6px;}
+
+#sp-imagen-review-panel .ness-exposure-list{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+#sp-imagen-review-panel .ness-exposure-person{display:flex;flex-direction:column;gap:5px;padding:8px;border:1px solid var(--ness-border);border-radius:9px;}
+#sp-imagen-review-panel .ness-exposure-person[hidden]{display:none;}
+#sp-imagen-review-panel .ness-exposure-checks{display:flex;flex-wrap:wrap;gap:5px 13px;}
+#sp-imagen-review-panel .ness-exposure-checks .ness-check-label{margin:0!important;}
+
+/* Mobile dialogs: safe margins on every edge, one independent scroll surface. */
+.spi-overlay {box-sizing:border-box;overflow:hidden;overscroll-behavior:contain;}
+.spi-dialog {min-width:0;min-height:0;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
+@media (max-width: 767px), (pointer: coarse) {
+ .spi-overlay {
+  align-items:center!important;
+  place-items:center!important;
+  padding:calc(14px + env(safe-area-inset-top,0px))
+          calc(14px + env(safe-area-inset-right,0px))
+          calc(14px + env(safe-area-inset-bottom,0px))
+          calc(14px + env(safe-area-inset-left,0px))!important;
+  overflow:hidden!important;
+ }
+ .spi-dialog {
+  width:100%!important;
+  max-width:100%!important;
+  max-height:100%!important;
+  border-radius:14px!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  overscroll-behavior:contain;
+ }
+ #sp-imagen-review-overlay {
+  padding:calc(14px + env(safe-area-inset-top,0px))
+          calc(14px + env(safe-area-inset-right,0px))
+          calc(14px + env(safe-area-inset-bottom,0px))
+          calc(14px + env(safe-area-inset-left,0px))!important;
+  overflow:hidden!important;
+ }
+ #sp-imagen-review-panel {width:100%!important;height:100%!important;max-height:100%!important;min-height:0!important;overflow:hidden!important;}
+ #sp-imagen-review-panel [data-review-scroll] {flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;-webkit-overflow-scrolling:touch;}
+ #sp-imagen-review-panel [data-review-actions] {flex:none!important;}
+ #sp-imagen-review-panel .ness-child {max-height:100%!important;overflow:hidden!important;}
+ #sp-imagen-review-panel .ness-child-body {overflow-y:auto!important;overscroll-behavior:contain;}
+}

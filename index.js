@@ -4,10 +4,47 @@ import { createSpImagenRuntime } from './runtime.js';
 import { createSpImagenLibraryRuntime } from './library-runtime.js';
 import { installSpImagenMediaSlots } from './media-slots.js';
 import { SP_IMAGEN_PROMPTS } from './official-prompts.js';
-import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, getNovelAINegativePresetOptions, normalizeNovelAISettings } from './novelai.js';
+import { SP_AUX_PROMPTS, SP_AUX_DESCRIPTIONS } from './editable-prompts.js';
+import { NOVELAI_MODELS, NOVELAI_SAMPLERS, NOVELAI_SCHEDULES, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, getNovelAINegativePresetOptions, novelAIModelCapabilities, resolveNovelAIRequestSettings, normalizeNovelAISettings } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, testSillyTavernProfile, testTextApi } from './text-api.js';
 
 const EXTENSION_KEY = 'spImagen';
+const PROMPT_DESCRIPTIONS = Object.freeze({
+    sp_ness_snapshot_director: { title: 'Snapshot · режиссёр', description: 'Главный системный промпт для одного кадра. Передаётся режиссёру вместе с RP, библиотекой, одеждой и композицией.' },
+    sp_ness_comic_director: { title: 'Comic · режиссёр', description: 'Главный системный промпт комикса: панели, краткие реплики и оформление пузырей.' },
+    sp_ness_story_page_director: { title: 'Story Page · режиссёр', description: 'Главный системный промпт страницы с последовательными моментами и репликами.' },
+});
+const ALL_DEFAULT_PROMPTS = Object.freeze({ ...SP_IMAGEN_PROMPTS, ...SP_AUX_PROMPTS });
+function promptOverrides() {
+    const store = settings();
+    if (!store.promptOverrides || typeof store.promptOverrides !== 'object' || Array.isArray(store.promptOverrides)) store.promptOverrides = {};
+    return store.promptOverrides;
+}
+function effectivePrompt(id) {
+    if (!Object.hasOwn(ALL_DEFAULT_PROMPTS, id)) return '';
+    const override = promptOverrides()[id];
+    return typeof override === 'string' && override.trim() ? override : ALL_DEFAULT_PROMPTS[id];
+}
+function listEditablePrompts() {
+    return Object.keys(ALL_DEFAULT_PROMPTS).map(id => ({
+        id, title: PROMPT_DESCRIPTIONS[id]?.title || SP_AUX_DESCRIPTIONS[id]?.title || id,
+        description: PROMPT_DESCRIPTIONS[id]?.description || SP_AUX_DESCRIPTIONS[id]?.description || '',
+        text: effectivePrompt(id), original: ALL_DEFAULT_PROMPTS[id], changed: effectivePrompt(id) !== ALL_DEFAULT_PROMPTS[id],
+    }));
+}
+async function savePromptOverrides(values) {
+    const previous = { ...promptOverrides() };
+    const next = {};
+    for (const [id, value] of Object.entries(values || {})) {
+        if (!Object.hasOwn(ALL_DEFAULT_PROMPTS, id)) throw Error('Неизвестный промпт: ' + id);
+        if (typeof value !== 'string' || !value.trim() || value.length > 60000) throw Error('Промпт «' + id + '» должен содержать от 1 до 60 000 символов.');
+        if (value !== ALL_DEFAULT_PROMPTS[id]) next[id] = value;
+    }
+    settings().promptOverrides = next;
+    try { await context().saveSettingsDebounced?.(); }
+    catch (error) { settings().promptOverrides = previous; throw error; }
+}
+
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -129,7 +166,7 @@ function button(label, parent, action, primary = false) {
 }
 
 function shippedPrompt(name) {
-    return SP_IMAGEN_PROMPTS[name] ?? '';
+    return effectivePrompt(name);
 }
 
 function openPromptWindow(name) {
@@ -260,41 +297,84 @@ function openNovelAISettings({ back = false } = {}) {
     formField(grid, 'Постоянный API-токен NovelAI', tokenWrap, 'Токен NovelAI, обычно начинается с pst-.');
     const endpoint = input(draft.endpoint); formField(grid, 'Адрес NovelAI', endpoint, 'Обычно https://image.novelai.net');
     const model = select(NOVELAI_MODELS, draft.model); formField(grid, 'Модель', model);
-    const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution); formField(grid, 'Размер', resolution, 'При защите Anlas используется Normal.');
-    const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50'; formField(grid, 'Steps', steps);
+    const modelNotice = document.createElement('p');
+    modelNotice.className = 'spi-model-notice';
+    grid.append(modelNotice);
+    const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution);
+    formField(grid, 'Размер', resolution, 'Защита Anlas допускает Small и Normal. Выбор Big сохраняется на случай отключения защиты.');
+    const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50';
+    formField(grid, 'Steps', steps);
     const cfg = input(draft.cfgScale, 'number'); cfg.min = '0'; cfg.max = '10'; cfg.step = '0.1'; formField(grid, 'CFG scale', cfg);
-    const rescale = input(draft.cfgRescale, 'number'); rescale.min = '0'; rescale.max = '1'; rescale.step = '0.01'; formField(grid, 'CFG rescale', rescale);
-    const sampler = select(NOVELAI_SAMPLERS, draft.sampler); formField(grid, 'Sampler', sampler);
+    const rescale = input(draft.cfgRescale, 'number'); rescale.min = '0'; rescale.max = '1'; rescale.step = '0.01';
+    const rescaleControl = formField(grid, 'CFG rescale', rescale);
+    const sampler = select(NOVELAI_SAMPLERS, draft.sampler);
+    const samplerControl = formField(grid, 'Sampler', sampler);
+    const scheduler = select(NOVELAI_SCHEDULES, draft.noiseSchedule);
+    const schedulerControl = formField(grid, 'Scheduler', scheduler, 'Доступен для моделей V4.5. Для V5 этот параметр не отправляется.');
     const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
     const negativePreset = select(getNovelAINegativePresetOptions(draft.model), draft.negativePreset);
-    const negativePresetControl = formField(grid, 'Встроенный негатив', negativePreset, 'Подбирается для выбранной модели и добавляется перед вашим текстом.');
+    const negativePresetControl = formField(grid, 'Встроенный негатив', negativePreset, 'Пресеты подбираются по выбранной модели.');
     const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
-    const negativeControl = formField(grid, 'Дополнительный негатив', negative, 'Ваши теги сохраняются отдельно и не заменяются обновлениями.');
-    const refreshNegativeControls = () => {
-        const medium = model.value === 'nai-diffusion-5-full-medium';
-        const selected = negativePreset.value || draft.negativePreset;
+    const negativeControl = formField(grid, 'Дополнительный негатив', negative, 'Ваш текст сохраняется при смене модели.');
+
+    // Keep user-adjustable High/Curated settings while Medium temporarily locks controls.
+    const preferred = {
+        resolution: draft.resolution, steps: draft.steps, sampler: draft.sampler,
+        cfgRescale: draft.cfgRescale, noiseSchedule: draft.noiseSchedule,
+        negativePreset: draft.negativePreset,
+    };
+    for (const [node, key] of [[resolution, 'resolution'], [steps, 'steps'], [sampler, 'sampler'],
+        [rescale, 'cfgRescale'], [scheduler, 'noiseSchedule']]) {
+        node.addEventListener('change', () => { if (!node.disabled) preferred[key] = node.type === 'number' ? Number(node.value) : node.value; });
+    }
+    negativePreset.addEventListener('change', () => { if (!negativePreset.disabled) preferred.negativePreset = negativePreset.value; });
+    const refreshModelControls = () => {
+        const caps = novelAIModelCapabilities(model.value);
+        const guard = neverSpend.checked;
+        const effective = resolveNovelAIRequestSettings({
+            ...draft, model: model.value, neverSpendAnlas: guard, ...preferred,
+        });
+        steps.disabled = !caps.steps;
+        steps.max = guard ? '28' : '50';
+        steps.value = String(effective.steps);
+        sampler.disabled = !caps.sampler;
+        sampler.value = effective.sampler;
+        rescale.disabled = !caps.cfgRescale;
+        rescale.value = String(effective.cfgRescale);
+        schedulerControl.hidden = !caps.scheduler;
+        scheduler.value = preferred.noiseSchedule;
+        resolution.querySelector('option[value="big"]').disabled = guard;
+        resolution.value = effective.resolution;
+
         negativePreset.replaceChildren();
-        for (const [key, label] of Object.entries(getNovelAINegativePresetOptions(model.value))) {
+        const options = getNovelAINegativePresetOptions(model.value);
+        for (const [key, label] of Object.entries(options)) {
             const option = document.createElement('option'); option.value = key; option.textContent = label; negativePreset.append(option);
         }
-        negativePreset.value = [...negativePreset.options].some(option => option.value === selected) ? selected : 'human';
-        negativePreset.disabled = medium;
-        negative.disabled = medium;
-        negativePresetControl.parentElement.querySelector('small').textContent = medium
-            ? 'V5 Medium использует фиксированный сильный негатив NovelAI.'
-            : 'Подбирается для выбранной модели и добавляется перед вашим текстом.';
-        negativeControl.parentElement.querySelector('small').textContent = medium
-            ? 'V5 Medium не принимает пользовательский негатив; сохранённый текст останется на месте.'
-            : 'Ваши теги сохраняются отдельно и не заменяются обновлениями.';
+        negativePreset.value = Object.hasOwn(options, preferred.negativePreset) ? preferred.negativePreset : Object.hasOwn(options, 'human') ? 'human' : 'heavy';
+        negativePreset.disabled = !caps.customUndesiredContent;
+        negative.disabled = !caps.customUndesiredContent;
+        if (caps.medium) {
+            modelNotice.textContent = 'V5 Medium · фиксировано: 14 Steps, Euler Ancestral, сильный негатив; CFG Rescale и пользовательский негатив недоступны. CFG scale остаётся настраиваемым.';
+            negativePresetControl.querySelector('small').textContent = 'В Medium используется только фиксированный Heavy.';
+            negativeControl.querySelector('small').textContent = 'Недоступен в Medium; сохранённый негатив вернётся в других моделях.';
+        } else {
+            modelNotice.textContent = guard
+                ? 'Защита Anlas: не более 28 шагов, размер не выше Normal. Значения вне ограничений сохраняются для режима без защиты.'
+                : 'Параметры модели доступны в пределах её возможностей. Встроенные промпты изображения не изменяются.';
+            negativePresetControl.querySelector('small').textContent = 'Пресеты подбираются по выбранной модели.';
+            negativeControl.querySelector('small').textContent = 'Ваш текст сохраняется при смене модели.';
+        }
+        if (caps.medium && guard) modelNotice.textContent += ' Защита Anlas активна.';
     };
-    model.addEventListener('change', refreshNegativeControls);
-    refreshNegativeControls();
+    model.addEventListener('change', refreshModelControls);
+    neverSpend.addEventListener('change', refreshModelControls);
+    refreshModelControls();
     const status = document.createElement('p'); status.className = 'spi-status';
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: enabled.checked, neverSpendAnlas: neverSpend.checked,
-        apiKey: token.value, endpoint: endpoint.value, model: model.value, resolution: resolution.value,
-        steps: Number(steps.value), cfgScale: Number(cfg.value), cfgRescale: Number(rescale.value),
-        sampler: sampler.value, seed: Number(seed.value), negativePreset: negativePreset.value, negativePrompt: negative.value,
+        apiKey: token.value, endpoint: endpoint.value, model: model.value,
+        ...preferred, cfgScale: Number(cfg.value), seed: Number(seed.value), negativePrompt: negative.value,
     });
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
     button('Проверить подключение', actions, async event => {
@@ -437,15 +517,18 @@ function openHub(page = 'home') {
         heading.textContent = currentPage === 'home' ? 'SP Imagen' : 'SP Imagen · Настройки';
         if (currentPage === 'home') {
             button('⚙ Настройки', body, () => render('settings'));
-            const prompts = button(`✎ Промпты${hasNew() ? '  NEW!' : ''}`, body, () => void openPromptCenter({ backToHub: true }));
+            const prompts = button('✎ Промпты', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings('prompts'))));
             prompts.dataset.spiPrompts = '';
             button('📚 Библиотека', body, () => void openRuntimeChild(openLibrary));
+            if (context()?.chatMetadata?.variables?.naicom_pending_image) button('↻ Повторить картинку без режиссёра', body, () => void openRuntimeChild(() => getRuntime().then(api => api.retryPendingImage()).then(result => { toastr.success(result,'SP Imagen'); })));
         } else {
             button('Генерация', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings())));
+            button('Все промпты', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings('prompts'))));
             button('Текстовая модель', body, () => void openTextApiSettings({ back: true }));
             button('NovelAI', body, () => void openNovelAISettings({ back: true }));
             button('Стили', body, () => void openStyleLibrary({ back: true }));
             button('Последний ответ режиссёра', body, openLastDirectorResponse);
+            if (context()?.chatMetadata?.variables?.naicom_pending_image) button('↻ Отправить сохранённый промпт в NovelAI', body, () => void openRuntimeChild(() => getRuntime().then(api => api.retryPendingImage()).then(result => { toastr.success(result,'SP Imagen'); })));
         }
         body.querySelector('button')?.focus();
     };
@@ -471,7 +554,7 @@ function openHub(page = 'home') {
 
 function getDirector(kind) {
     const name = `sp_ness_${kind}_director`;
-    const prompt = SP_IMAGEN_PROMPTS[name];
+    const prompt = effectivePrompt(name);
     return typeof prompt === 'string' && prompt.trim() ? { name, prompt } : null;
 }
 
@@ -494,6 +577,12 @@ function activeStyle(novelai = settings().novelai) {
 function directGenerationEnabled() {
     const novelai = settings().novelai;
     return novelai.enabled === true && Boolean(novelai.apiKey);
+}
+
+function snapshotGenerationConfig(config, kind='snapshot') {
+ const current=settings().novelai;
+ const {apiKey,endpoint,enabled,styles,activeStyleId,...publicSettings}=current;
+ return {...config,spImagenDirect:{version:1,kind,provider:'novelai',style:clone(activeStyle(current)||{id:'',name:'Без стиля',value:''}),settings:clone(publicSettings)}};
 }
 
 async function generateImage(config, { reuseSnapshot = false, kind = 'snapshot', signal } = {}) {
@@ -534,7 +623,7 @@ async function run(command, kind) {
         sp_ness_generate_at: () => api.generateAt(),
         sp_ness_settings: () => api.openSettings(),
         sp_ness_library_editor: () => openLibrary(),
-        sp_ness_prompt_editor: () => openPromptCenter(),
+        sp_ness_prompt_editor: () => api.openSettings('prompts'),
         sp_ness_manual_prepare: () => api.manualPrepare(),
         sp_ness_shared_review: () => api.reviewScene(),
         sp_ness_shared_library: () => api.prepareLibrary(),
@@ -583,17 +672,21 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.4.0',
+    version: '2.4.4',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,
     openHub,
     openLibrary,
-    openPrompts: openPromptCenter,
+    openPrompts: () => getRuntime().then(api => api.openSettings('prompts')),
     persistImageSource,
     directGenerationEnabled,
     generateImage,
+    snapshotGenerationConfig,
     getDirector,
+    getAuxPrompt: effectivePrompt,
+    listEditablePrompts,
+    savePromptOverrides,
     generateText,
 };
 

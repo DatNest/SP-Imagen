@@ -16,6 +16,17 @@ export const NOVELAI_SAMPLERS = Object.freeze({
 });
 
 const MEDIUM_MODEL = 'nai-diffusion-5-full-medium';
+export const NOVELAI_SCHEDULES = Object.freeze({
+    native: 'Native', karras: 'Karras', exponential: 'Exponential', polyexponential: 'Polyexponential',
+});
+const UC_PRESET_IDS = Object.freeze({ heavy: 0, light: 1, furry: 2, human: 3, none: 4 });
+
+export function novelAIModelCapabilities(model) {
+    const medium = model === MEDIUM_MODEL;
+    const v5 = model.startsWith('nai-diffusion-5-');
+    return { medium, v5, customUndesiredContent: !medium, cfgRescale: !medium,
+        sampler: !medium, steps: !medium, scheduler: !v5 };
+}
 const UC_HEAVY_COMMON = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
 const UC_LIGHT_V5 = 'lowres, bad hands, bad anatomy, artistic error, sepia, white haze, worst quality, very displeasing, jpeg artifacts, 0::ai-generated::';
 const UC_FURRY_COMMON = '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic';
@@ -72,6 +83,7 @@ export function normalizeNovelAISettings(value) {
     if (!negativePresets || !Object.hasOwn(negativePresets, settings.negativePreset)) settings.negativePreset = defaults.negativePreset;
     if (!Object.hasOwn(DIMENSIONS, settings.resolution)) settings.resolution = defaults.resolution;
     if (!Object.hasOwn(NOVELAI_SAMPLERS, settings.sampler)) settings.sampler = defaults.sampler;
+    if (!Object.hasOwn(NOVELAI_SCHEDULES, settings.noiseSchedule)) settings.noiseSchedule = defaults.noiseSchedule;
     for (const key of ['steps', 'cfgScale', 'cfgRescale', 'seed', 'skipCfgAboveSigma']) settings[key] = Number(settings[key]);
     settings.negativePrompt = String(settings.negativePrompt || '').trim();
     settings.styles = Array.isArray(settings.styles) ? settings.styles.map((style, index) => ({
@@ -84,22 +96,26 @@ export function normalizeNovelAISettings(value) {
 }
 
 export function getNovelAINegativePresetOptions(model) {
-    const presets = NEGATIVE_PRESETS[model === MEDIUM_MODEL ? 'nai-diffusion-5-full' : model] || NEGATIVE_PRESETS['nai-diffusion-5-full'];
+    if (model === MEDIUM_MODEL) return { heavy: 'Сильный · фиксирован' };
+    const presets = NEGATIVE_PRESETS[model] || NEGATIVE_PRESETS['nai-diffusion-5-full'];
     return Object.fromEntries(Object.keys(presets).map(key => [key, NEGATIVE_PRESET_LABELS[key]]));
 }
 
-function resolveRequestSettings(input) {
+// The same effective values are shown in the UI and used for every API request.
+// Stored user settings stay untouched so switching back from Medium restores them.
+export function resolveNovelAIRequestSettings(input) {
     const settings = normalizeNovelAISettings(input);
-    const medium = settings.model === MEDIUM_MODEL;
     if (settings.neverSpendAnlas) {
-        settings.resolution = 'normal';
-        settings.steps = settings.model.startsWith('nai-diffusion-4-5-') ? 28 : 23;
+        if (settings.resolution === 'big') settings.resolution = 'normal';
+        settings.steps = Math.min(settings.steps, 28);
     }
-    if (medium) {
+    if (settings.model === MEDIUM_MODEL) {
         settings.steps = 14;
         settings.sampler = 'k_euler_ancestral';
         settings.cfgRescale = 0;
         settings.skipCfgAboveSigma = 0;
+        settings.negativePreset = 'heavy';
+        settings.negativePrompt = '';
     }
     return settings;
 }
@@ -152,7 +168,7 @@ function buildParameters(settings, prompt, negativePrompt, aspectRatio) {
         params_version: 4, prompt: positive.base, width, height, steps: settings.steps, scale: settings.cfgScale,
         cfg_rescale: settings.cfgRescale, sampler: settings.sampler, noise_schedule: settings.noiseSchedule,
         seed, n_samples: 1, negative_prompt: negative.base, qualityToggle: false,
-        ucPreset: medium ? 0 : 3, deliberate_euler_ancestral_bug: false, prefer_brownian: true,
+        ucPreset: UC_PRESET_IDS[settings.negativePreset], deliberate_euler_ancestral_bug: false, prefer_brownian: true,
         skip_cfg_above_sigma: settings.skipCfgAboveSigma || null,
         v4_prompt: { caption: caption(positive.base, positive.characters), use_coords: false, use_order: true },
         v4_negative_prompt: {
@@ -203,7 +219,7 @@ async function verifyFreeAccess(settings, signal) {
 }
 
 export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', kind = 'snapshot', signal }) {
-    const settings = resolveRequestSettings(input);
+    const settings = resolveNovelAIRequestSettings(input);
     const fullPrompt = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
     if (!fullPrompt) throw new Error('Промпт изображения пуст.');
     const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio);

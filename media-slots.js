@@ -47,7 +47,7 @@ export async function installSpImagenMediaSlots() {
     if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
     if (create) {
       for (const kind of KINDS) {
-        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0 };
+        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0, collapsed: true };
       }
     }
     for (const kind of KINDS) {
@@ -57,6 +57,7 @@ export async function installSpImagenMediaSlots() {
         slot.versions = slot.versions.filter(item => safeUrl(item?.src));
       }
       slot.selected = Math.max(0, Math.min(Math.trunc(Number(slot.selected)) || 0, Math.max(0, slot.versions.length - 1)));
+      slot.collapsed = slot.collapsed !== false;
     }
     return slots;
   }
@@ -65,6 +66,7 @@ export async function installSpImagenMediaSlots() {
     if (!slot || !safeUrl(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
     slot.versions.push({ src: item.src, config: item.config || null, at: Number(item.at) || Date.now() });
     slot.selected = slot.versions.length - 1;
+    slot.collapsed = false;
     return true;
   }
 
@@ -167,7 +169,7 @@ export async function installSpImagenMediaSlots() {
     }
     @media (hover: hover) {
       .generate:hover { opacity: 1; }
-      .tool:not(:disabled):hover, .option:hover {
+      .tool:not(:disabled):hover, .option:hover, .heading:hover {
         background: color-mix(in srgb, currentColor 12%, transparent);
       }
     }
@@ -180,7 +182,23 @@ export async function installSpImagenMediaSlots() {
       background: color-mix(in srgb, var(--ms-panel) 35%, transparent);
       font-size: .9em;
     }
-    .heading { padding: .15em .3em .45em; font-weight: 600; }
+    .card[data-collapsed="true"] { padding-block-end: .35em; }
+    .heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5em;
+      inline-size: 100%;
+      padding: .15em .3em;
+      border-radius: .45em;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+    .heading-title { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; }
+    .heading-meta { display: inline-flex; align-items: center; gap: .45em; flex: none; opacity: .8; font-weight: 500; }
+    .heading-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .heading-chevron { inline-size: 1.1em; text-align: center; }
     .frame {
       display: grid;
       inline-size: 100%;
@@ -304,10 +322,26 @@ export async function installSpImagenMediaSlots() {
   function card(index, kind, slot, locked) {
     const selected = slot.selected;
     const item = slot.versions[selected];
+    const collapsed = slot.collapsed !== false;
     const section = element('section', 'card');
-    const heading = element('div', 'heading', LABEL[kind]);
+    section.dataset.collapsed = String(collapsed);
+
+    const heading = element('button', 'heading');
+    heading.title = collapsed ? 'Развернуть изображение' : 'Свернуть изображение';
+    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${LABEL[kind]}`);
+    heading.setAttribute('aria-expanded', String(!collapsed));
+    const title = element('span', 'heading-title', LABEL[kind]);
+    const meta = element('span', 'heading-meta');
+    meta.append(
+      element('span', 'heading-count', `${selected + 1} / ${slot.versions.length}`),
+      element('span', 'heading-chevron', collapsed ? '▸' : '▾'),
+    );
+    heading.append(title, meta);
+    heading.addEventListener('click', () => void runAction(() => toggleCollapse(index, kind)));
+
     const frame = element('button', 'frame');
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
+    frame.hidden = collapsed;
     const image = element('img');
     image.src = item.src;
     image.alt = `${LABEL[kind]} · версия ${selected + 1}`;
@@ -316,6 +350,7 @@ export async function installSpImagenMediaSlots() {
     frame.append(image);
 
     const bar = element('div', 'bar');
+    bar.hidden = collapsed;
     const navigation = element('div', 'actions');
     const actions = element('div', 'actions');
     navigation.append(
@@ -346,14 +381,14 @@ export async function installSpImagenMediaSlots() {
       }
       const locked = busy.has(`${chatId}|${view.index}|${kind}`);
       const count = slot.versions.length;
-      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked) continue;
+      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked && previous.collapsed === slot.collapsed) continue;
       const node = card(view.index, kind, slot, locked);
       if (previous) previous.node.replaceWith(node);
       else {
         const nextKind = KINDS.slice(KINDS.indexOf(kind) + 1).find(key => view.cards.has(key));
         view.gallery.insertBefore(node, view.cards.get(nextKind)?.node ?? null);
       }
-      view.cards.set(kind, { node, item, selected: slot.selected, count, locked });
+      view.cards.set(kind, { node, item, selected: slot.selected, count, locked, collapsed: slot.collapsed });
     }
     view.gallery.hidden = !view.cards.size;
     view.node.hidden = view.tools.hidden && view.gallery.hidden;
@@ -450,6 +485,17 @@ export async function installSpImagenMediaSlots() {
     paint();
     try { await current.saveChat(); }
     catch (error) { slot.selected = before; paint(); throw error; }
+  }
+
+  async function toggleCollapse(index, kind) {
+    const current = context();
+    const slot = slotsOf(current.chat?.[index], false)?.[kind];
+    if (!slot) return;
+    const before = slot.collapsed !== false;
+    slot.collapsed = !before;
+    paint();
+    try { await current.saveChat(); }
+    catch (error) { slot.collapsed = before; paint(); throw error; }
   }
 
   async function deleteSelected(index, kind) {
@@ -604,8 +650,8 @@ export async function installSpImagenMediaSlots() {
 
   const manager = {
     installed: true,
-    version: 61,
-    controlsRevision: 23,
+    version: 62,
+    controlsRevision: 24,
     supportedKinds: KINDS,
     publish,
     focus,
