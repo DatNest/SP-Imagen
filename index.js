@@ -685,7 +685,7 @@ async function initialize() {
 
 globalThis.__spImagenExtension = {
     installed: true,
-    version: '2.2.4',
+    version: '2.2.5',
     get hasNew() { return hasNew(); },
     set hasNew(_) {},
     run,

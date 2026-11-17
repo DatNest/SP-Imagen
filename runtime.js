@@ -1424,38 +1424,99 @@ function repairDirectorJson(json){
 function cleanStructuredDirectorPart(value){
  return String(value??'').replace(/\s+/g,' ').replace(/\s*\|\s*/g,' — ').trim().replace(/[\s,;]+$/,'');
 }
+function isStructuredDirectorObject(value){return Boolean(value&&!Array.isArray(value)&&typeof value==='object');}
+function structuredDirectorScalar(value){return typeof value==='string'||typeof value==='number'&&Number.isFinite(value)?cleanStructuredDirectorPart(value):'';}
+function formatStructuredScene(scene){
+ if(typeof scene==='string')return cleanStructuredDirectorPart(scene);
+ if(!isStructuredDirectorObject(scene))return '';
+ const parts=[],used=new Set(['panels']);
+ const add=(key,prefix='')=>{const value=structuredDirectorScalar(scene[key]);if(value){parts.push(prefix+value);used.add(key);}};
+ add('setting');
+ const panelCount=Number(scene.panel_count);
+ if(Number.isInteger(panelCount)&&panelCount>0&&panelCount<=12){parts.push(panelCount+' panels');used.add('panel_count');}
+ add('layout');add('borders','panel borders: ');
+ if(scene.panels!==undefined){
+  if(!Array.isArray(scene.panels)||scene.panels.length>12)return '';
+  for(const [index,panel] of scene.panels.entries()){
+   if(!isStructuredDirectorObject(panel))return '';
+   const number=Number.isInteger(Number(panel.number))?Number(panel.number):index+1;
+   const fields=[];
+   for(const [key,value] of Object.entries(panel))if(key!=='number'){
+    const text=structuredDirectorScalar(value);if(text)fields.push(text);
+    else if(value!==undefined&&value!==null)return '';
+   }
+   if(fields.length)parts.push('Panel '+number+': '+fields.join(', '));
+  }
+ }
+ for(const [key,value] of Object.entries(scene))if(!used.has(key)){
+  const text=structuredDirectorScalar(value);if(text)parts.push(key.replaceAll('_',' ')+': '+text);
+  else if(value!==undefined&&value!==null)return '';
+ }
+ return parts.join('; ');
+}
+function formatStructuredBubbles(bubbles){
+ if(bubbles===undefined)return {description:'',text:[]};
+ if(!Array.isArray(bubbles)||bubbles.length>8)return null;
+ const descriptions=[],text=[];
+ for(const [index,bubble] of bubbles.entries()){
+  if(!isStructuredDirectorObject(bubble))return null;
+  const fields=[];let words='';
+  for(const [key,value] of Object.entries(bubble)){
+   const part=structuredDirectorScalar(value);if(!part&&value!==''&&value!==undefined&&value!==null)return null;
+   if(key==='text'){words=part;continue;}
+   if(part)fields.push(part);
+  }
+  if(words){fields.push('saying "'+words+'"');text.push(words);}
+  if(fields.length)descriptions.push('Speech bubble '+(index+1)+': '+fields.join(', '));
+ }
+ return {description:descriptions.join('; '),text};
+}
+function formatStructuredText(value,fallback){
+ let text=typeof value==='string'?value.trim():fallback.join('\n\n');
+ text=text.replace(/^Text:\s*/i,'').replace(/\r\n?/g,'\n').replace(/\|/g,'—').replace(/\n{3,}/g,'\n\n').trim();
+ return text;
+}
 function structuredDirectorRatio(config,kind){
  if(['1:1','2:3','9:16'].includes(config.aspect_ratio))return config.aspect_ratio;
- const framing=[config.image_type,config.composition,config.framing].map(cleanStructuredDirectorPart).join(' ');
+ const scene=isStructuredDirectorObject(config.scene)?config.scene:{};
+ const panelTypes=Array.isArray(scene.panels)?scene.panels.map(panel=>panel?.type):[];
+ const framing=[config.image_type,config.composition,config.framing,scene.layout,...panelTypes].map(cleanStructuredDirectorPart).join(' ');
  if(kind==='snapshot'&&/\b(?:wide|landscape|horizontal|panoramic|radial)\b/i.test(framing))return '1:1';
  if(kind==='snapshot'&&/\b(?:vertical|tall portrait|full-length portrait)\b/i.test(framing))return '9:16';
  return '2:3';
 }
 function convertStructuredDirectorConfig(config,kind){
- if(!config||Array.isArray(config)||typeof config!=='object'||typeof config.scene!=='string'||!Array.isArray(config.people))return null;
- const allowedRoot=new Set(['image_type','composition','framing','scene','people','aspect_ratio','image_size']);
- if(Object.keys(config).some(key=>!allowedRoot.has(key)))return null;
+ if(!isStructuredDirectorObject(config)||!Array.isArray(config.people)||config.people.length<1||config.people.length>22)return null;
+ const scene=formatStructuredScene(config.scene);if(!scene)return null;
+ const bubbles=formatStructuredBubbles(config.bubbles);if(!bubbles)return null;
+ if(config.text!==undefined&&typeof config.text!=='string')return null;
  const people=[];
  for(const person of config.people){
-  if(!person||Array.isArray(person)||typeof person!=='object')return null;
-  const allowedPerson=new Set(['id','name','gender','details','actions']);
-  if(Object.keys(person).some(key=>!allowedPerson.has(key)))return null;
+  if(!isStructuredDirectorObject(person))return null;
   const id=String(person.id||'').trim(),name=cleanStructuredDirectorPart(person.name),details=cleanStructuredDirectorPart(person.details),actions=cleanStructuredDirectorPart(person.actions);
   const rawGender=String(person.gender||'').trim().toLowerCase();
   const gender=rawGender==='person'?'other':rawGender;
   if(!/^[a-z][a-z0-9_]*$/.test(id)||!name||!['boy','girl','cat','other'].includes(gender)||(!details&&!actions))return null;
-  people.push({id,name,gender,details,actions});
+  const extras=[];
+  for(const [key,value] of Object.entries(person))if(!['id','name','gender','details','actions'].includes(key)){
+   const text=structuredDirectorScalar(value);if(text)extras.push(text);else if(value!==undefined&&value!==null)return null;
+  }
+  people.push({id,name,gender,details,actions,extras});
  }
- if(!people.length)return null;
  const counts=new Map();
  for(const person of people)counts.set(person.gender,(counts.get(person.gender)||0)+1);
  const countText=[...counts].map(([gender,count])=>String(count)+gender+(count===1?'':'s')).join(', ');
- const base=[countText,config.image_type,config.composition,config.framing,config.scene].map(cleanStructuredDirectorPart).filter(Boolean).join('; ');
+ const rootDetails=[];
+ for(const [key,value] of Object.entries(config))if(!['scene','people','bubbles','text','aspect_ratio','image_size'].includes(key)){
+  const part=structuredDirectorScalar(value);if(part)rootDetails.push(part);else if(value!==undefined&&value!==null)return null;
+ }
+ const base=[countText,...rootDetails,scene].filter(Boolean).join('; ');
  const entries=people.map(person=>{
-  const body=[person.gender,person.name,person.details,person.actions].filter(Boolean).join(', ');
+  const body=[person.gender,person.name,person.details,person.actions,...person.extras].filter(Boolean).join(', ');
   return body.replace(/[,;\s]+$/,'');
  });
- const prompt=base+entries.map(entry=>' | '+entry).join('');
+ const visibleText=formatStructuredText(config.text,bubbles.text);
+ const prompt=base+entries.map(entry=>' | '+entry).join('')+(bubbles.description?'; '+bubbles.description:'')+(visibleText?'\n\nText: '+visibleText:'');
  return {prompt,aspect_ratio:structuredDirectorRatio(config,kind),image_size:'1K'};
 }
 function validateDirectorConfig(config){
