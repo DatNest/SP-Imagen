@@ -1470,6 +1470,21 @@ function cleanStructuredDirectorPart(value){
 }
 function isStructuredDirectorObject(value){return Boolean(value&&!Array.isArray(value)&&typeof value==='object');}
 function structuredDirectorScalar(value){return typeof value==='string'||typeof value==='number'&&Number.isFinite(value)?cleanStructuredDirectorPart(value):'';}
+function structuredDirectorVisibilityMarker(value){
+ const text=String(value||'').trim(),match=text.match(/^\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]$/);
+ return match?{id:match[1],spec:match[2],text}:null;
+}
+function normalizeStructuredDirectorPerson(person){
+ const rawId=String(person.id||'').trim(),idMarker=structuredDirectorVisibilityMarker(rawId);
+ let details=cleanStructuredDirectorPart(person.details);
+ const detailMatches=[...details.matchAll(/\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]/g)];
+ if(detailMatches.length>1)return null;
+ const detailMarker=detailMatches[0]?{id:detailMatches[0][1],spec:detailMatches[0][2],text:detailMatches[0][0]}:null;
+ const id=idMarker?.id||(/^[a-z][a-z0-9_]*$/.test(rawId)?rawId:detailMarker?.id||'');
+ if(!id||idMarker&&detailMarker&&(idMarker.id!==detailMarker.id||idMarker.spec!==detailMarker.spec))return null;
+ if(idMarker&&!detailMarker)details=(idMarker.text+' '+details).trim();
+ return {id,details};
+}
 function formatStructuredScene(scene){
  if(typeof scene==='string')return cleanStructuredDirectorPart(scene);
  if(!isStructuredDirectorObject(scene))return '';
@@ -1537,10 +1552,11 @@ function convertStructuredDirectorConfig(config,kind,context={}){
  const people=[];
  for(const person of config.people){
   if(!isStructuredDirectorObject(person))return null;
-  const id=String(person.id||'').trim(),name=cleanStructuredDirectorPart(person.name),details=cleanStructuredDirectorPart(person.details),actions=cleanStructuredDirectorPart(person.actions);
+  const normalized=normalizeStructuredDirectorPerson(person);if(!normalized)return null;
+  const {id,details}=normalized,name=cleanStructuredDirectorPart(person.name),actions=cleanStructuredDirectorPart(person.actions);
   const rawGender=String(person.gender||'').trim().toLowerCase();
   const gender=rawGender==='person'?'other':rawGender;
-  if(!/^[a-z][a-z0-9_]*$/.test(id)||!name||!['boy','girl','cat','other'].includes(gender)||(!details&&!actions))return null;
+  if(!name||!['boy','girl','cat','other'].includes(gender)||(!details&&!actions))return null;
   const extras=[];
   for(const [key,value] of Object.entries(person))if(!['id','name','gender','details','actions'].includes(key)){
    const text=structuredDirectorScalar(value);if(text)extras.push(text);else if(value!==undefined&&value!==null)return null;
