@@ -114,10 +114,21 @@ export function splitCharacterPrompts(prompt) {
         letters = 'Text: ' + textSection[1].trim();
         source = source.slice(0, textSection.index).trim();
     }
-    const parts = source.split(/(?<!\\)\s+\|\s+(?=(?:boy|girl|cat|other)\s*,)/iu).map(part => part.trim());
+    const parts = source.split(/(?<!\\)\s*\|\s*(?=(?:boy|girl|cat|other)\s*,)/iu).map(part => part.trim());
     const [before = '', ...characters] = parts;
-    // In-image lettering is global scene information, not a trait of the last actor.
-    const base = [before, letters].filter(Boolean).join('\n\n');
+    // In the original ExtBlocks format, bubbles follow the LAST character.
+    // Keep their placement and text in the shared NovelAI caption, not in that
+    // character's physical appearance. No extra model call or text rewriting.
+    let bubbles = '';
+    if (characters.length) {
+        const last = characters.length - 1;
+        const marker = /;\s*(?=Speech bubble\s+\d+\s*:)/iu.exec(characters[last]);
+        if (marker) {
+            bubbles = characters[last].slice(marker.index + marker[0].length).trim();
+            characters[last] = characters[last].slice(0, marker.index).trim();
+        }
+    }
+    const base = [before, bubbles, letters].filter(Boolean).join('\n\n');
     return { base, characters };
 }
 
