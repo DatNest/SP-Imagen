@@ -121,9 +121,35 @@ function shell(title, className = '', options = {}) {
     head.append(backButton, heading, closeButton);
     dialog.append(head);
     overlay.append(dialog);
-    document.body.append(overlay);
-    const background = [...document.body.children].filter(node => node !== overlay).map(node => [node, node.inert]);
+    // Show exactly one SP Imagen dialog at a time, also on narrow screens.
+    const covered = [...document.querySelectorAll('.spi-overlay')].map(node => [node, node.hidden]);
+    for (const [node] of covered) node.hidden = true;
+    // Top-level portal: CSS themes can transform <body>, which changes the
+    // containing block for position:fixed and pushes mobile dialogs offscreen.
+    document.documentElement.append(overlay);
+    const background = [...document.documentElement.children].filter(node => node !== overlay).map(node => [node, node.inert]);
     for (const [node] of background) node.inert = true;
+    const viewport = window.visualViewport;
+    let frame = null, stopped = false;
+    const fitViewport = () => {
+        if (stopped) return;
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+            frame = null;
+            if (stopped) return;
+            const width = viewport?.width || window.innerWidth;
+            const height = viewport?.height || window.innerHeight;
+            const top = viewport?.offsetTop || 0, left = viewport?.offsetLeft || 0;
+            overlay.style.left = `${left}px`;
+            overlay.style.top = `${top}px`;
+            overlay.style.width = `${width}px`;
+            overlay.style.height = `${height}px`;
+        });
+    };
+    fitViewport();
+    window.addEventListener('resize', fitViewport);
+    viewport?.addEventListener('resize', fitViewport);
+    viewport?.addEventListener('scroll', fitViewport);
     const previous = document.activeElement;
     let closed = false;
     let resolveClosed;
@@ -132,9 +158,15 @@ function shell(title, className = '', options = {}) {
         if (closed) return;
         closed = true;
         document.removeEventListener('keydown', onKey, true);
+        stopped = true;
+        if (frame !== null) cancelAnimationFrame(frame);
+        window.removeEventListener('resize', fitViewport);
+        viewport?.removeEventListener('resize', fitViewport);
+        viewport?.removeEventListener('scroll', fitViewport);
         for (const [node, inert] of background) node.inert = inert;
         overlay.remove();
-        previous?.focus?.();
+        for (const [node, wasHidden] of covered) if (node.isConnected) node.hidden = wasHidden;
+        previous?.focus?.({ preventScroll: true });
         options.onClose?.();
         resolveClosed();
     };
@@ -554,7 +586,7 @@ function openHub(page = 'home') {
             button('Последний ответ режиссёра', body, openLastDirectorResponse);
             if (context()?.chatMetadata?.variables?.naicom_pending_image) button('↻ Отправить сохранённый промпт в NovelAI', body, () => void openRuntimeChild(() => getRuntime().then(api => api.retryPendingImage()).then(result => { toastr.success(result,'SP Imagen'); })));
         }
-        body.querySelector('button')?.focus();
+        if(!window.matchMedia('(pointer: coarse)').matches)body.querySelector('button')?.focus({preventScroll:true});
     };
     const { overlay, dialog, close, heading, backButton } = shell('SP Imagen', 'spi-hub', { back: () => render('home'), closeButton: true });
     const body = document.createElement('nav');
@@ -564,12 +596,13 @@ function openHub(page = 'home') {
     const openRuntimeChild = async opener => {
         if (overlay.inert) return;
         overlay.inert = true;
+        overlay.hidden = true;
         globalThis.__spImagenHubChild = true;
         try { await opener(); }
         catch (error) { toastr.error(String(error?.message || error), 'SP Imagen'); }
         finally {
             delete globalThis.__spImagenHubChild;
-            if (overlay.isConnected) { overlay.inert = false; body.querySelector('button')?.focus(); }
+            if (overlay.isConnected) { overlay.hidden = false; overlay.inert = false; if(!window.matchMedia('(pointer: coarse)').matches)body.querySelector('button')?.focus({preventScroll:true}); }
         }
     };
     render(currentPage);
@@ -645,6 +678,7 @@ async function run(command, kind) {
     const calls = {
         sp_imagen_menu: () => openHub(),
         sp_ness_generate_at: () => api.generateAt(),
+        sp_ness_resume_at: () => api.resumePost({}),
         sp_ness_settings: () => api.openSettings(),
         sp_ness_library_editor: () => openLibrary(),
         sp_ness_prompt_editor: () => api.openSettings('prompts'),

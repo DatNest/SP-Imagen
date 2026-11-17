@@ -1,4 +1,5 @@
 // Generated from modules/media_slots.js.
+import { readPostDraft, clearDraftsForOtherPost } from './post-drafts.js';
 export async function installSpImagenMediaSlots() {
   'use strict';
 
@@ -111,7 +112,7 @@ export async function installSpImagenMediaSlots() {
       line-height: 1.35;
     }
     :host([data-ms="post"]) { clear: both; }
-    :host([data-ms="post"][hidden]), .gallery[hidden], .post-tools[hidden] { display: none !important; }
+    :host([data-ms="post"][hidden]), .gallery[hidden], .post-tools[hidden], .draft-icon[hidden], .draft-status[hidden] { display: none !important; }
     :host([data-ms="wand"]) { opacity: 1 !important; pointer-events: auto !important; }
     :host([data-ms="floating"]) {
       position: fixed !important;
@@ -152,8 +153,21 @@ export async function installSpImagenMediaSlots() {
       z-index: 1;
       display: flex;
       justify-content: center;
+      align-items: center;
+      gap: .28em;
       padding: .5em .75em;
     }
+    .draft-status { display:inline-flex; align-items:center; gap:.3em; }
+    .draft-icon {
+      min-inline-size: 25px; min-block-size: 25px;
+      display:inline-grid; place-items:center;
+      border:1px solid color-mix(in srgb, currentColor 40%, transparent);
+      border-radius: 8px;
+      font-size:.85em; line-height:1;
+      background: color-mix(in srgb, var(--SmartThemeQuoteColor, currentColor) 11%, transparent);
+    }
+    .draft-icon[data-kind="prompt"] { border-color: var(--SmartThemeQuoteColor,currentColor); color: var(--SmartThemeQuoteColor,currentColor); }
+    .draft-icon:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
     .generate, .tool, .option { border-radius: .4em; }
     .generate { opacity: .8; font-size: 1.25em; }
     .generate[aria-expanded="true"], .generate:focus-visible { opacity: 1; }
@@ -302,9 +316,22 @@ export async function installSpImagenMediaSlots() {
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-expanded', 'false');
     const gallery = element('div', 'gallery');
-    const view = { node, anchor, index, message, tools, toggle, gallery, cards: new Map() };
+    const indicators = element('span', 'draft-status');
+    const parserIcon = element('button', 'draft-icon', '▤');
+    const promptIcon = element('button', 'draft-icon', '✎');
+    parserIcon.dataset.kind = 'parser';promptIcon.dataset.kind = 'prompt';
+    for(const [icon,type] of [[parserIcon,'parser'],[promptIcon,'prompt']]){
+      icon.hidden = true;
+      icon.addEventListener('click',()=>{
+        const draft=readPostDraft(context(),index);
+        if(!draft)return;
+        void executeCommand('sp_ness_resume_at',view,draft.kind,type);
+      });
+      indicators.append(icon);
+    }
+    const view = { node, anchor, index, message, tools, toggle, indicators, parserIcon, promptIcon, gallery, cards: new Map() };
     toggle.addEventListener('click', () => toggleToolsMenu(view));
-    tools.append(toggle);
+    tools.append(toggle, indicators);
     root.append(tools, gallery);
     anchor.parentElement.append(node);
     return view;
@@ -370,6 +397,14 @@ export async function installSpImagenMediaSlots() {
 
   function updatePost(view, slots, chatId) {
     view.tools.hidden = !eligible(view.message);
+    const draft=readPostDraft(context(),view.index);
+    view.parserIcon.hidden=!draft?.parser;
+    view.promptIcon.hidden=!draft?.final?.config?.prompt;
+    view.indicators.hidden=view.parserIcon.hidden&&view.promptIcon.hidden;
+    view.parserIcon.title='Сохранены данные разбора поста · нажми, чтобы продолжить';
+    view.promptIcon.title='Готовый промпт сохранён · нажми, чтобы открыть';
+    view.parserIcon.setAttribute('aria-label',view.parserIcon.title);
+    view.promptIcon.setAttribute('aria-label',view.promptIcon.title);
     for (const kind of KINDS) {
       const slot = slots?.[kind];
       const item = slot?.versions?.[slot.selected];
@@ -542,6 +577,7 @@ export async function installSpImagenMediaSlots() {
     const extension = host.__spImagenExtension;
     if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') throw new Error('Включи подключение NovelAI в настройках SP Imagen.');
     try {
+      clearDraftsForOtherPost(current, index);
       const generated = await extension.generateImage(item.config, { reuseSnapshot: true, kind });
       if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) throw new Error('Чат изменился во время повторной генерации.');
       await publish(index, kind, generated);
@@ -556,10 +592,10 @@ export async function installSpImagenMediaSlots() {
     catch (error) { host.toastr?.error?.(String(error?.message || error), 'SP Imagen'); }
   }
 
-  async function executeCommand(command, view, kind) {
+  async function executeCommand(command, view, kind, mode = 'auto') {
     const current = context();
     if (view && host.__nessPostRequest) return;
-    const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind };
+    const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind, mode };
     if (request) host.__nessPostRequest = request;
     try {
       const extension = host.__spImagenExtension;
@@ -650,8 +686,8 @@ export async function installSpImagenMediaSlots() {
 
   const manager = {
     installed: true,
-    version: 62,
-    controlsRevision: 24,
+    version: 63,
+    controlsRevision: 25,
     supportedKinds: KINDS,
     publish,
     focus,
