@@ -1276,8 +1276,9 @@ function formatStructuredBubbles(bubbles,limits=null){
  if(bubbles===undefined)return {description:'',text:[]};
  if(!Array.isArray(bubbles)||bubbles.length>8)return null;
  const descriptions=[],text=[];
+ // The live word limit is given to the director, as in ExtBlocks.
+ // Only cap the number of whole speech bubbles; never cut their text or abort rendering.
  const maxLines=limits&&Number.isInteger(limits.lines)?limits.lines:8;
- const maxWords=limits&&Number.isInteger(limits.words)?limits.words:Infinity;
  for(const bubble of bubbles){
   if(!isStructuredDirectorObject(bubble))return null;
   const fields=[];let words='';
@@ -1286,11 +1287,9 @@ function formatStructuredBubbles(bubbles,limits=null){
    if(key==='text'){words=part;continue;}
    if(part)fields.push(part);
   }
-  // Do not silently remove dialogue: the director must obey the live settings.
-  if(!words||maxLines===0)continue;
-  if(text.length>=maxLines||words.trim().split(/\s+/).length>maxWords){
-   throw Error('Режиссёр превысил лимит: '+maxLines+' реплик по '+maxWords+' слов. Изображение не отправлено. Повтори генерацию или увеличь лимит в настройках.');
-  }
+  // Never discard a permitted bubble for exceeding the word target.
+  // A complete spoken line must survive; only omit bubbles beyond the count.
+  if(!words||text.length>=maxLines)continue;
   text.push(words);
   fields.push('saying "'+words+'"');
   descriptions.push('Speech bubble '+text.length+': '+fields.join(', '));
@@ -2230,8 +2229,8 @@ async function renderImage(kind){
   requireOrigin();
   const parsed=parseDirectorResponse(raw,kind,{wardrobe:prepared?.wardrobe||[],dialogue:runtimeSettings.dialogue}),config=parsed.config;
   variables.naicom_last_transport_repaired=parsed.repaired;
-  // Structured compatibility responses are constrained by the user's dialogue limits
-  // in convertStructuredDirectorConfig. Official director prompts remain unchanged.
+  // Director controls the length of each line; conversion only caps bubble count.
+  // Official prompts stay byte-for-byte unchanged.
   config.prompt=normalizeImagePrompt(config.prompt);
   // Do not send the complete final director prompt through another model rewrite.
   // This would alter protected appearance details, dialogue, and panel instructions.
