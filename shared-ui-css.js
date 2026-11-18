@@ -153,6 +153,7 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel .ness-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;}
 #sp-imagen-review-panel .ness-settings-column{min-width:0;display:flex;flex-direction:column;gap:0;}
 #sp-imagen-review-panel .ness-settings-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 0 12px;}
+#sp-imagen-review-panel .ness-wardrobe-example{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,monospace;background:var(--ness-surface);border:1px solid var(--ness-border);border-radius:10px;padding:12px;max-height:170px;overflow:auto;user-select:text;}
 #sp-imagen-review-panel .ness-child-shade{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:12px;background:color-mix(in srgb,var(--ness-bg) 84%,transparent);}
 #sp-imagen-review-panel .ness-child{display:flex;flex-direction:column;width:min(560px,100%);max-height:100%;min-height:0;min-width:0;border:1px solid var(--ness-border);border-radius:14px;background:var(--ness-bg);box-shadow:0 12px 36px color-mix(in srgb,var(--ness-input) 70%,transparent);}
 #sp-imagen-review-panel .ness-child-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid var(--ness-border);}

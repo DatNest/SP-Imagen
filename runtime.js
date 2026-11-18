@@ -1,5 +1,6 @@
 import { loadNessTheme, applyNessTheme, normalizeNessTheme, activeNessThemeForEditor, themeSettingsLocation, NESS_THEME_MODE_KEY, NESS_CUSTOM_THEME_KEY } from './theme-runtime.js';
 import { withOperationDeadline } from './operation-timeout.js';
+import { DEFAULT_CARD_WARDROBE, DEFAULT_PERSONA_WARDROBE, normalizeCardWardrobeSource, getCardPersonaWardrobe } from './wardrobe-card.js';
 import { CODE_PROMPT_DEFAULTS } from './code-prompts.js';
 import { filterProfileSources, directorProfileGuidance, applyProfileToPrompt } from './profiles.js';
 import { addFieldHelp } from './onboarding.js';
@@ -24,6 +25,8 @@ function normalizeNessRegexRule(rule){
 function validateWardrobeSettings(value){
  if(!value||value.version!==1||typeof value.keepDefault!=='boolean'||!Array.isArray(value.sources)||value.sources.length>8)throw Error('Неверные настройки гардероба');
  const settings=JSON.parse(JSON.stringify(value));
+ settings.card=normalizeCardWardrobeSource(settings.card,DEFAULT_CARD_WARDROBE);
+ settings.persona=normalizeCardWardrobeSource(settings.persona,DEFAULT_PERSONA_WARDROBE);
  for(const r of settings.sources){
   if(!r||!['markers','regex','html'].includes(r.type))throw Error('Неизвестный тип правила гардероба');
   for(const [key,v] of Object.entries(r))if(typeof v!=='string'&&key!=='enabled')throw Error('Параметр '+key+' должен быть текстом');
@@ -149,11 +152,13 @@ async function collectConfiguredRp(kind,settings,options=loadGen2Settings(),endI
   let text;try{text=await cleanConfiguredRp(read.text,options);}catch(e){warning='Очистка: '+String(e?.message||e);text=cleanRpVisualText(read.text);}
   if(text)recent.unshift({m,raw,text,index:i});
  }
+ // Facts written in the RP take precedence; card/persona outfit is a fallback.
+ for(const [name,wear] of getCardPersonaWardrobe(st,settings)) if(name && wear && !wardrobe.has(name))wardrobe.set(name,wear);
  return {recent,wardrobe,warning};
 }
 
 // Module: settings
-const GEN2_SETTINGS_DEFAULTS={version:1,wardrobe:{version:1,keepDefault:true,sources:[]},posts:{snapshot:2,comic:2,story_page:5},cleanup:{serviceTags:true,comments:true,html:true,mawsFooter:true,customPatterns:[]},dialogue:{comicLines:2,comicWords:7,storyLines:3,storyWords:10},previewEnabled:true};
+const GEN2_SETTINGS_DEFAULTS={version:1,wardrobe:{version:1,keepDefault:true,sources:[],card:{...DEFAULT_CARD_WARDROBE},persona:{...DEFAULT_PERSONA_WARDROBE}},posts:{snapshot:2,comic:2,story_page:5},cleanup:{serviceTags:true,comments:true,html:true,mawsFooter:true,customPatterns:[]},dialogue:{comicLines:2,comicWords:7,storyLines:3,storyWords:10},previewEnabled:true};
 function validateGen2Settings(value){
  const s=JSON.parse(JSON.stringify(value));
  if(s.version!==1)throw Error('Неизвестная версия настроек');
@@ -383,7 +388,7 @@ function readNessSettingsProfile(text){
  object(value,'профиль');let settings=value;
  if(Object.hasOwn(value,'format')){if(value.format!==NESS_SETTINGS_PROFILE_FORMAT||value.version!==1)throw Error('Это другой тип или версия профиля. Выбери JSON, выгруженный кнопкой «Экспорт настроек».');keys(value,['format','version','settings'],'профиль');settings=value.settings;}
  keys(settings,['version','wardrobe','posts','cleanup','dialogue','previewEnabled'],'настройки');
- keys(settings.wardrobe,['version','keepDefault','sources'],'одежда');keys(settings.posts,['snapshot','comic','story_page'],'последние посты');keys(settings.cleanup,['serviceTags','comments','html','mawsFooter','customPatterns','exceptions'],'очистка');keys(settings.dialogue,['comicLines','comicWords','storyLines','storyWords'],'текст на картинке');
+ keys(settings.wardrobe,['version','keepDefault','sources','card','persona'],'одежда');keys(settings.posts,['snapshot','comic','story_page'],'последние посты');keys(settings.cleanup,['serviceTags','comments','html','mawsFooter','customPatterns','exceptions'],'очистка');keys(settings.dialogue,['comicLines','comicWords','storyLines','storyWords'],'текст на картинке');
  if(Array.isArray(settings.wardrobe.sources))for(const r of settings.wardrobe.sources){object(r,'источник одежды');keys(r,['type','enabled',...Object.keys(WARDROBE_RULE_DEFAULTS[r.type]||{})],'источник одежды');}
  if(Array.isArray(settings.cleanup.customPatterns))for(const r of settings.cleanup.customPatterns)keys(r,['pattern','flags'],'правило удаления');
  if(Array.isArray(settings.cleanup.exceptions))for(const r of settings.cleanup.exceptions)keys(r,['pattern','flags','group','label'],'исключение');
@@ -567,13 +572,34 @@ function openNessCoder(D,panel,{exceptions=false,initialGoal='auto',onAdd,onClos
 function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  const ui=createUiKit(D),{el,input,area,field,checkbox,choice,clear}=ui,root=el('div');root.oninput=onDirty;root.onchange=onDirty;
  const top=el('div',undefined,root,'ness-settings-top'),scope=field(top,'Сохранить для',choice([['chat','Этого чата'],['global','Всех чатов']],'chat'));
- const introduction=ui.section(root,'? Что делают эти настройки?');el('div',nessFieldHelp('Настройки: с чего начать'),introduction,'ness-coder-faq');
+ const introduction=ui.section(root,'? С чего начать?');el('div',nessFieldHelp('Настройки: с чего начать'),introduction,'ness-coder-faq');ui.note(introduction,'Пример «Было → Станет»: в RP написано «⟦ОДЕЖДА:Аня⟧синий свитер». Режиссёр получит «Аня: синий свитер», а служебная метка не засорит сцену.');
  const grid=el('div',undefined,root,'ness-settings-grid'),left=el('div',undefined,grid,'ness-settings-column'),right=el('div',undefined,grid,'ness-settings-column');
  const section=(parent,label,help,open=false)=>{const box=ui.section(parent,label,open);ui.help(box.children[0],help||label);return box;},message=ui.note(root,'');
  let closeCoder=null;
- const wardrobe=section(right,'◇ Откуда брать одежду','Источники одежды'),keepSaved=checkbox(wardrobe,'Читать одежду из меток ⟦ОДЕЖДА:Имя⟧',initial.wardrobe.keepDefault);
+ const wardrobe=section(right,'◇ Найти одежду персонажей','Источники одежды'),keepSaved=checkbox(wardrobe,'Читать одежду из меток ⟦ОДЕЖДА:Имя⟧',initial.wardrobe.keepDefault);
+ const cardSources=section(wardrobe,'Одежда из карточки и персоны','Необязательные отдельные источники одежды',false);
+ ui.note(cardSources,'Если у персонажа нет постоянного неизменного комплекта одежды, лучше описывать её в RP или карточке персонажа. Поиск из карточки и персоны включай только тогда, когда используешь специальные границы блока.');
+ const cardControls={};
+ for(const [key,label,example] of [
+  ['card','Из карточки персонажа','Для карточки-нарратора внутри блока запиши: ⟦ОДЕЖДА:Имя⟧синяя рубашка⟦/ОДЕЖДА⟧. Для одиночного персонажа можно просто написать одежду между границами.'],
+  ['persona','Из описания моей персоны','Внутри блока можно написать одежду обычными словами; SP Imagen сам свяжет её с текущим именем персоны.']]){
+   const opts=initial.wardrobe[key];
+   const group=section(cardSources,label,example,false);
+   cardControls[key]={enabled:checkbox(group,'Читать этот источник',opts.enabled)};
+   cardControls[key].start=field(group,'Начало блока',input(opts.start));
+   cardControls[key].end=field(group,'Конец блока',input(opts.end));
+   ui.note(group,example);
+   const sample=key==='card'
+    ? `${opts.start}\n⟦ОДЕЖДА:Джи⟧blue crop top⟦/ОДЕЖДА⟧\n⟦ОДЕЖДА:Кишибе⟧grey shirt⟦/ОДЕЖДА⟧\n${opts.end}`
+    : `${opts.start}\nblue blouse, long skirt\n${opts.end}`;
+   const exampleBlock=el('pre',sample,group,'ness-wardrobe-example');
+   ui.button('Скопировать пример',group,async()=>{
+    try{await navigator.clipboard.writeText(exampleBlock.textContent);message.textContent='Пример скопирован. Впиши его в карточку или описание персоны и измени одежду.';}
+    catch{message.textContent='Не получилось скопировать автоматически. Выдели текст примера вручную.';}
+   },'quiet');
+ }
  const wardrobeActions=el('div',undefined,wardrobe,'ness-settings-actions');ui.button('⌘ Найти одежду по примеру',wardrobeActions,()=>launchCoder(false,'wardrobe'));
- const customSources=section(wardrobe,'Ручная настройка чтения одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
+ const customSources=section(wardrobe,'Дополнительно · свои форматы одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
  const shapes=WARDROBE_RULE_DEFAULTS;
  const formats={markers:'Запись между метками',regex:'Готовое правило поиска (regex)',html:'HTML — запись в тегах <…>'};
  const labels={namePrefix:'Текст перед именем',nameSuffix:'Текст сразу после имени',outfitEnd:'Текст после описания одежды',blockStart:'Общий блок: начало (если есть)',blockEnd:'Общий блок: конец (если есть)',pattern:'Готовое правило поиска',flags:'Как искать (флаги)',nameGroup:'Часть правила с именем',outfitGroup:'Часть правила с одеждой',rowSelector:'Как найти запись персонажа',nameSelector:'Как найти имя внутри записи',nameAttribute:'Имя хранится в атрибуте',outfitSelector:'Как найти одежду внутри записи',outfitAttribute:'Одежда хранится в атрибуте',stripSelector:'Как найти общий блок для удаления'};
@@ -592,10 +618,10 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  for(const [key,title]of Object.entries(formats))ui.button(title,exampleRow,()=>{const added=addSource(samples[key]);if(added){added.row.open=true;onDirty();}});
  const posts=section(left,'▤ Сколько последних постов читать','Количество постов'),numbers=el('div',undefined,posts,'ness-numbers'),postFields={};
  for(const [key,title]of [['snapshot','Snapshot'],['comic','Comic'],['story_page','Story Page']]){const control=input(initial.posts[key],'number');control.min='1';control.max='20';control.setAttribute('data-setting','posts.'+key);postFields[key]=field(numbers,title,control);}
- const cleanup=section(right,'✂ Что скрыть от режиссёра','Очистка постов'),checks=el('div',undefined,cleanup,'ness-check-grid'),cleanFields={};
+ const cleanup=section(right,'✂ Убрать ненужный текст','Очистка постов'),checks=el('div',undefined,cleanup,'ness-check-grid'),cleanFields={};
  for(const [key,title]of [['serviceTags','Скрытые мысли и служебные метки'],['comments','Служебные комментарии <!-- … -->'],['html','Скрытые блоки и HTML-оформление'],['mawsFooter','Служебная сводка в конце поста']]){cleanFields[key]=checkbox(checks,title,initial.cleanup[key]);cleanFields[key].setAttribute('data-setting','cleanup.'+key);}
- const cleanupHelperActions=el('div',undefined,cleanup,'ness-settings-actions');ui.button('⌘ Помогатор-кодировщик 3000',cleanupHelperActions,()=>launchCoder(false),'quiet');
- const customCleanup=section(cleanup,'Ручная настройка удаления','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
+ const cleanupHelperActions=el('div',undefined,cleanup,'ness-settings-actions');ui.button('⌘ Найти лишнее по примеру',cleanupHelperActions,()=>launchCoder(false),'quiet');
+ const customCleanup=section(cleanup,'Дополнительно · свои правила удаления','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
  function addFilter(value={pattern:'',flags:'gm'}){
   if(filterRows.length>=8){message.textContent='Можно добавить до 8 фильтров очистки.';return;}
   const box=ui.section(filters,'Убирать вставки · '+(filterRows.length+1),false),body=el('div',undefined,box,'ness-rule-fields'),pattern=field(body,'Правило поиска ненужной вставки',area(value.pattern),'Шаблон удаляемого текста (regex)'),flags=field(body,'Как искать (флаги)',input(value.flags),'Флаги');pattern.parentNode.className+=' ness-wide';
@@ -604,16 +630,16 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  initial.cleanup.customPatterns.forEach(addFilter);
  const cleanupActions=el('div',undefined,customCleanup,'ness-settings-actions');
  ui.button('+ Ввести правило вручную',cleanupActions,()=>{if(addFilter())onDirty();});
- const exceptionScope=section(cleanup,'Исключения — что сохранить','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
+ const exceptionScope=section(cleanup,'Сохранить важное из удаляемых блоков','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
  function addException(value={pattern:'',flags:'gm',group:'',label:''}){
   if(exceptionRows.length>=8)throw Error('Можно добавить до 8 исключений.');
-  const box=ui.section(exceptionRules,value.label||'Сохранять фрагмент · '+(exceptionRows.length+1),false),label=field(box,'Как назвать извлечённые данные?',input(value.label||''),'Название извлечённых данных'),manual=ui.section(box,'Изменить способ поиска вручную'),body=el('div',undefined,manual,'ness-rule-fields');
+  const box=ui.section(exceptionRules,value.label||'Сохранять фрагмент · '+(exceptionRows.length+1),false),label=field(box,'Как назвать извлечённые данные?',input(value.label||''),'Название извлечённых данных'),manual=ui.section(box,'Дополнительно · точный способ поиска'),body=el('div',undefined,manual,'ness-rule-fields');
   const group=field(body,'Часть правила с нужным значением',input(value.group||''),'Группа извлечения'),pattern=field(body,'Правило поиска нужного фрагмента',area(value.pattern),'Шаблон сохраняемого текста (regex)'),flags=field(body,'Как искать (флаги)',input(value.flags),'Флаги');pattern.parentNode.className+=' ness-wide';
   const entry={box,label,group,pattern,flags};ui.button('Убрать исключение',box,()=>{exceptionRows.splice(exceptionRows.indexOf(entry),1);box.remove();onDirty();},'quiet');exceptionRows.push(entry);
  }
  (initial.cleanup.exceptions||[]).forEach(addException);
  const exceptionActions=el('div',undefined,exceptionScope,'ness-settings-actions');ui.button('+ Ввести правило вручную',exceptionActions,()=>{try{addException();onDirty();}catch(e){message.textContent=e.message;}});
- ui.button('⌘ Помогатор исключений',exceptionActions,()=>launchCoder(true),'quiet');
+ ui.button('⌘ Сохранить нужное по примеру',exceptionActions,()=>launchCoder(true),'quiet');
  function launchCoder(exceptions,initialGoal='auto'){
   if(closeCoder)return;
   closeCoder=openNessCoder(D,D.querySelector('#sp-imagen-review-panel'),{exceptions,initialGoal,onClose:()=>{closeCoder=null;},onAdd:result=>{
@@ -627,7 +653,7 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  for(const [mode,title]of [['comic','Comic'],['story','Story Page']]){const row=el('div',undefined,dialogue,'ness-dialogue-row');el('span',title,row);for(const [suffix,label,max]of [['Lines','Максимум реплик на странице',8],['Words','Максимум слов в реплике',40]]){const key=mode+suffix,control=input(initial.dialogue[key],'number');control.min=suffix==='Lines'?'0':'1';control.max=String(max);control.setAttribute('data-setting','dialogue.'+key);dialogueFields[key]=field(row,label,control);}}
  const previewSection=section(left,'✧ Перед отправкой','Предварительный просмотр промпта'),previewToggle=checkbox(previewSection,'Показывать итоговый промпт перед генерацией',skipPreview===undefined?initial.previewEnabled:!skipPreview);previewToggle.setAttribute('data-setting','previewEnabled');
  const number=e=>e.value.trim()?Number(e.value):NaN;
- function getValue(){return {version:1,wardrobe:{version:1,keepDefault:keepSaved.checked,sources:sourceRows.map(r=>({type:r.type.value,enabled:r.enabled.checked,...Object.fromEntries(Object.entries(r.fields).map(([k,e])=>[k,e.value]))}))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value})),exceptions:exceptionRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value,group:r.group.value,label:r.label.value.trim()}))},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),previewEnabled:previewToggle.checked};}
+ function getValue(){return {version:1,wardrobe:{version:1,keepDefault:keepSaved.checked,sources:sourceRows.map(r=>({type:r.type.value,enabled:r.enabled.checked,...Object.fromEntries(Object.entries(r.fields).map(([k,e])=>[k,e.value]))})),card:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.card[k].checked:cardControls.card[k].value])),persona:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.persona[k].checked:cardControls.persona[k].value]))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value})),exceptions:exceptionRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value,group:r.group.value,label:r.label.value.trim()}))},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),previewEnabled:previewToggle.checked};}
  return {element:root,getValue,scope,dispose:()=>closeCoder?.()};
 }
 
@@ -1689,6 +1715,7 @@ if(generationLocks.has(lockedChat))throw Error('Генерация уже вып
 generationLocks.add(lockedChat);
 const originEvent=st.event_types?.CHAT_CHANGED;
 let onOriginChanged=null;
+let finished=false;
 try{
 const beforeChat=st.chat,beforeId=st.chatId,beforeCount=st.chat.length;
 const imageController=new AbortController();
@@ -1697,7 +1724,6 @@ onOriginChanged=()=>{
  if(now.chat!==beforeChat||now.chatId!==beforeId)imageController.abort(new Error('Чат изменился.'));
 };
 if(originEvent)st.eventSource?.on?.(originEvent,onOriginChanged);
-let finished=false;
 const requireOrigin=()=>{
  const now=SillyTavern.getContext();
  if(now.chat!==beforeChat||now.chatId!==beforeId||now.chat.length!==beforeCount)

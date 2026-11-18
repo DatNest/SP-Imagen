@@ -1,5 +1,5 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
-import { PROFILE_SWITCHES, PROFILE_KINDS, normalizeProfile, normalizeProfileStore, activeProfile } from './profiles.js';
+import { PROFILE_SWITCHES, normalizeProfile, normalizeProfileStore, activeProfile } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
 import { eventSource, event_types } from '../../../../script.js';
@@ -417,37 +417,37 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         } else button('Открыть', actions, () => openPromptWindow(name));
         row.append(title, actions); list.append(row);
     }
-    // Personal profiles are optional. The three shipped director formats above always stay.
-    const customTitle=document.createElement('h3'); customTitle.textContent='Мои профили';
+    // Built-in formats are already present above. Personal prompts are optional additions;
+    // no second format picker or three independent assignments are exposed.
+    const customTitle=document.createElement('h3'); customTitle.textContent='Мои промпты';
     const customList=document.createElement('div'); customList.className='spi-custom-profile-list';
-    const assignments=document.createElement('div'); assignments.className='spi-profile-assignments';
-    const renderCustom = () => {
+    const addProfile=document.createElement('div'); addProfile.className='spi-dialog-actions';
+    const addButton=button('＋ Добавить промпт',addProfile,()=>openCustomProfileEditor(null,renderCustom),true);
+    addButton.classList.add('spi-prompt-add');
+    const renderCustom=()=>{
         const store=normalizeProfileStore(settings());
-        customList.replaceChildren(); assignments.replaceChildren();
-        if (!store.profiles.length) {
-            const message=document.createElement('p');message.className='spi-status';message.textContent='Твоих профилей пока нет. Готовые форматы выше уже работают.';
-            customList.append(message);
+        customList.replaceChildren();
+        if(!store.profiles.length){
+            const empty=document.createElement('p');empty.className='spi-status';
+            empty.textContent='Здесь появятся твои собственные промпты.';customList.append(empty);
         }
-        for (const profile of store.profiles) {
+        for(const profile of store.profiles){
             const row=document.createElement('div');row.className='spi-prompt-row';
-            const label=document.createElement('strong');label.textContent=profile.name;
+            const title=document.createElement('strong');title.textContent=profile.name;
             const actions=document.createElement('div');actions.className='spi-dialog-actions';
+            const isActive=['snapshot','comic','story_page'].every(format=>store.activeProfiles[format]===profile.id);
+            const toggle=button(isActive?'✓ Используется':'Использовать',actions,()=>{
+                const state=settings();
+                // Migrate a legacy single-format profile only when the user enables it.
+                if(!isActive){const current=state.customProfiles.find(p=>p.id===profile.id);if(current)current.kind='all';}
+                for(const format of ['snapshot','comic','story_page'])state.activeProfiles[format]=isActive?'':profile.id;
+                saveSettings();renderCustom();
+            });
+            toggle.setAttribute('aria-pressed',String(isActive));
             button('Изменить',actions,()=>openCustomProfileEditor(profile,renderCustom));
-            row.append(label,actions);customList.append(row);
-        }
-        for(const [kind,title] of [['snapshot','Snapshot'],['comic','Comic'],['story_page','Story Page']]) {
-            const select=document.createElement('select');select.className='spi-profile-select';
-            const builtin=document.createElement('option');builtin.value='';builtin.textContent='Встроенный профиль';select.append(builtin);
-            for(const profile of store.profiles.filter(p=>p.kind==='all'||p.kind===kind)) {
-                const opt=document.createElement('option');opt.value=profile.id;opt.textContent=profile.name;select.append(opt);
-            }
-            select.value=store.activeProfiles[kind] || '';
-            select.addEventListener('change',()=>{settings().activeProfiles[kind]=select.value;saveSettings();});
-            formField(assignments, `Дополнение для ${title}`,select,'Можно оставить встроенный профиль, либо выбрать свой. Исходная инструкция формата остаётся на месте.');
+            row.append(title,actions);customList.append(row);
         }
     };
-    const addProfile=document.createElement('div');addProfile.className='spi-dialog-actions';
-    button('＋ Добавить профиль',addProfile,()=>openCustomProfileEditor(null,renderCustom),true);
     renderCustom();
     const footer = document.createElement('div');
     footer.className = 'spi-dialog-actions';
@@ -459,7 +459,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     transfer.className = 'spi-dialog-actions spi-prompt-transfer';
     button('↥ ↧ Импорт / экспорт JSON', transfer, openPromptJsonTransfer);
     const scroll=document.createElement('div');scroll.className='spi-profile-scroll';
-    scroll.append(list, customTitle, customList, addProfile, assignments);
+    scroll.append(list, customTitle, customList, addProfile);
     if (pending.size) dialog.append(copy);
     dialog.append(transfer, scroll, footer);
     if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
@@ -472,13 +472,10 @@ function openCustomProfileEditor(existing,refresh=()=>{}) {
     const name=document.createElement('input');name.type='text';name.maxLength=100;name.value=existing?.name||'';
     name.placeholder='Например, Мои акварельные иллюстрации';
     formField(form,'Название',name,'Чтобы быстро найти этот профиль.');
-    const kind=document.createElement('select');
-    for(const [id,label] of Object.entries(PROFILE_KINDS)){const opt=document.createElement('option');opt.value=id;opt.textContent=label;kind.append(opt);}
-    kind.value=existing?.kind||'all';
-    formField(form,'Для каких форматов',kind,'Можно использовать один профиль для всех трёх форматов или только для выбранного.');
     const prompt=document.createElement('textarea');prompt.className='spi-custom-prompt';prompt.value=existing?.prompt||'';
     prompt.placeholder='Например: warm ambient lighting, hand-painted backgrounds, delicate expressions';prompt.maxLength=20000;
-    formField(form,'Мои правила создания изображения',prompt,'Личные пожелания к композиции и оформлению. Новая запись не заменяет обязательные инструкции режиссёра.');
+    formField(form,'Твой промпт для картинки',prompt,'Напиши, что художник должен учитывать. Встроенные правила останутся работать как раньше.');
+    const advanced=document.createElement('details');advanced.className='spi-profile-advanced';const summary=document.createElement('summary');summary.textContent='Что использовать из чата · необязательно';advanced.append(summary);
     const checks=document.createElement('fieldset');checks.className='spi-profile-checks';
     const legend=document.createElement('legend');legend.textContent='Что учитывать при генерации';checks.append(legend);
     const values={};
@@ -488,7 +485,7 @@ function openCustomProfileEditor(existing,refresh=()=>{}) {
         const title=document.createElement('span');title.textContent=label;
         row.append(checkbox,title);addFieldHelp(row,label,help);checks.append(row);values[key]=checkbox;
     }
-    form.append(checks);
+    advanced.append(checks);form.append(advanced);
     const status=document.createElement('p');status.className='spi-status';status.setAttribute('role','status');
     const actions=document.createElement('div');actions.className='spi-dialog-actions';
     if(existing)button('Удалить профиль',actions,()=>{
@@ -499,11 +496,13 @@ function openCustomProfileEditor(existing,refresh=()=>{}) {
     });
     button('Отмена',actions,close);
     button('Сохранить',actions,()=>{
-        const profile=normalizeProfile({id:existing?.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),name:name.value,kind:kind.value,prompt:prompt.value,options:Object.fromEntries(Object.entries(values).map(([key,node])=>[key,node.checked]))});
+        const profile=normalizeProfile({id:existing?.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),name:name.value,kind:'all',prompt:prompt.value,options:Object.fromEntries(Object.entries(values).map(([key,node])=>[key,node.checked]))});
         if(!profile){status.textContent='Сначала введи название профиля.';return;}
         const state=settings();const at=state.customProfiles.findIndex(item=>item.id===profile.id);
         if(at>=0)state.customProfiles[at]=profile;else state.customProfiles.push(profile);
         for(const format of ['snapshot','comic','story_page'])if(state.activeProfiles[format]===profile.id&&profile.kind!=='all'&&profile.kind!==format)state.activeProfiles[format]='';
+        // A newly saved personal prompt is immediately active for all built-in formats.
+        if(!existing)for(const format of ['snapshot','comic','story_page'])state.activeProfiles[format]=profile.id;
         saveSettings();close();refresh();
     },true);
     dialog.append(form,status,actions);name.focus({preventScroll:true});
