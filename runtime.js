@@ -141,7 +141,15 @@ function htmlWardrobe(text,r){
 async function readConfiguredWardrobe(raw,settings){
  let text=String(raw||'');const pairs=[];
  const tag=settings.chatTags||DEFAULT_CHAT_TAGS;
- const sources=[...(settings.keepDefault?[{type:'markers',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧',namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',nativeFallback:true}]:[]),...(['custom','both'].includes(tag.mode)?[{type:'markers',namePrefix:tag.namePrefix,nameSuffix:tag.nameSuffix,outfitEnd:tag.outfitEnd,blockStart:'',blockEnd:''}]:[]),...settings.sources.filter(r=>r.enabled!==false)];
+ // Keep both the current and older built-in tags readable. The closed wardrobe
+ // container is processed first, then individual tags outside that container.
+ // A legacy [OUTFIT:Name] entry must not require a user to rebuild their RP.
+ const builtIn = settings.keepDefault ? [
+  {type:'markers',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧',namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',nativeFallback:true},
+  {type:'markers',namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',nativeFallback:true},
+  {type:'markers',namePrefix:'[OUTFIT:',nameSuffix:']',outfitEnd:'[/OUTFIT]'},
+ ] : [];
+ const sources=[...builtIn,...(['custom','both'].includes(tag.mode)?[{type:'markers',namePrefix:tag.namePrefix,nameSuffix:tag.nameSuffix,outfitEnd:tag.outfitEnd,blockStart:'',blockEnd:''}]:[]),...settings.sources.filter(r=>r.enabled!==false)];
  for(let i=0;i<sources.length;){
   const r=sources[i++];let found;
   if(r.type==='regex'){const rules=[r];while(i<sources.length&&sources[i].type==='regex')rules.push(sources[i++]);found=await regexWardrobe(text,{rules});}
@@ -151,20 +159,51 @@ async function readConfiguredWardrobe(raw,settings){
  }
  return {text,pairs};
 }
+// RP scene length and wardrobe history are independent: a current outfit can
+// be established long before the two or five posts used to describe a picture.
+function mayContainWardrobe(raw,settings){
+ const tag=settings.chatTags||DEFAULT_CHAT_TAGS;
+ if(settings.keepDefault && /⟦(?:ОДЕЖДА:|ГАРДЕРОБ⟧)|\[OUTFIT:/i.test(raw))return true;
+ if(['custom','both'].includes(tag.mode)&&tag.namePrefix&&raw.includes(tag.namePrefix))return true;
+ return settings.sources.some(rule=>rule.enabled!==false&&(
+   rule.type==='regex'||rule.type==='html'||
+   rule.type==='markers'&&Boolean(rule.namePrefix&&raw.includes(rule.namePrefix)||rule.blockStart&&raw.includes(rule.blockStart))
+ ));
+}
 async function collectConfiguredRp(kind,settings,options=loadGen2Settings(),endIndex=null){
  const st=SillyTavern.getContext(),history=st.chat||[],recent=[],wardrobe=new Map();
  const count=options.posts[kind];let warning='';
- for(let i=endIndex===null?history.length-1:endIndex;i>=0&&recent.length<count;i--){
+ const last=endIndex===null?history.length-1:Math.min(endIndex,history.length-1);
+ const insertOutfits=pairs=>{
+  // Most recent RP entry wins for a given name, even if earlier posts repeat it.
+  // Within a single post the last complete entry is the most recent one.
+  for(const [name,wear] of new Map(pairs))if(!wardrobe.has(name))wardrobe.set(name,wear);
+ };
+ let i=last;
+ for(;i>=0&&recent.length<count;i--){
   const m=history[i],raw=getCarrierRpText(m,Boolean(options.cleanup.exceptions?.length));if(!raw)continue;
   let read;
   try{read=await readConfiguredWardrobe(raw,settings);}
   catch(e){warning='Гардероб: '+String(e?.message||e);read={text:stripWardrobeTags(raw),pairs:[]};}
-  const local=new Map(read.pairs);for(const [name,wear] of local)if(!wardrobe.has(name))wardrobe.set(name,wear);
+  insertOutfits(read.pairs);
   let text;try{text=await cleanConfiguredRp(read.text,options);}catch(e){warning='Очистка: '+String(e?.message||e);text=cleanRpVisualText(read.text);}
   if(text)recent.unshift({m,raw,text,index:i});
  }
+ // Continue scanning backwards exclusively for wardrobe markers. Never append
+ // old posts to the scene or send the older narrative to the director.
+ const hasHeavyRules=settings.sources.some(r=>r.enabled!==false&&['regex','html'].includes(r.type));
+ // With regex/HTML rules, bound the expensive per-post parsing work.
+ const budget=hasHeavyRules?120:1000;
+ let searched=0;
+ for(;i>=0&&searched<budget;i--){
+  const raw=getCarrierRpText(history[i]);if(!raw)continue;
+  searched++;
+  if(!mayContainWardrobe(raw,settings))continue;
+  try{insertOutfits((await readConfiguredWardrobe(raw,settings)).pairs);}
+  catch(e){warning='Гардероб: '+String(e?.message||e);}
+ }
  // Facts written in the RP take precedence; card/persona outfit is a fallback.
- for(const [name,wear] of getCardPersonaWardrobe(st,settings)) if(name && wear && !wardrobe.has(name))wardrobe.set(name,wear);
+ for(const [name,wear] of getCardPersonaWardrobe(st,settings))if(name&&wear&&!wardrobe.has(name))wardrobe.set(name,wear);
  return {recent,wardrobe,warning};
 }
 
@@ -1456,7 +1495,7 @@ async function reviewSceneDialog(){
     if (assignments.size < MAX || assignments.has(normalize(canonicalActual))) assignments.set(normalize(canonicalActual),{name:canonicalActual, text:chunks.join('; '),source});
   };
 // OUTFIT SOURCE — explicit wardrobe tags written directly in RP posts.
-let wardrobeStatus = 'Одежда не найдена в последних RP-постах';
+let wardrobeStatus = 'Одежда не найдена в прочитанных метках или включённых карточках';
 let wardrobeCount = 0;
 if (!manualMode) {
   const fallback = String(v.sp_imagen_rp_outfits || '');
@@ -1478,7 +1517,7 @@ if (!manualMode) {
     wardrobeCount++;
   }
   wardrobeStatus = wardrobeCount
-    ? 'Одежда из ⟦ГАРДЕРОБ⟧: ' + wardrobeCount + ' персонаж(ей)'
+    ? 'Найдены описания одежды: ' + wardrobeCount + ' персонаж(ей)'
     : wardrobeStatus;
 }
 v.sp_imagen_wardrobe_status = wardrobeStatus;
