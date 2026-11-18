@@ -23,6 +23,8 @@ export async function installSpImagenMediaSlots(options) {
   let guideDemo = null;
   let wand = null;
 
+  const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
+
   try { host[CLEANUP_KEY]?.(); } catch (_) {}
 
 
@@ -128,8 +130,19 @@ export async function installSpImagenMediaSlots(options) {
     .prompt-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: min(40dvh, 320px);
       overflow: auto; font: 12px/1.5 ui-monospace, monospace; padding: 9px; border: 1px solid var(--ms-line);
       border-radius: 6px; background: color-mix(in srgb, var(--ms-panel) 65%, transparent); }
-    .prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-block-start: 9px; }
+    .prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-block-start: 9px; flex-wrap: wrap; }
     .prompt-actions button { border: 1px solid var(--ms-line); border-radius: 6px; padding: 7px 10px; }
+    .prompt-inputs { display: grid; gap: 10px; margin-block-start: 10px; }
+    .prompt-field { display: grid; gap: 5px; }
+    .prompt-field label { font-weight: 600; white-space: normal; }
+    .prompt-field small { opacity: .8; white-space: normal; }
+    .prompt-field textarea, .prompt-field input {
+      inline-size: 100%; min-inline-size: 0; border: 1px solid var(--ms-line); border-radius: 8px;
+      padding: 9px; background: color-mix(in srgb, var(--ms-panel) 72%, transparent); color: inherit; font: inherit;
+    }
+    .prompt-field textarea { min-block-size: 120px; resize: vertical; }
+    .prompt-field input { min-block-size: 38px; }
+    .prompt-note { margin: 8px 0 0; white-space: normal; font-size: 12px; opacity: .85; }
     .guide-saved { border: 1px dashed var(--ms-line); border-radius: 7px; font-size: 16px; }
     .guide-result { margin-block: 8px; }
     .guide-result p { white-space: normal; margin: 6px 4px; }
@@ -240,8 +253,8 @@ export async function installSpImagenMediaSlots(options) {
     if (restoreFocus && toggle.isConnected) toggle.focus({ preventScroll: true });
   }
 
-  // All popovers use the same mobile-viewport positioning; none depend on other extensions.
-  function positionPopup(node, anchor) {
+  // All popovers use the same viewport-aware positioning and can flip above or to the sides.
+  function positionPopup(node, anchor, options = {}) {
     const viewport = host.visualViewport;
     const left = viewport?.offsetLeft ?? 0;
     const top = viewport?.offsetTop ?? 0;
@@ -253,10 +266,33 @@ export async function installSpImagenMediaSlots(options) {
     doc.body.append(node);
     const reference = anchor.getBoundingClientRect();
     const rect = node.getBoundingClientRect();
-    const x = Math.max(left + gap, Math.min(reference.left, right - rect.width - gap));
-    const below = reference.bottom + gap + rect.height <= bottom - gap;
-    const desiredY = below ? reference.bottom + gap : reference.top - gap - rect.height;
-    const y = Math.max(top + gap, Math.min(desiredY, bottom - rect.height - gap));
+    const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
+    const placements = Array.isArray(options.prefer) && options.prefer.length ? options.prefer : ['bottom', 'top', 'right', 'left'];
+    const candidates = {
+      bottom: {
+        x: clamp(reference.left, left + gap, right - rect.width - gap),
+        y: reference.bottom + gap,
+        fits: reference.bottom + gap + rect.height <= bottom - gap,
+      },
+      top: {
+        x: clamp(reference.left, left + gap, right - rect.width - gap),
+        y: reference.top - gap - rect.height,
+        fits: reference.top - gap - rect.height >= top + gap,
+      },
+      right: {
+        x: reference.right + gap,
+        y: clamp(reference.top, top + gap, bottom - rect.height - gap),
+        fits: reference.right + gap + rect.width <= right - gap,
+      },
+      left: {
+        x: reference.left - gap - rect.width,
+        y: clamp(reference.top, top + gap, bottom - rect.height - gap),
+        fits: reference.left - gap - rect.width >= left + gap,
+      },
+    };
+    let chosen = placements.map(key => candidates[key]).find(candidate => candidate?.fits) || candidates.bottom;
+    let x = clamp(chosen.x, left + gap, right - rect.width - gap);
+    let y = clamp(chosen.y, top + gap, bottom - rect.height - gap);
     node.style.setProperty('--ms-left', x + 'px');
     node.style.setProperty('--ms-top', y + 'px');
   }
@@ -279,9 +315,78 @@ export async function installSpImagenMediaSlots(options) {
     close.addEventListener('click', closePromptPopup);
     actions.append(close);
     root.append(title, text, actions);
-    positionPopup(node, anchor);
+    positionPopup(node, anchor, { prefer: ['top', 'bottom', 'right', 'left'] });
     promptPopup = { node, anchor, text };
     return text;
+  }
+
+  function showPromptEditor(anchor, index, kind, config, { previewOnly = false } = {}) {
+    closeToolsMenu();
+    closePromptPopup();
+    const { node, root } = component('prompt-preview');
+    const label = `Промпт и стиль · ${LABEL[kind]}`;
+    node.setAttribute('role', 'dialog');
+    node.setAttribute('aria-label', label);
+    const title = element('div', 'prompt-title', label);
+    const inputs = element('div', 'prompt-inputs');
+
+    const promptField = element('div', 'prompt-field');
+    const promptLabel = element('label', '', 'Промпт картинки');
+    const promptArea = doc.createElement('textarea');
+    promptArea.value = String(config?.prompt || '');
+    promptArea.spellcheck = false;
+    const promptHelp = element('small', '', 'Можно поправить детали сцены, подписи и ошибки, не меняя общий глобальный профиль.');
+    promptField.append(promptLabel, promptArea, promptHelp);
+
+    const styleField = element('div', 'prompt-field');
+    const styleLabel = element('label', '', 'Стиль только для этой перегенерации');
+    const styleInput = doc.createElement('textarea');
+    styleInput.value = String(config?.spImagenDirect?.style?.value || '');
+    styleInput.spellcheck = false;
+    styleInput.placeholder = 'Например: warm colors, soft lineart, watercolor textures';
+    const styleHelp = element('small', '', 'Это поле не меняет общий активный стиль SP Imagen. Оно применяется только к этой картинке и её следующим перегенерациям.');
+    styleField.append(styleLabel, styleInput, styleHelp);
+
+    const note = element('p', 'prompt-note', previewOnly
+      ? 'Учебный режим: можно попробовать изменить поля. Генерация не запускается, изменения не сохраняются.'
+      : 'После удачной перегенерации новая версия сохранится в галерее этого поста и станет текущей для следующего редактирования.');
+    inputs.append(promptField, styleField, note);
+
+    const actions = element('div', 'prompt-actions');
+    const close = element('button', '', 'Закрыть');
+    const rerun = element('button', '', 'Перегенерировать');
+    close.addEventListener('click', closePromptPopup);
+    if (previewOnly) rerun.textContent = 'Перегенерировать (пример)';
+    rerun.addEventListener('click', async () => {
+      if (previewOnly || guideDemo) {
+        note.textContent = 'В обычном режиме создаётся новая версия с исправленным промптом и стилем. Здесь это только пример, без запроса в NovelAI.';
+        return;
+      }
+      rerun.disabled = true;
+      close.disabled = true;
+      try {
+        const next = clone(config) || {};
+        next.prompt = String(promptArea.value || '').trim();
+        if (!next.prompt) throw new Error('Промпт не может быть пустым.');
+        next.spImagenDirect ||= { version: 1, provider: 'novelai', settings: {} };
+        next.spImagenDirect.style = {
+          id: 'sp-imagen-inline-style',
+          name: 'Разовый стиль',
+          value: String(styleInput.value || '').trim(),
+        };
+        await regenerate(index, kind, next);
+        closePromptPopup();
+      } catch (error) {
+        host.toastr?.error?.(String(error?.message || error), 'SP Imagen');
+        rerun.disabled = false;
+        close.disabled = false;
+      }
+    });
+    actions.append(close, rerun);
+    root.append(title, inputs, actions);
+    positionPopup(node, anchor, { prefer: ['top', 'bottom', 'left', 'right'] });
+    promptPopup = { node, anchor, text: promptArea };
+    return promptArea;
   }
 
   function toggleToolsMenu(view) {
@@ -312,7 +417,7 @@ export async function installSpImagenMediaSlots(options) {
       root.append(option);
     }
 
-    positionPopup(node, view.toggle);
+    positionPopup(node, view.toggle, { prefer: ['top', 'bottom', 'right', 'left'] });
     view.toggle.setAttribute('aria-expanded', 'true');
     openMenu = { node, toggle: view.toggle };
     root.querySelector('button')?.focus({ preventScroll: true });
@@ -370,7 +475,13 @@ export async function installSpImagenMediaSlots(options) {
       element('span', 'count', `${selected + 1} / ${slot.versions.length}`),
       galleryButton('→', 'Следующая версия', () => choose(index, kind, 1), selected === slot.versions.length - 1),
     );
+    const editorButton = galleryButton('📝', 'Открыть промпт и стиль этой картинки', () => showPromptEditor(
+      editorButton, index, kind, guideDemo?.view?.index === index ? guideSampleConfig() : item.config,
+      { previewOnly: guideDemo?.view?.index === index }
+    ), locked || !item.config);
+    editorButton.classList.add('prompt-edit');
     actions.append(
+      editorButton,
       galleryButton(locked ? '⏳' : '↻', 'Повторить эту версию', () => regenerate(index, kind), locked || !item.config),
       galleryButton('↓', 'Скачать', () => saveSelected(index, kind)),
       galleryButton('🗑', 'Удалить из галереи', () => deleteSelected(index, kind), locked),
@@ -479,6 +590,37 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   // Guide UI is transient DOM only. No chat metadata, message extras, network calls or real generation.
+  function guideSampleConfig() {
+    return {
+      prompt: '1girl, blue eyes, soft lighting, sitting at a table',
+      aspect_ratio: '2:3',
+      image_size: '1K',
+      spImagenDirect: { style: { id: '', name: 'Учебный стиль', value: 'warm colors, soft lineart' } },
+    };
+  }
+
+  function guideResult(view) {
+    // Prefer the actual gallery only if its saved version can open the editor.
+    // Older images may have no saved config; give the tour a safe demo instead.
+    if (view.cards.size && view.gallery.querySelector('.prompt-edit:not(:disabled)')) return view.gallery;
+    if (!guideDemo.result) {
+      const example = element('div', 'card guide-result');
+      example.append(element('div', 'heading', 'Готовая картинка — учебный пример'));
+      example.append(element('p', '', 'Здесь появится изображение после генерации.'));
+      const actions = element('div', 'actions');
+      const edit = element('button', 'tool prompt-edit', '📝');
+      edit.title = 'Изменить промпт и стиль этой картинки';
+      edit.setAttribute('aria-label', edit.title);
+      edit.addEventListener('click', () => showPromptEditor(edit, view.index,
+        guideDemo?.kind || 'snapshot', guideSampleConfig(), { previewOnly: true }));
+      actions.append(edit, element('span', '', '←  1 / 1  →      ↻   ↓   🗑'));
+      example.append(actions);
+      view.root.append(example);
+      guideDemo.result = example;
+    }
+    return guideDemo.result;
+  }
+
   function endGuideDemo() {
     if (!guideDemo) return;
     const demo = guideDemo;
@@ -563,17 +705,19 @@ export async function installSpImagenMediaSlots(options) {
     }
     if (section === 'post-result') {
       closeToolsMenu(); closePromptPopup();
-      if (view.cards.size) return view.gallery;
-      if (!guideDemo.result) {
-        const example = element('div', 'card guide-result');
-        example.append(element('div','heading','Готовая картинка — учебный пример'));
-        example.append(element('p','', 'Здесь появится изображение после генерации.'));
-        example.append(element('p','', '←  1 / 1  →      ↻   ↓   🗑'));
-        view.root.append(example);
-        guideDemo.result = example;
-      }
-      guideDemo.result.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
-      return guideDemo.result;
+      const result = guideResult(view);
+      result.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
+      return result;
+    }
+    if (section === 'post-edit') {
+      closeToolsMenu(); closePromptPopup();
+      const result = guideResult(view);
+      const button = result.querySelector('.prompt-edit:not(:disabled)');
+      button?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+      return button;
+    }
+    if (section === 'post-editor') {
+      return promptPopup?.node ?? null;
     }
     return view.toggle;
   }
@@ -695,13 +839,14 @@ export async function installSpImagenMediaSlots(options) {
     return JSON.stringify(config).replace(/&/g, '\\u0026').replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
   }
 
-  async function regenerate(index, kind) {
+  async function regenerate(index, kind, overrideConfig = null) {
     const current = context();
     const chat = current.chat;
     const message = chat?.[index];
     const slot = slotsOf(message, false)?.[kind];
     const item = slot?.versions?.[slot.selected];
-    if (!item?.config) throw new Error('У этой версии не сохранён промпт.');
+    const config = clone(overrideConfig || item?.config);
+    if (!config) throw new Error('У этой версии не сохранён промпт.');
     const extension = getExtension?.();
     if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') {
       throw new Error('Для повторной генерации включи SP Imagen → NovelAI и укажи API-токен.');
@@ -712,12 +857,12 @@ export async function installSpImagenMediaSlots(options) {
     paint();
     try {
       // The viewer always shows the most recent request, including a regeneration.
-      if (typeof item.config.prompt === 'string' && item.config.prompt.trim()) {
+      if (typeof config.prompt === 'string' && config.prompt.trim()) {
         current.chatMetadata.variables ||= {};
-        current.chatMetadata.variables.sp_imagen_last_final_image_prompt = item.config.prompt;
+        current.chatMetadata.variables.sp_imagen_last_final_image_prompt = config.prompt;
         await current.saveMetadata?.();
       }
-      const generated = await extension.generateImage(item.config, { reuseSnapshot: true });
+      const generated = await extension.generateImage(config, { reuseSnapshot: true });
       if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) {
         throw new Error('Чат изменился во время повторной генерации.');
       }
