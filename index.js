@@ -1006,6 +1006,26 @@ function directGenerationEnabled() {
     return settings().novelai.enabled === true;
 }
 
+function listImageStyles() {
+    return settings().novelai.styles.map(style => ({id: style.id, name: style.name, value: style.value}));
+}
+
+function saveImageStyle({name, value}) {
+    const title = String(name || '').trim().slice(0, 90);
+    const description = String(value || '').trim().slice(0, 20000);
+    if (!title) throw new Error('Укажи название нового стиля.');
+    if (!description) throw new Error('Нельзя сохранить пустой стиль.');
+    const state = settings();
+    const duplicate = state.novelai.styles.some(style => style.name.toLocaleLowerCase() === title.toLocaleLowerCase());
+    if (duplicate) throw new Error('Стиль с таким названием уже есть. Укажи другое название.');
+    const style = {id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: title, value: description};
+    // Never change activeStyleId here: saving a style from a single image must not
+    // apply it to the user's other images or chats.
+    state.novelai.styles.push(style);
+    saveSettings();
+    return {...style};
+}
+
 async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     const saved = settings().novelai;
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
@@ -1017,7 +1037,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
-        style: profile?.options?.useArtStyle === false ? '' : style.value,
+        style: snapshot?.style ? style.value : (profile?.options?.useArtStyle === false ? '' : style.value),
         mediumNegative: resolveCodePrompt(settings().codePrompts,'nai_medium_negative'),
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
@@ -1034,7 +1054,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         src: result.src,
         config: {
             ...config,
-            spImagenDirect: { version: 1, provider: 'novelai', style: profile?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style), settings: publicSettings, generatedSeed: result.seed },
+            spImagenDirect: { version: 1, provider: 'novelai', style: snapshot?.style ? clone(style) : (profile?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style)), settings: publicSettings, generatedSeed: result.seed },
         },
     };
 }
@@ -1104,7 +1124,7 @@ async function initialize() {
 
 const extensionApi = {
     installed: true,
-    version: '2.8.4',
+    version: '2.8.7',
     get hasNew() { return hasNew(); },
     get hubChildOpen() { return hubChildOpen; },
     run,
@@ -1116,6 +1136,8 @@ const extensionApi = {
     persistImageSource,
     directGenerationEnabled,
     generateImage,
+    listImageStyles,
+    saveImageStyle,
     getDirector,
     getActiveProfile: kind => activeProfile(settings(),kind),
     getCodePrompt: key => resolveCodePrompt(settings().codePrompts,key),

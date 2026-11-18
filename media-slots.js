@@ -143,6 +143,72 @@ export async function installSpImagenMediaSlots(options) {
     .prompt-field textarea { min-block-size: 120px; resize: vertical; }
     .prompt-field input { min-block-size: 38px; }
     .prompt-note { margin: 8px 0 0; white-space: normal; font-size: 12px; opacity: .85; }
+    :host([data-ms="editor-modal"]) {
+      position: fixed !important;
+      inset: var(--ms-editor-top, 0px) auto auto var(--ms-editor-left, 0px) !important;
+      z-index: 2147482000 !important;
+      inline-size: var(--ms-editor-width, 100vw) !important;
+      block-size: var(--ms-editor-height, 100dvh) !important;
+      min-inline-size: 0; max-inline-size: none;
+      display: grid !important; place-items: center;
+      padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+        max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+      background: rgba(10, 9, 16, .56); overflow: hidden;
+    }
+    .editor-window {
+      position: relative; display: flex; flex-direction: column;
+      inline-size: min(650px, 100%); min-inline-size: 0; max-block-size: 100%;
+      overflow: hidden; color: var(--SmartThemeBodyColor, #f6eff7);
+      background: var(--SmartThemeBlurTintColor, #282530);
+      border: 1px solid var(--ms-line); border-radius: 14px;
+      box-shadow: 0 16px 45px rgba(0, 0, 0, .32);
+    }
+    .editor-window .prompt-field textarea, .editor-window .prompt-field input,
+    .editor-style-save-card input {
+      color: var(--SmartThemeBodyColor, #f6eff7);
+      background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #282530) 90%, var(--SmartThemeBodyColor, #f6eff7) 10%);
+      border: 1px solid var(--ms-line);
+    }
+    .editor-head, .editor-footer { display: flex; align-items: center; gap: 12px; padding: 12px 15px; flex: 0 0 auto; }
+    .editor-head { justify-content: space-between; border-block-end: 1px solid var(--ms-line); }
+    .editor-head strong { white-space: normal; }
+    .editor-head .close-x { margin-inline-start: auto; inline-size: 36px; block-size: 36px;
+      display: grid; place-items: center; border-radius: 7px; font-size: 24px; }
+    .editor-head .close-x:hover, .editor-footer button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+    .editor-body { min-block-size: 0; overflow: auto; overscroll-behavior: contain;
+      padding: 14px 16px; scrollbar-width: thin; }
+    .editor-footer { justify-content: flex-end; flex-wrap: wrap; border-block-start: 1px solid var(--ms-line); }
+    .editor-footer button, .editor-save-style, .editor-style-save-panel button {
+      padding: 9px 13px; min-block-size: 38px; border: 1px solid var(--ms-line);
+      border-radius: 8px; background: color-mix(in srgb, currentColor 7%, transparent);
+    }
+    .editor-footer .editor-primary, .editor-style-save-panel .editor-primary {
+      background: color-mix(in srgb, var(--SmartThemeQuoteColor, #b49ccc) 34%, transparent);
+      font-weight: 600;
+    }
+    .editor-style-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .editor-style-row select { min-block-size: 40px; inline-size: 100%;
+      color: inherit; background: var(--SmartThemeBlurTintColor, #282530);
+      border: 1px solid var(--ms-line); border-radius: 7px; padding: 7px; }
+    .editor-save-style { inline-size: 100%; text-align: center; }
+    .editor-style-save-panel {
+      position: absolute; z-index: 2; inset: 0; background: var(--SmartThemeBlurTintColor, #282530);
+      display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .editor-style-save-panel[hidden] { display: none !important; }
+    .editor-style-save-card { display: grid; gap: 12px; inline-size: min(380px, 100%); }
+    .editor-style-save-card h3 { margin: 0; font-size: 1rem; }
+    .editor-style-save-card label { display: grid; gap: 6px; }
+    .editor-style-save-card input { inline-size: 100%; min-block-size: 40px; padding: 8px;
+      border: 1px solid var(--ms-line); border-radius: 7px; color: inherit;
+      background: color-mix(in srgb, var(--ms-panel) 75%, transparent); }
+    .editor-style-save-card .prompt-actions { margin-block-start: 0; }
+    @media (max-width: 480px) {
+      .editor-head, .editor-footer { padding: 9px 11px; }
+      .editor-body { padding: 10px 12px; }
+      .editor-footer button { flex: 1 1 auto; text-align: center; }
+      .prompt-field textarea { min-block-size: 96px; }
+    }
     .guide-saved { border: 1px dashed var(--ms-line); border-radius: 7px; font-size: 16px; }
     .guide-result { margin-block: 8px; }
     .guide-result p { white-space: normal; margin: 6px 4px; }
@@ -298,13 +364,35 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   function closePromptPopup() {
-    promptPopup?.node.remove();
+    const previous = promptPopup;
+    previous?.node.remove();
     promptPopup = null;
+    if (previous?.type === 'editor' && previous.anchor?.isConnected) {
+      previous.anchor.focus({preventScroll:true});
+    }
+  }
+
+  function requestClosePromptPopup() {
+    if (promptPopup?.type === 'editor') {
+      if (promptPopup.closeStyleNaming?.()) return false;
+      if (promptPopup.isDirty?.() && !host.confirm('Промпт или стиль изменены. Отменить правки и закрыть окно?')) return false;
+    }
+    closePromptPopup();
+    return true;
+  }
+
+  function positionEditorModal(node) {
+    const vp = host.visualViewport;
+    node.style.setProperty('--ms-editor-left', `${vp?.offsetLeft ?? 0}px`);
+    node.style.setProperty('--ms-editor-top', `${vp?.offsetTop ?? 0}px`);
+    node.style.setProperty('--ms-editor-width', `${vp?.width ?? host.innerWidth}px`);
+    node.style.setProperty('--ms-editor-height', `${vp?.height ?? host.innerHeight}px`);
+    if (!node.isConnected) doc.body.append(node);
   }
 
   function showPromptPopup(anchor, prompt, label) {
     closeToolsMenu();
-    closePromptPopup();
+    if (!requestClosePromptPopup()) return null;
     const { node, root } = component('prompt-preview');
     node.setAttribute('role', 'dialog');
     node.setAttribute('aria-label', label);
@@ -312,87 +400,189 @@ export async function installSpImagenMediaSlots(options) {
     const text = element('div', 'prompt-text', String(prompt || 'Промпт отсутствует.'));
     const actions = element('div', 'prompt-actions');
     const close = element('button', '', 'Закрыть');
-    close.addEventListener('click', closePromptPopup);
+    close.addEventListener('click', () => requestClosePromptPopup());
     actions.append(close);
     root.append(title, text, actions);
-    positionPopup(node, anchor, { prefer: ['top', 'bottom', 'right', 'left'] });
-    promptPopup = { node, anchor, text };
+    positionPopup(node, anchor);
+    promptPopup = { node, anchor, text, type: 'preview' };
     return text;
   }
 
   function showPromptEditor(anchor, index, kind, config, { previewOnly = false } = {}) {
     closeToolsMenu();
-    closePromptPopup();
-    const { node, root } = component('prompt-preview');
+    if (!requestClosePromptPopup()) return null;
+    const { node, root } = component('editor-modal');
     const label = `Промпт и стиль · ${LABEL[kind]}`;
     node.setAttribute('role', 'dialog');
+    node.setAttribute('aria-modal', 'true');
     node.setAttribute('aria-label', label);
-    const title = element('div', 'prompt-title', label);
+
+    const windowPanel = element('section', 'editor-window');
+    const head = element('div', 'editor-head');
+    const heading = element('strong', '', label);
+    const closeX = element('button', 'close-x', '×');
+    closeX.title = 'Закрыть';
+    closeX.setAttribute('aria-label', 'Закрыть редактор');
+    closeX.addEventListener('click', () => requestClosePromptPopup());
+    head.append(heading, closeX);
+    const body = element('div', 'editor-body');
     const inputs = element('div', 'prompt-inputs');
 
     const promptField = element('div', 'prompt-field');
     const promptLabel = element('label', '', 'Промпт картинки');
     const promptArea = doc.createElement('textarea');
     promptArea.value = String(config?.prompt || '');
+    promptArea.maxLength = 45000;
     promptArea.spellcheck = false;
-    const promptHelp = element('small', '', 'Можно поправить детали сцены, подписи и ошибки, не меняя общий глобальный профиль.');
+    const promptHelp = element('small', '', 'Исправляй детали сцены и текст. Для перегенерации не нужно заново обращаться к режиссёру.');
     promptField.append(promptLabel, promptArea, promptHelp);
 
+    const extension = getExtension?.();
+    const styles = () => extension?.listImageStyles?.() || [];
+    const initialStyle = clone(config?.spImagenDirect?.style || {id:'', name:'Без стиля', value:''});
+    let chosenStyle = clone(initialStyle);
     const styleField = element('div', 'prompt-field');
-    const styleLabel = element('label', '', 'Стиль только для этой перегенерации');
+    const styleLabel = element('label', '', 'Стиль только для этой картинки');
+    const styleChoices = element('div', 'editor-style-row');
+    const styleSelect = doc.createElement('select');
+    styleSelect.setAttribute('aria-label', 'Выбрать стиль из сохранённых');
     const styleInput = doc.createElement('textarea');
-    styleInput.value = String(config?.spImagenDirect?.style?.value || '');
+    styleInput.value = String(initialStyle.value || '');
+    styleInput.maxLength = 20000;
     styleInput.spellcheck = false;
     styleInput.placeholder = 'Например: warm colors, soft lineart, watercolor textures';
-    const styleHelp = element('small', '', 'Это поле не меняет общий активный стиль SP Imagen. Оно применяется только к этой картинке и её следующим перегенерациям.');
-    styleField.append(styleLabel, styleInput, styleHelp);
+    const styleHelp = element('small', '', 'Можно выбрать сохранённый стиль или вписать новый. Общий активный стиль не изменится.');
+    const saveStyle = element('button', 'editor-save-style', '+ Добавить этот стиль в мои стили');
+    saveStyle.disabled = previewOnly;
+
+    function refreshStyles(selected = 'current') {
+      styleSelect.replaceChildren();
+      const addOption = (key, text) => {
+        const option = doc.createElement('option'); option.value = key; option.textContent = text;
+        styleSelect.append(option);
+      };
+      addOption('current', 'Стиль этой картинки');
+      addOption('none', 'Без стиля');
+      addOption('manual', 'Свой текст');
+      for (const style of styles()) addOption(`saved:${style.id}`, style.name);
+      styleSelect.value = selected;
+      if (styleSelect.selectedIndex < 0) styleSelect.value = 'manual';
+    }
+    refreshStyles();
+    styleSelect.addEventListener('change', () => {
+      if (styleSelect.value === 'current') chosenStyle = clone(initialStyle);
+      else if (styleSelect.value === 'none') chosenStyle = {id:'', name:'Без стиля', value:''};
+      else if (styleSelect.value.startsWith('saved:')) {
+        chosenStyle = clone(styles().find(style => `saved:${style.id}` === styleSelect.value) || {id:'',name:'Без стиля',value:''});
+      } else return;
+      styleInput.value = chosenStyle.value;
+    });
+    styleInput.addEventListener('input', () => {
+      chosenStyle = {id:'', name:'Свой стиль', value:styleInput.value};
+      styleSelect.value = 'manual';
+    });
+    styleChoices.append(styleSelect);
+    styleField.append(styleLabel, styleChoices, styleInput, styleHelp, saveStyle);
 
     const note = element('p', 'prompt-note', previewOnly
-      ? 'Учебный режим: можно попробовать изменить поля. Генерация не запускается, изменения не сохраняются.'
-      : 'После удачной перегенерации новая версия сохранится в галерее этого поста и станет текущей для следующего редактирования.');
+      ? 'Учебный режим: изменение полей не отправляет запрос в NovelAI и не сохраняется.'
+      : 'После перегенерации новая версия появится в галерее поста, сохранив обновлённые промпт и стиль.');
     inputs.append(promptField, styleField, note);
+    body.append(inputs);
 
-    const actions = element('div', 'prompt-actions');
-    const close = element('button', '', 'Закрыть');
-    const rerun = element('button', '', 'Перегенерировать');
-    close.addEventListener('click', closePromptPopup);
-    if (previewOnly) rerun.textContent = 'Перегенерировать (пример)';
+    const foot = element('div', 'editor-footer');
+    const cancel = element('button', '', 'Отмена');
+    const rerun = element('button', 'editor-primary', previewOnly ? 'Перегенерировать (пример)' : 'Перегенерировать');
+    cancel.addEventListener('click', () => requestClosePromptPopup());
+    foot.append(cancel, rerun);
+    windowPanel.append(head, body, foot);
+
+    const styleSaveLayer = element('div', 'editor-style-save-panel');
+    styleSaveLayer.hidden = true;
+    const styleSaveCard = element('section', 'editor-style-save-card');
+    const styleSaveTitle = element('h3', '', 'Сохранить стиль в список');
+    const nameLabel = element('label', '', 'Название нового стиля');
+    const styleName = doc.createElement('input');
+    styleName.type = 'text'; styleName.maxLength = 90;
+    styleName.placeholder = 'Например: Тёплая акварель';
+    nameLabel.append(styleName);
+    const styleSaveActions = element('div', 'prompt-actions');
+    const styleSaveCancel = element('button', '', 'Отмена');
+    const styleSaveConfirm = element('button', 'editor-primary', 'Сохранить стиль');
+    styleSaveActions.append(styleSaveCancel, styleSaveConfirm);
+    styleSaveCard.append(styleSaveTitle, nameLabel, styleSaveActions);
+    styleSaveLayer.append(styleSaveCard);
+    windowPanel.append(styleSaveLayer);
+    root.append(windowPanel);
+
+    const closeStyleNaming = () => {
+      if (styleSaveLayer.hidden) return false;
+      styleSaveLayer.hidden = true;
+      saveStyle.focus({preventScroll:true});
+      return true;
+    };
+    styleSaveCancel.addEventListener('click', closeStyleNaming);
+    saveStyle.addEventListener('click', () => {
+      if (!styleInput.value.trim()) {
+        host.toastr?.warning?.('Сначала введи текст стиля.', 'SP Imagen');
+        styleInput.focus(); return;
+      }
+      styleName.value = chosenStyle.name === 'Свой стиль' || chosenStyle.name === 'Без стиля'
+        ? '' : (chosenStyle.name || '');
+      styleSaveLayer.hidden = false;
+      styleName.focus({preventScroll:true});
+    });
+    styleSaveConfirm.addEventListener('click', () => {
+      try {
+        if (previewOnly) return;
+        const saved = extension?.saveImageStyle?.({name:styleName.value, value:styleInput.value});
+        if (!saved) throw new Error('Сохранение стиля недоступно.');
+        chosenStyle = clone(saved);
+        refreshStyles(`saved:${saved.id}`);
+        styleSaveLayer.hidden = true;
+        saveStyle.focus({preventScroll:true});
+        host.toastr?.success?.('Стиль добавлен в раздел «Стили».', 'SP Imagen');
+      } catch (error) { host.toastr?.error?.(String(error?.message || error), 'SP Imagen'); }
+    });
+
+    const initialPrompt = promptArea.value;
+    const initialStyleText = styleInput.value;
+    const isDirty = () => promptArea.value !== initialPrompt || styleInput.value !== initialStyleText
+      || String(chosenStyle.id || '') !== String(initialStyle.id || '')
+      || String(chosenStyle.name || '') !== String(initialStyle.name || '');
     rerun.addEventListener('click', async () => {
       if (previewOnly || guideDemo) {
-        note.textContent = 'В обычном режиме создаётся новая версия с исправленным промптом и стилем. Здесь это только пример, без запроса в NovelAI.';
+        note.textContent = 'В обычном режиме появится новая версия картинки. Здесь это только пример, без генерации.';
         return;
       }
       rerun.disabled = true;
-      close.disabled = true;
+      cancel.disabled = true;
+      closeX.disabled = true;
       try {
         const next = clone(config) || {};
-        next.prompt = String(promptArea.value || '').trim();
+        next.prompt = promptArea.value.trim();
         if (!next.prompt) throw new Error('Промпт не может быть пустым.');
-        next.spImagenDirect ||= { version: 1, provider: 'novelai', settings: {} };
-        next.spImagenDirect.style = {
-          id: 'sp-imagen-inline-style',
-          name: 'Разовый стиль',
-          value: String(styleInput.value || '').trim(),
-        };
+        next.spImagenDirect ||= {version:1, provider:'novelai', settings:{}};
+        next.spImagenDirect.style = {...clone(chosenStyle), value:styleInput.value.trim()};
         await regenerate(index, kind, next);
         closePromptPopup();
       } catch (error) {
         host.toastr?.error?.(String(error?.message || error), 'SP Imagen');
         rerun.disabled = false;
-        close.disabled = false;
+        cancel.disabled = false;
+        closeX.disabled = false;
       }
     });
-    actions.append(close, rerun);
-    root.append(title, inputs, actions);
-    positionPopup(node, anchor, { prefer: ['top', 'bottom', 'left', 'right'] });
-    promptPopup = { node, anchor, text: promptArea };
+    positionEditorModal(node);
+    promptPopup = {node, anchor, text:promptArea, type:'editor', isDirty, closeStyleNaming};
+    closeX.focus({preventScroll:true});
     return promptArea;
   }
 
   function toggleToolsMenu(view) {
     const wasOpen = openMenu?.toggle === view.toggle;
     closeToolsMenu();
-    closePromptPopup();
+    if (!requestClosePromptPopup()) return;
     if (wasOpen) return;
     if (guideDemo?.view === view && guideDemo.clearOnStar) {
       guideDemo.marker?.remove();
@@ -810,7 +1000,7 @@ export async function installSpImagenMediaSlots(options) {
     const slot = slotsOf(current.chat?.[index], false)?.[kind];
     if (!slot?.versions?.length) return;
     const selected = slot.selected;
-    if (!host.confirm(`Удалить версию ${selected + 1} из ${slot.versions.length}?`)) return;
+    if (!host.confirm(`Удалить версию ${selected + 1} из ${slot.versions.length}? Восстановить её через SP Imagen нельзя. Если нужна копия, сначала скачай картинку.`)) return;
     const before = slot.versions.slice();
     slot.versions.splice(selected, 1);
     slot.selected = Math.min(selected, Math.max(0, slot.versions.length - 1));
@@ -852,7 +1042,7 @@ export async function installSpImagenMediaSlots(options) {
       throw new Error('Для повторной генерации включи SP Imagen → NovelAI и укажи API-токен.');
     }
     const lock = `${current.chatId}|${index}|${kind}`;
-    if (busy.has(lock)) return;
+    if (busy.has(lock)) throw new Error('Эта картинка уже генерируется.');
     busy.add(lock);
     paint();
     try {
@@ -918,7 +1108,7 @@ export async function installSpImagenMediaSlots(options) {
     if (event.target.closest?.('#extensionsMenuButton')) installMenuCommands();
     const clicked = event.composedPath();
     if (openMenu && !clicked.includes(openMenu.node) && !clicked.includes(openMenu.toggle)) closeToolsMenu();
-    if (promptPopup && !clicked.includes(promptPopup.node) && !clicked.includes(promptPopup.anchor)) closePromptPopup();
+    if (promptPopup?.type === 'preview' && !clicked.includes(promptPopup.node) && !clicked.includes(promptPopup.anchor)) closePromptPopup();
   }
 
   function escapeMenu(event) {
@@ -926,13 +1116,14 @@ export async function installSpImagenMediaSlots(options) {
       event.preventDefault();
       event.stopPropagation();
       closeToolsMenu(true);
-      closePromptPopup();
+      requestClosePromptPopup();
     }
   }
 
   function viewportChanged(event) {
     if (openMenu && event.target !== openMenu.node) closeToolsMenu();
-    if (promptPopup && event.target !== promptPopup.node) closePromptPopup();
+    if (promptPopup?.type === 'editor') positionEditorModal(promptPopup.node);
+    else if (promptPopup && event.target !== promptPopup.node) closePromptPopup();
   }
 
   function subscribe(name, handler) {
