@@ -1,3 +1,4 @@
+import { startQuickGuide, stopQuickGuide, addFieldHelp } from './onboarding.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
 import { eventSource, event_types } from '../../../../script.js';
 import { createPromptJson, parsePromptJson, SP_IMAGEN_PROMPT_JSON_KEYS } from './prompt-json.js';
@@ -25,6 +26,22 @@ let initializing = false;
 let initializationAttempts = 0;
 let promptCenterOpen = false;
 let hubChildOpen = false;
+let activeHub = null;
+// One modal lock shared by every top-level SP Imagen popup, including nested windows.
+// Capture the original state once and restore only when the final modal is dismissed.
+const expandedDialogs = new Set();
+const originalBackgroundInert = new Map();
+function syncModalBackground() {
+    if (!expandedDialogs.size) {
+        for (const [node, wasInert] of originalBackgroundInert) if (node.isConnected) node.inert = wasInert;
+        originalBackgroundInert.clear();
+        return;
+    }
+    for (const node of document.body.children) {
+        if (!originalBackgroundInert.has(node)) originalBackgroundInert.set(node, node.inert);
+        node.inert = true;
+    }
+}
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const hash = async value => {
@@ -35,6 +52,26 @@ const hash = async value => {
 
 function context() {
     return SillyTavern.getContext();
+}
+
+// Import only persistent SP Imagen chat data from previous releases.
+// The new namespace prevents collisions with old scripts; nothing is read from other extensions.
+const migratedChats = new WeakSet();
+function migratePreviousChatData(st = context()) {
+    const chat = st?.chat;
+    if (!chat || typeof chat !== 'object' || migratedChats.has(chat) || !st.chatMetadata) return;
+    migratedChats.add(chat);
+    const vars = st.chatMetadata.variables ||= {};
+    let changed = false;
+    for (const key of ['user_settings', 'skip_prompt_preview', 'chat_cast_ids', 'last_final_image_prompt', 'last_director_raw']) {
+        const oldKey = `naicom_${key}`;
+        const newKey = `sp_imagen_${key}`;
+        if (vars[newKey] === undefined && vars[oldKey] !== undefined) {
+            vars[newKey] = vars[oldKey];
+            changed = true;
+        }
+    }
+    if (changed) void Promise.resolve(st.saveMetadata?.()).catch(error => console.warn('[SP Imagen] migration save:', error));
 }
 
 function settings() {
@@ -48,14 +85,6 @@ function settings() {
     value.novelai = normalizeNovelAISettings(value.novelai);
     value.textApi = normalizeTextApiSettings(value.textApi);
     value.prompts ??= {};
-    if (value.legacyPromptMigration !== 1) {
-        const sets = root.ExtBlocks?.sets;
-        if (Array.isArray(sets)) for (const name of Object.keys(PROFILE_LABELS)) {
-            const legacy = sets.flatMap(set => Array.isArray(set?.global_blocks) ? set.global_blocks : []).find(block => block?.name === name && typeof block.prompt === 'string' && block.prompt.trim());
-            if (legacy && !value.prompts[name]) value.prompts[name] = legacy.prompt;
-        }
-        value.legacyPromptMigration = 1;
-    }
     return value;
 }
 
@@ -146,13 +175,19 @@ function shell(title, className = '', options = {}) {
     minimizeButton.title = 'Свернуть окно';
     minimizeButton.setAttribute('aria-label', 'Свернуть окно');
     minimizeButton.setAttribute('aria-expanded', 'true');
-    head.append(backButton, heading, minimizeButton);
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'menu_button spi-close';
+    closeButton.textContent = '×';
+    closeButton.title = 'Закрыть окно';
+    closeButton.setAttribute('aria-label', 'Закрыть окно');
+    head.append(backButton, heading, minimizeButton, closeButton);
     dialog.append(head);
     overlay.append(dialog);
-    const stopViewport = mountViewportOverlay(overlay);
-    const background = [...document.body.children].filter(node => node !== overlay).map(node => [node, node.inert]);
-    for (const [node] of background) node.inert = true;
     const previous = document.activeElement;
+    const stopViewport = mountViewportOverlay(overlay);
+    expandedDialogs.add(overlay);
+    syncModalBackground();
     let closed = false;
     let collapsed = false;
     const setCollapsed = value => {
@@ -164,25 +199,33 @@ function shell(title, className = '', options = {}) {
         minimizeButton.title = value ? 'Развернуть окно' : 'Свернуть окно';
         minimizeButton.setAttribute('aria-label', minimizeButton.title);
         minimizeButton.setAttribute('aria-expanded', String(!value));
-        for (const [node, inert] of background) node.inert = value ? inert : true;
+        if (value) expandedDialogs.delete(overlay);
+        else expandedDialogs.add(overlay);
+        syncModalBackground();
         minimizeButton.focus();
     };
     minimizeButton.addEventListener('click', () => setCollapsed(!collapsed));
     let resolveClosed;
     const closedPromise = new Promise(resolve => { resolveClosed = resolve; });
-    const close = () => {
+    const close = (reason = 'user') => {
         if (closed) return;
         closed = true;
         document.removeEventListener('keydown', onKey, true);
-        for (const [node, inert] of background) node.inert = inert;
+        if (event_types.CHAT_CHANGED) eventSource.removeListener?.(event_types.CHAT_CHANGED, onChatChanged);
+        expandedDialogs.delete(overlay);
+        syncModalBackground();
         stopViewport();
         overlay.remove();
-        previous?.focus?.();
-        options.onClose?.();
+        if (reason !== 'chat') previous?.focus?.();
+        options.onClose?.(reason);
         resolveClosed();
     };
+    const onChatChanged = () => close('chat');
+    if (event_types.CHAT_CHANGED) eventSource.on?.(event_types.CHAT_CHANGED, onChatChanged);
+    closeButton.addEventListener('click', () => close());
     backButton.addEventListener('click', () => typeof options.back === 'function' ? options.back() : close());
     const onKey = event => {
+        if (document.querySelector('.spi-onboarding,.spi-guide-explain-overlay')) return;
         if (overlay.inert || [...document.querySelectorAll('.spi-overlay')].at(-1) !== overlay) return;
         if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); close(); return; }
         if (event.key !== 'Tab') return;
@@ -257,6 +300,7 @@ function openPromptJsonTransfer() {
     area.spellcheck = false;
     area.placeholder = '{\n  "format": "sp-imagen-prompts",\n  "version": 1,\n  "prompts": { … }\n}';
     label.append(caption, area);
+    addFieldHelp(label, 'JSON промптов', 'Можно вставить содержимое JSON-файла или загрузить готовый файл выше. Не забудь сначала проверить структуру перед импортом.');
     const status = document.createElement('p');
     status.className = 'spi-status';
     status.setAttribute('role', 'status');
@@ -314,7 +358,9 @@ function openPromptWindow(name) {
             setTimeout(close, 250);
         } catch (error) { status.textContent = String(error?.message || error); }
     }, true);
-    dialog.append(area, status, actions);
+    const promptHelp = document.createElement('div'); promptHelp.className = 'spi-guide-caption'; promptHelp.textContent = 'Инструкции для режиссёра';
+    addFieldHelp(promptHelp, 'Промпт режиссёра', 'Это инструкция, по которой текстовая модель готовит описание картинки. Для первого запуска уже установлен готовый вариант. Редактируй только если точно знаешь, что хочешь поменять.');
+    dialog.append(promptHelp, area, status, actions);
     requestAnimationFrame(() => area.focus());
 }
 
@@ -335,7 +381,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     const pending = new Set(Object.keys(state.pendingPrompts));
     const { dialog, close, closed } = shell('SP Imagen · Промпты', 'spi-prompt-center', {
         back: backToHub,
-        onClose: () => { promptCenterOpen = false; refreshNewIndicators(); if (backToHub) openHub(); },
+        onClose: reason => { promptCenterOpen = false; refreshNewIndicators(); if (backToHub && reason !== 'chat') openHub(); },
     });
     const copy = document.createElement('p');
     copy.textContent = 'Промпты обновлены. Выберите версию.';
@@ -388,6 +434,7 @@ function formField(parent, labelText, control, note = '') {
     title.textContent = labelText;
     label.append(title, control);
     if (note) { const small = document.createElement('small'); small.textContent = note; label.append(small); }
+    addFieldHelp(label, labelText, note);
     parent.append(label);
     return control;
 }
@@ -649,12 +696,17 @@ function openStyleLibrary({ back = false } = {}) {
 }
 
 async function openLibrary() {
+    migratePreviousChatData();
     return (await getLibraryRuntime()).openLibraryEditor();
 }
 
 function openHub(page = 'home') {
-    const existing = document.querySelector('.spi-hub');
-    if (existing) { existing.querySelector('button:not([hidden])')?.focus(); return; }
+    migratePreviousChatData();
+    if (activeHub?.dialog.isConnected) {
+        activeHub.setCollapsed(false);
+        activeHub.dialog.querySelector('button:not([hidden])')?.focus();
+        return activeHub.close;
+    }
     let currentPage = page;
     const render = nextPage => {
         currentPage = nextPage;
@@ -662,19 +714,32 @@ function openHub(page = 'home') {
         backButton.hidden = currentPage === 'home';
         heading.textContent = currentPage === 'home' ? 'SP Imagen' : 'SP Imagen · Настройки';
         if (currentPage === 'home') {
-            button('⚙ Настройки', body, () => render('settings'));
+            button('⚙ Настройки', body, () => render('settings')).dataset.spiAction = 'settings';
             const prompts = button(`✎ Промпты${hasNew() ? '  NEW!' : ''}`, body, () => void openPromptCenter({ backToHub: true }));
-            prompts.dataset.spiPrompts = '';
-            button('📚 Библиотека', body, () => void openRuntimeChild(openLibrary));
+            prompts.dataset.spiPrompts = ''; prompts.dataset.spiAction = 'prompts';
+            button('▤ Посмотреть последний промпт', body, openLastPrompt).dataset.spiAction = 'last-prompt';
+            button('📚 Библиотека', body, () => void openRuntimeChild(openLibrary)).dataset.spiAction = 'library';
         } else {
-            button('Генерация', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings())));
-            button('Текстовая модель', body, () => void openTextApiSettings({ back: true }));
-            button('NovelAI', body, () => void openNovelAISettings({ back: true }));
-            button('Стили', body, () => void openStyleLibrary({ back: true }));
+            button('Генерация', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings()))).dataset.spiAction = 'generation';
+            button('Текстовая модель', body, () => void openTextApiSettings({ back: true })).dataset.spiAction = 'text-api';
+            button('NovelAI', body, () => void openNovelAISettings({ back: true })).dataset.spiAction = 'novelai';
+            button('Стили', body, () => void openStyleLibrary({ back: true })).dataset.spiAction = 'styles';
         }
+        // A quiet, always-accessible entry, not another large menu button.
+        const quick = document.createElement('button');
+        quick.type = 'button';
+        quick.className = 'spi-guide-link';
+        quick.textContent = '💡 Быстрый гайд';
+        quick.title = 'Небольшая экскурсия для первого знакомства с SP Imagen';
+        quick.addEventListener('click', () => void launchQuickGuide());
+        body.append(quick);
         body.querySelector('button')?.focus();
     };
-    const { overlay, dialog, close, heading, backButton } = shell('SP Imagen', 'spi-hub', { back: () => render('home') });
+    const { overlay, dialog, close, heading, backButton, setCollapsed } = shell('SP Imagen', 'spi-hub', {
+        back: () => render('home'),
+        onClose: () => { activeHub = null; },
+    });
+    activeHub = { dialog, close, setCollapsed, render };
     const body = document.createElement('nav');
     body.className = 'spi-hub-menu';
     body.setAttribute('aria-label', 'Разделы SP Imagen');
@@ -692,6 +757,89 @@ function openHub(page = 'home') {
     };
     render(currentPage);
     return close;
+}
+
+
+// Navigation is part of the existing SP Imagen dialogs, not a parallel UI implementation.
+// The guide never generates an image, sends a model request or saves user settings.
+async function showGuideSection(view) {
+    // Close only the SP Imagen panels opened by the tour; the main hub stays available.
+    const otherOverlays = [...document.querySelectorAll('.spi-overlay')].filter(node => !node.querySelector('.spi-hub'));
+    for (const overlay of otherOverlays.reverse()) overlay.querySelector('.spi-close')?.click();
+    const existing = document.querySelector('#sp-imagen-review-overlay');
+    if (existing) existing.querySelector('.ness-close-dialog')?.click();
+    await Promise.resolve();
+    if (view === 'finish') { openHub(); activeHub?.render('home'); return; }
+    openHub();
+    if (['settings','text-api','novelai','generation','styles'].includes(view)) activeHub?.render('settings');
+    else activeHub?.render('home');
+    if (view === 'home' || view === 'settings') return;
+    if (view === 'prompts') openPromptCenter();
+    else if (view === 'text-api') void openTextApiSettings().catch(error => console.warn('[SP Imagen] guide text API:',error));
+    else if (view === 'novelai') void openNovelAISettings().catch(error => console.warn('[SP Imagen] guide NovelAI:',error));
+    else if (view === 'styles') void openStyleLibrary().catch(error => console.warn('[SP Imagen] guide styles:',error));
+    else if (view === 'library') {
+        const api = await getLibraryRuntime();
+        void api.openLibraryEditor().catch(error => console.warn('[SP Imagen] guide library:',error));
+    } else if (view === 'generation') {
+        if (!context().chatMetadata) return; // Before entering a chat the form is unavailable.
+        const api = await getRuntime();
+        void api.openSettings().catch(error => console.warn('[SP Imagen] guide settings:',error));
+    }
+}
+
+function launchQuickGuide() {
+    // The guide opens through the wand, the hub, or settings; all use one state machine.
+    return startQuickGuide({ navigate: showGuideSection });
+}
+
+function openLastPrompt() {
+    migratePreviousChatData();
+    const variables = context().chatMetadata?.variables || {};
+    const finalPrompt = String(variables.sp_imagen_last_final_image_prompt || '').trim();
+    const directorOutput = String(variables.sp_imagen_last_director_raw || '').trim();
+    const { dialog, close } = shell('SP Imagen · Последний промпт', 'spi-prompt-window');
+    const toolbar = document.createElement('div');
+    toolbar.className = 'spi-dialog-actions spi-last-prompt-toolbar';
+    const selection = document.createElement('select');
+    selection.setAttribute('aria-label', 'Что показать');
+    for (const [value, label] of [['final', 'Итоговый промпт NovelAI'], ['director', 'Последний ответ режиссёра']]) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        selection.append(option);
+    }
+    const area = document.createElement('textarea');
+    area.readOnly = true;
+    area.spellcheck = false;
+    area.setAttribute('aria-label', 'Сохранённый текст промпта');
+    const status = document.createElement('p');
+    status.className = 'spi-status';
+    status.setAttribute('role', 'status');
+    const actions = document.createElement('div');
+    actions.className = 'spi-dialog-actions';
+    const show = () => {
+        const value = selection.value === 'director' ? directorOutput : finalPrompt;
+        area.value = value;
+        status.textContent = value ? `${value.length.toLocaleString('ru-RU')} символов. Только просмотр.`
+            : 'В этом чате такого промпта ещё нет. Он сохранится после следующего запроса.';
+    };
+    selection.addEventListener('change', show);
+    toolbar.append(selection);
+    addFieldHelp(toolbar, 'Что показать', 'Выбирай между готовым заданием для NovelAI и исходным ответом режиссёра. Это только просмотр и копирование, без новой генерации.');
+    button('Скопировать', actions, async () => {
+        if (!area.value) { status.textContent = 'Пока нечего копировать.'; return; }
+        try {
+            await navigator.clipboard.writeText(area.value);
+            status.textContent = 'Промпт скопирован.';
+        } catch {
+            area.focus(); area.select();
+            status.textContent = 'Выделила текст. Используй «Копировать» в меню телефона.';
+        }
+    });
+    button('Закрыть', actions, close);
+    dialog.append(toolbar, area, status, actions);
+    show();
 }
 
 function getDirector(kind) {
@@ -751,9 +899,11 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
 }
 
 async function run(command, kind, request = null) {
+    migratePreviousChatData();
     const api = await getRuntime();
     const calls = {
         sp_imagen_menu: () => openHub(),
+        sp_imagen_quick_guide: () => launchQuickGuide(),
         sp_ness_generate_at: () => api.generateAt(request),
         sp_ness_settings: () => api.openSettings(),
         sp_ness_library_editor: () => openLibrary(),
@@ -784,11 +934,13 @@ function settingsPanel() {
     root.innerHTML = `<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>SP Imagen <span class="spi-new" data-spi-new>NEW!</span></b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content"><div class="spi-actions"></div></div></div>`;
     const actions = root.querySelector('.spi-actions');
     button('Открыть SP Imagen', actions, () => openHub(), true);
+    const guide = document.createElement('button'); guide.type = 'button'; guide.className = 'spi-guide-link'; guide.textContent = '💡 Быстрый гайд'; guide.addEventListener('click', launchQuickGuide); root.querySelector('.inline-drawer-content').append(guide);
     mount.append(root);
     refreshNewIndicators();
 }
 
 async function initialize() {
+    migratePreviousChatData();
     if (initialized) { settingsPanel(); mediaSlots?.refresh?.(); return; }
     if (initializing) return;
     initializing = true;
@@ -811,13 +963,15 @@ async function initialize() {
 
 const extensionApi = {
     installed: true,
-    version: '2.4.1',
+    version: '2.6.1',
     get hasNew() { return hasNew(); },
     get hubChildOpen() { return hubChildOpen; },
     run,
     openHub,
     openLibrary,
     openPrompts: openPromptCenter,
+    openLastPrompt,
+    quickGuide: launchQuickGuide,
     persistImageSource,
     directGenerationEnabled,
     generateImage,
@@ -826,4 +980,5 @@ const extensionApi = {
 };
 
 eventSource.on(event_types.APP_READY, initialize);
+if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, stopQuickGuide);
 if (document.readyState !== 'loading') void initialize();

@@ -52,7 +52,8 @@
 .spi-hub-menu .menu_button { width: 100%; min-height: 46px; justify-content: flex-start; padding-inline: 14px; font-size: 14px; }
 .spi-dialog :is(button,input,select,textarea):focus-visible, .spi-settings :is(button,.inline-drawer-toggle):focus-visible { outline: 2px solid var(--SmartThemeQuoteColor, #8b5cf6); outline-offset: 2px; }
 
-.spi-dialog-head .spi-minimize { flex:none; width:38px; min-width:38px; padding:0; font-size:21px; }
+.spi-dialog-head .spi-minimize, .spi-dialog-head .spi-close { flex:none; width:38px; min-width:38px; padding:0; font-size:21px; }
+.spi-dialog-head .spi-close { font-size:25px; }
 .spi-dialog.spi-prompt-center { display:flex; flex-direction:column; height:min(640px,100%); min-height:0; overflow:hidden; }
 .spi-prompt-center > .spi-prompt-list { flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; padding-right:4px; align-content:start; }
 .spi-prompt-center > .spi-prompt-transfer { flex:none; margin:0 0 10px; justify-content:flex-start; }
@@ -70,6 +71,7 @@
 .spi-overlay.spi-collapsed > .spi-dialog > :not(.spi-dialog-head) { display:none!important; }
 .spi-overlay.spi-collapsed .spi-dialog-head { margin:0; }
 .spi-overlay.spi-collapsed .spi-dialog-head h2 { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.spi-overlay.spi-collapsed .spi-dialog-head .spi-close { display:inline-flex; }
 @media (max-width:620px) {
   .spi-overlay { align-items:end; padding:env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
   .spi-dialog { width:100%; max-height:100%; padding:13px; border-radius:14px 14px 0 0; }
@@ -87,3 +89,86 @@
 }
 @media (max-width:340px) { .spi-actions { grid-template-columns:1fr; } }
 
+
+/* SP Imagen's only guided-tour/help presentation layer. Always attached to
+   documentElement so mobile themes and transformed body elements cannot shift it. */
+.spi-guide-link {
+  display: block; width: fit-content; max-width: 100%; margin: 12px auto 3px;
+  padding: 8px 14px; border: 0; border-radius: 10px; background: transparent;
+  color: var(--SmartThemeBodyColor, #ddd); opacity: .75;
+  font: 500 13px/1.45 system-ui, sans-serif;
+  cursor: pointer; text-align: center; transition: opacity .16s, background .16s, text-shadow .16s;
+}
+.spi-guide-link:hover,.spi-guide-link:focus-visible { opacity: 1; background: color-mix(in srgb, var(--SmartThemeQuoteColor, #ad9bc9) 13%, transparent); text-shadow: 0 0 9px color-mix(in srgb, var(--SmartThemeQuoteColor, #d5bfdf) 35%, transparent); outline-offset: 3px; }
+.spi-field,.spi-guide-has-help { position: relative; }
+.spi-guide-has-help > .spi-guide-help { position: absolute; right: 0; top: 0; z-index: 2; }
+.spi-guide-help { appearance: none; display: inline-grid; place-items: center; box-sizing: border-box;
+  width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0;
+  border: 1px solid currentColor; border-radius: 50%; background: var(--SmartThemeBlurTintColor, #24242c);
+  color: inherit; opacity: .8; font: 600 12px/1 system-ui,sans-serif; cursor: help; }
+.spi-guide-help:hover,.spi-guide-help:focus-visible { opacity: 1; border-color: var(--SmartThemeQuoteColor, #d1baff); color: var(--SmartThemeQuoteColor, #d1baff); outline-offset: 2px; }
+.spi-field.spi-guide-has-help > span:first-child { padding-right: 30px; }
+/* Existing NESS fields keep their labels and accessible input structure. */
+#sp-imagen-review-panel .ness-field.spi-guide-has-help > .ness-label { padding-right: 32px; }
+#sp-imagen-review-panel .ness-check-label.spi-guide-has-help { padding-right: 30px; }
+#sp-imagen-review-panel .ness-section > summary.spi-guide-has-help { padding-right: 32px; }
+#sp-imagen-review-panel .spi-guide-help { color: var(--ness-muted, #ccc); background: var(--ness-bg, #27232c); border-color: var(--ness-border, #777); }
+#sp-imagen-review-panel .spi-guide-help:hover { color: var(--ness-accent, #d5a9d3); }
+/* Shared fixed viewport for instructional spotlight and all ? dialogs. */
+.spi-onboarding,.spi-guide-explain-overlay {
+  position: fixed; inset: 0 auto auto 0; box-sizing: border-box;
+  width: 100vw; height: 100dvh; margin: 0; padding: 0;
+  font: 14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  color: #f7eef7; z-index: 2147483900;
+}
+.spi-onboarding { pointer-events: none; }
+.spi-tour-spotlight { position: absolute; z-index: 0; box-sizing: border-box;
+  pointer-events: none; border-radius: 12px; border: 2px solid #ffe1a6;
+  background: color-mix(in srgb, #ffe4a6 7%, transparent);
+  box-shadow: 0 0 0 5px rgba(245,204,139,.16), 0 0 28px rgba(255,224,160,.32);
+  transition: left .15s,top .15s,width .15s,height .15s;
+}
+.spi-tour-card { position: absolute; z-index: 2; box-sizing: border-box; pointer-events: auto;
+  left: 10px; top: 12px; width: min(380px,calc(100% - 20px)); max-height: calc(100% - 20px);
+  display: flex; flex-direction: column; overflow: auto; overscroll-behavior: contain;
+  padding: 16px; border-radius: 17px; border: 1px solid #66506e;
+  background: #26232e; color: #f7eef7; box-shadow: 0 8px 38px rgba(0,0,0,.55);
+}
+.spi-tour-count { font-size: 11px; letter-spacing: .04em; color: #d6bfd8; font-weight: 650; }
+.spi-tour-card h2 { font: 650 19px/1.3 system-ui,sans-serif; margin: 7px 0 9px; color: inherit; }
+.spi-tour-copy { min-height: 0; overflow: auto; padding: 0 2px; }
+.spi-guide-paragraph { margin: 0 0 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.spi-tour-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.spi-tour-controls button,.spi-guide-explain button:not(.spi-guide-term) { min-height: 38px; border: 1px solid #6b596c; border-radius: 9px; padding: 7px 12px; font: inherit; color: inherit; background: #3b3444; cursor: pointer; }
+.spi-tour-controls button:disabled { opacity: .42; cursor: default; }
+.spi-tour-controls .spi-tour-stop { background: transparent; font-size: 12px; margin-right: auto; color: #ded1de; }
+.spi-onboarding .spi-guide-primary,.spi-guide-explain .spi-guide-primary { border-color: #ae88ae !important; background: #654767 !important; font-weight: 650 !important; }
+.spi-onboarding button:focus-visible,.spi-guide-explain-overlay button:focus-visible { outline: 2px solid #ffe1a6; outline-offset: 2px; }
+.spi-guide-explain-overlay { z-index: 2147484000; display: grid; place-items: center; padding: 12px; background: rgba(5,3,9,.65); }
+.spi-guide-explain { box-sizing: border-box; width: min(460px,100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  padding: 16px; border-radius: 17px; border: 1px solid #6b596c;
+  color: #f7eef7; background: #28232e; box-shadow: 0 14px 46px rgba(0,0,0,.55); }
+.spi-guide-explain-head { display: flex; align-items: start; gap: 12px; justify-content: space-between; }
+.spi-guide-explain-head h2 { flex: 1; margin: 0 0 12px; color: inherit; font: 650 18px/1.35 system-ui,sans-serif; }
+.spi-guide-explain .spi-guide-icon { flex: none; min-width: 38px; width: 38px; padding: 4px; font-size: 24px !important; }
+.spi-guide-explain-body { flex: 1; min-height: 0; overflow: auto; padding: 2px; overflow-wrap: anywhere; }
+.spi-guide-explain-foot { display: flex; justify-content: end; margin-top: 10px; }
+.spi-guide-term { appearance: none; display: inline; min-height: 0; margin: 0; padding: 0 1px;
+  color: #f8d2fd; background: none; border: 0; border-bottom: 1px dashed currentColor;
+  cursor: help; font: inherit; font-weight: 650; }
+.spi-guide-term:hover,.spi-guide-term:focus-visible { color: #ffe1a6; }
+@media (max-width: 660px) {
+  .spi-tour-card { width: calc(100% - 20px); max-height: min(54%, 355px); padding: 13px; border-radius: 15px; }
+  .spi-tour-card h2 { font-size: 17px; }
+  .spi-tour-controls button { min-height: 43px; }
+  .spi-guide-explain-overlay { place-items: end center; padding: 0 0 env(safe-area-inset-bottom, 0px); }
+  .spi-guide-explain { width: 100%; max-height: min(90%, 640px); border-radius: 16px 16px 0 0; padding: 16px; }
+  .spi-guide-help { width: 27px; height: 27px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spi-tour-spotlight,.spi-guide-link { transition: none; }
+}
+.spi-guide-caption { flex: none; position: relative; padding: 2px 34px 5px 0; font: 500 13px/1.5 system-ui,sans-serif; }
+.spi-guide-caption .spi-guide-help { position: absolute; right: 0; top: 0; }
+.spi-tour-unavailable { padding: 7px 9px; border-left: 2px solid #f1c98a; color: #ead7ba; background: rgba(245,206,150,.07); border-radius: 4px; font-size: 12px; }
+.spi-tour-controls, .spi-tour-card h2, .spi-tour-count { flex-shrink: 0; }

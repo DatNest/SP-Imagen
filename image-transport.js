@@ -1,5 +1,5 @@
 /** SP Imagen: parse model output as data only. Never insert model HTML into the DOM. */
-const CONTRACT_ERROR = 'Ответ режиссёра не содержит полноценный HTML-блок с одним img и JSON-инструкцией. Исходный ответ сохранён в naicom_last_director_raw.';
+const CONTRACT_ERROR = 'Ответ режиссёра не содержит полноценный HTML-блок с одним img и JSON-инструкцией. Исходный ответ сохранён в sp_imagen_last_director_raw.';
 
 function decodeAttribute(value) {
     return String(value).replace(/&(#(?:x[\da-f]+|\d+)|quot|apos|lt|gt|amp);/gi, (match, entity) => {
@@ -18,7 +18,7 @@ function parseJsonInstruction(value) {
     catch (error) {
         // Only repair escaping inside a fully closed envelope; never invent missing prompt data.
         const shape = json.match(/^\s*\{\s*"prompt"\s*:\s*"([\s\S]*)"\s*,\s*"aspect_ratio"\s*:\s*"(1:1|2:3|9:16)"\s*,\s*"image_size"\s*:\s*"1K"\s*\}\s*$/);
-        if (!shape) throw new Error('Повреждённый или обрезанный JSON режиссёра. Исходный ответ сохранён в naicom_last_director_raw.', { cause: error });
+        if (!shape) throw new Error('Повреждённый или обрезанный JSON режиссёра. Исходный ответ сохранён в sp_imagen_last_director_raw.', { cause: error });
         const body = shape[1];
         let escaped = '';
         for (let index = 0; index < body.length; index++) {

@@ -1,4 +1,5 @@
 // Generated from modules/media_slots.js.
+import { withOperationDeadline } from './operation-timeout.js';
 export async function installSpImagenMediaSlots(options) {
   'use strict';
   const { getExtension } = options || {};
@@ -165,6 +166,8 @@ export async function installSpImagenMediaSlots(options) {
         background: color-mix(in srgb, currentColor 12%, transparent);
       }
     }
+    .quick-guide { display: inline-block; inline-size: auto; min-block-size: 32px; padding-inline: .65em; font-size: .9em; opacity: .7; color: inherit; background: transparent; border: 0; border-radius: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
+    .quick-guide:focus-visible, .quick-guide:hover { opacity: 1; text-shadow: 0 0 9px color-mix(in srgb, currentColor 35%, transparent); }
     .gallery { display: grid; gap: .65em; margin-block: .25em .65em; }
     .card {
       min-inline-size: 0;
@@ -398,8 +401,15 @@ export async function installSpImagenMediaSlots(options) {
     const message = originalChat?.[index];
     if (!message || !eligible(message)) throw new Error('Целевой RP-пост не найден.');
     const extension = getExtension?.();
+    // File saving is outside the text/image API deadlines. Give it a bounded
+    // wait too, so a disconnected backend cannot indefinitely hold the lock.
     const storedSrc = typeof extension?.persistImageSource === 'function'
-      ? await extension.persistImageSource(item.src)
+      ? await withOperationDeadline(
+          () => extension.persistImageSource(item.src),
+          60000,
+          'Сохранение файла изображения не подтвердилось за 60 секунд. Проверь соединение и попробуй снова.',
+          { code: 'SP_IMAGEN_FILE_TIMEOUT' }
+        )
       : item.src;
     if (!safeUrl(storedSrc)) throw new Error('SP Imagen не смог сохранить файл изображения.');
     if (context().chat !== originalChat || context().chatId !== originalId || originalChat[index] !== message) {
@@ -413,13 +423,32 @@ export async function installSpImagenMediaSlots(options) {
       migrateMessage(message);
       const slots = slotsOf(message, true);
       addVersion(slots[kind], storedItem);
-      await current.saveChat();
+      paint();
+      // A chat-save timeout is NOT proof of failure: the host's save promise
+      // might still finish. Keep the image attached rather than rolling back
+      // a potentially successful save or silently losing the generated file.
+      try {
+        await withOperationDeadline(
+          () => current.saveChat(),
+          45000,
+          'SillyTavern не подтвердил сохранение чата за 45 секунд.',
+          { code: 'SP_IMAGEN_CHAT_SAVE_TIMEOUT' }
+        );
+      } catch (error) {
+        if (error?.code === 'SP_IMAGEN_CHAT_SAVE_TIMEOUT') {
+          paint();
+          return { ...storedItem, savePending: true };
+        }
+        throw error;
+      }
       if (context().chat !== originalChat || context().chatId !== originalId || originalChat[index] !== message) {
         throw new Error('Чат изменился во время сохранения галереи.');
       }
       paint();
       return storedItem;
     } catch (error) {
+      // Confirmed save failures restore the previous state. Timeouts are
+      // handled above because their final outcome is unknown.
       if (message.extra) {
         if (previous === undefined) delete message.extra[STORE];
         else message.extra[STORE] = previous;
@@ -498,6 +527,12 @@ export async function installSpImagenMediaSlots(options) {
     busy.add(lock);
     paint();
     try {
+      // The viewer always shows the most recent request, including a regeneration.
+      if (typeof item.config.prompt === 'string' && item.config.prompt.trim()) {
+        current.chatMetadata.variables ||= {};
+        current.chatMetadata.variables.sp_imagen_last_final_image_prompt = item.config.prompt;
+        await current.saveMetadata?.();
+      }
       const generated = await extension.generateImage(item.config, { reuseSnapshot: true });
       if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) {
         throw new Error('Чат изменился во время повторной генерации.');
@@ -514,9 +549,10 @@ export async function installSpImagenMediaSlots(options) {
     catch (error) { host.toastr?.error?.(String(error?.message || error), 'SP Imagen'); }
   }
 
-  let commandBusy = false;
+  // Only one image request may start from this chat at a time. Navigation,
+  // help, and settings remain usable while the image request is running.
+  const pendingGenerationClicks = new WeakSet();
   async function executeCommand(command, view, kind) {
-    if (commandBusy) return;
     const current = context();
     const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind };
     if (request && current.chat[request.index] !== request.message) return;
@@ -525,9 +561,11 @@ export async function installSpImagenMediaSlots(options) {
       host.toastr?.error?.('SP Imagen не загружен.', 'SP Imagen');
       return;
     }
-    commandBusy = true;
+    const generationChat = command === 'sp_ness_generate_at' ? current.chat : null;
+    if (generationChat && pendingGenerationClicks.has(generationChat)) return;
+    if (generationChat) pendingGenerationClicks.add(generationChat);
     try { await runAction(() => extension.run(command, kind, request)); }
-    finally { commandBusy = false; }
+    finally { if (generationChat) pendingGenerationClicks.delete(generationChat); }
   }
 
   function installMenuCommands(force = false) {
@@ -543,6 +581,10 @@ export async function installSpImagenMediaSlots(options) {
       entry.addEventListener('click', () => void executeCommand(command));
       wand.root.append(entry);
     }
+    const guide = element('button', 'option quick-guide', '💡 Быстрый гайд');
+    guide.title = 'Пошаговое знакомство с SP Imagen';
+    guide.addEventListener('click', () => void executeCommand('sp_imagen_quick_guide'));
+    wand.root.append(guide);
     menu.append(wand.node);
   }
 

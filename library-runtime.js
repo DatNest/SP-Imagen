@@ -1,6 +1,6 @@
-import { mountViewportOverlay } from './viewport-overlay.js';
+import { addFieldHelp } from './onboarding.js';
+import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_DEFAULTS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
-import { NESS_UI_CSS } from './shared-ui-css.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
@@ -242,25 +242,7 @@ function openNessTheme(D,panel,anchor){
  const ownClose=()=>finish(false,true);D.addEventListener('pointerdown',outside,true);nessCloseTheme=ownClose;positionNessPopover(popup,anchor,true);
 }
 function createNessHeader(D,panel,title,subtitle,badgeText){
- const ui=createUiKit(D),header=ui.el('header',undefined,panel,'ness-header'),copy=ui.el('div',undefined,header,'ness-header-copy');ui.el('h3',title,copy);if(subtitle)ui.el('p',subtitle,copy);
- const actions=ui.el('div',undefined,header,'ness-row'),badge=ui.el('span',badgeText||'',actions,'ness-badge');
- const minimize=ui.button('−',actions,undefined,'icon quiet ness-minimize');
- minimize.setAttribute('aria-label','Свернуть окно');minimize.setAttribute('aria-expanded','true');
- minimize.title='Свернуть окно';
- minimize.onclick=()=>{
-  // A nested dialog owns its own focus. Collapse that dialog first.
-  if(panel.querySelector('[data-ness-child-dialog]'))return;
-  const overlay=panel.parentElement;if(!overlay)return;
-  const collapsed=overlay.dataset.minimized==='true';
-  if(collapsed)delete overlay.dataset.minimized;else overlay.dataset.minimized='true';
-  panel.setAttribute('aria-modal',collapsed?'true':'false');
-  minimize.textContent=collapsed?'−':'□';
-  minimize.title=collapsed?'Свернуть окно':'Развернуть окно';
-  minimize.setAttribute('aria-label',minimize.title);
-  minimize.setAttribute('aria-expanded',String(collapsed));
-  minimize.focus();
- };
- const theme=ui.button('⚙',actions,()=>openNessTheme(D,panel,theme),'icon quiet');theme.setAttribute('aria-label','Цвета интерфейса');ui.tip(theme,'Цвета всех окон: фон, поля, текст, линии и акцент.');return {header,badge};
+ return createDialogHeader(D,panel,title,subtitle,badgeText,createUiKit(D),openNessTheme);
 }
 
 // Module: ui_components
@@ -272,11 +254,9 @@ function createUiKit(D){
  const input=(value='',type='text')=>{const e=el('input',undefined,undefined,'ness-input');e.type=type;e.value=String(value??'');return e;};
  const area=value=>{const e=el('textarea',undefined,undefined,'ness-input ness-area');e.value=String(value??'');e.spellcheck=false;return e;};
  const help=(parent,title,target)=>{
-  const text=nessFieldHelp(title),id='ness-field-help-'+(++nessHelpSequence);
-  parent.className+=' ness-has-help';const toggle=el('button','?',parent,'ness-help-toggle');toggle.type='button';toggle.setAttribute('aria-label','Подсказка: '+title);toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls',id);
-  const binding=bindNessTooltip(D,toggle,text,{hover:false,id,onToggle:open=>{toggle.setAttribute('aria-expanded',String(open));if(target){if(open)target.setAttribute('aria-describedby',id);else target.removeAttribute('aria-describedby');}}});
-  toggle.onclick=e=>{e?.preventDefault?.();e?.stopPropagation?.();binding.toggle();};toggle.onmouseenter=binding.cancelHide;toggle.onmouseleave=binding.later;
-  return {toggle,get body(){return binding.body;}};
+  const toggle=addFieldHelp(parent,title,nessFieldHelp(title));
+  if(target)target.setAttribute('data-spi-help-title',title);
+  return {toggle};
  };
  const tip=(target,text)=>bindNessTooltip(D,target,text);
  const field=(parent,title,e,helpTitle=title)=>{const label=el('label',undefined,parent,'ness-field');el('span',title,label,'ness-label');label.appendChild(e);help(label,helpTitle,e);return e;};
@@ -329,7 +309,7 @@ function createNessChildDialog(D,panel,{title,marker,onClose=()=>{}}){
  const head=el('div',undefined,box,'ness-child-head');el('h4',title,head);const close=button('×',head,undefined,'icon quiet');close.setAttribute('aria-label','Закрыть: '+title);
  const body=el('div',undefined,box,'ness-child-body'),actions=el('div',undefined,box,'ness-child-actions');let closed=false;
  function finish(){if(closed)return;closed=true;closeNessTooltip();D.removeEventListener('keydown',key,true);for(const [e,inert]of siblings)e.inert=inert;shade.remove();previous?.focus?.();onClose();}
- const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish();}else if(e.key==='Tab'){const nodes=[...box.querySelectorAll('button,input,textarea,select,summary')].filter(n=>!n.disabled&&!n.hidden&&n.getClientRects?.().length);if(!nodes.length)return;const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&D.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&D.activeElement===last){e.preventDefault();first.focus();}}};
+ const key=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish();}else if(e.key==='Tab'){const nodes=[...box.querySelectorAll('button,input,textarea,select,summary')].filter(n=>!n.disabled&&!n.hidden&&n.getClientRects?.().length);if(!nodes.length)return;const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&D.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&D.activeElement===last){e.preventDefault();first.focus();}}};
  D.addEventListener('keydown',key,true);close.onclick=finish;shade.onclick=e=>{if(e.target===shade)finish();};close.focus();
  return {...ui,shade,box,body,actions,finish,get closed(){return closed;}};
 }
@@ -387,19 +367,12 @@ function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyT
 
 // Module: dialogs
 function createDialogShell(kind='review'){
- const overlay=document.createElement('div');overlay.id='sp-imagen-review-overlay';applyNessTheme(overlay,loadNessTheme());
- const panel=document.createElement('div');panel.id='sp-imagen-review-panel';panel.className='ness-ui';
- panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label',({library:'Библиотека персонажей',settings:'Настройки генерации'})[kind]||'Подготовка иллюстрации');panel.setAttribute('data-dialog',kind);
- applyNessTheme(panel,loadNessTheme());
- let style=document.querySelector('#sp-imagen-ui-style-v2');
- if(!style){style=document.createElement('style');style.id='sp-imagen-ui-style-v2';(document.head||document.documentElement||document.body).appendChild(style);}
- if(style.textContent!==NESS_UI_CSS)style.textContent=NESS_UI_CSS;
- overlay.appendChild(panel);return {overlay,panel};
+ return createOwnedDialogShell(kind,{loadTheme:loadNessTheme,applyTheme:applyNessTheme});
 }
-function mountDialog(overlay){
- const stop = mountViewportOverlay(overlay);
- return () => { stop(); closeNessTooltip(); closeNessTheme(); };
+function mountDialog(overlay,onChatChanged){
+ return mountOwnedDialog(overlay,{onChatChanged,onCleanup:()=>{closeNessTooltip();closeNessTheme();}});
 }
+
 async function previewFinalPrompt(config, origin) {
  const {overlay,panel}=createDialogShell('prompt');
  const ui=createUiKit(document);createNessHeader(document,panel,'Итоговый промпт','Последняя проверка перед генерацией','NAI5');
@@ -412,7 +385,8 @@ async function previewFinalPrompt(config, origin) {
  const cancel=ui.button('Отмена',actions),send=ui.button('Отправить в NAI5',actions,undefined,'primary');cancel.setAttribute('data-preview-cancel','');send.setAttribute('data-preview-send','');
  field.value=config.prompt;const updateCount=()=>{counter.textContent=field.value.length.toLocaleString('ru-RU')+' / 45 000 знаков';};field.oninput=updateCount;updateCount();
  const previousFocus=document.activeElement;
- const cleanupViewport=mountDialog(overlay);
+ let onChatSwitch=()=>{};
+ const cleanupViewport=mountDialog(overlay,()=>onChatSwitch());
  return await new Promise(resolve=>{
   let closed=false;
   const close=result=>{
@@ -420,9 +394,11 @@ async function previewFinalPrompt(config, origin) {
    document.removeEventListener('keydown',onKey,true);
    cleanupViewport();overlay.remove();previousFocus?.focus?.();resolve(result);
   };
-  const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close(false);}};
+  onChatSwitch=()=>close(false);
+  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close(false);}};
   document.addEventListener('keydown',onKey,true);
   cancel.onclick=()=>close(false);
+  panel.querySelector('.ness-close-dialog').onclick=()=>cancel.click();
   overlay.onclick=e=>{if(e.target===overlay)close(false);};
   send.onclick=()=>{
    if(closed)return;
@@ -752,7 +728,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   editingTag=null;tagInput.value='';writeTags(base.slice(0,start)+base.slice(end));
  }
  tagInput.onkeydown=e=>{
-  if(e.key==='Escape'&&editingTag){e.preventDefault();e.stopPropagation();editingTag=null;tagInput.value='';updateMoves();return;}
+  if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'&&editingTag){e.preventDefault();e.stopPropagation();editingTag=null;tagInput.value='';updateMoves();return;}
   if(e.key!=='Enter'||e.isComposing)return;
   e.preventDefault();if(!canEdit()||editing)return;
   const text=tagInput.value.split(',').map(part=>part.trim().replace(/;+$/,'').trimEnd()).filter(Boolean).join(', ');
@@ -993,8 +969,8 @@ async function openLibraryEditor(){
  button('В этот чат',bulkActions,async()=>{
   if(busy||!tryFlush())return;const st=SillyTavern.getContext();if(st.chat!==originChat||st.chatId!==originId||!st.chatMetadata){status('Чат изменился. Открой библиотеку заново.');return;}
   const ids=[...selected],known=new Set(libraryEntries(loadMasterLibrary()).map(e=>e.id));if(ids.some(id=>!known.has(id))){status('Сначала сохрани новых персонажей.');return;}
-  const vars=st.chatMetadata.variables||={},previous=vars.naicom_chat_cast_ids;vars.naicom_chat_cast_ids=[...new Set([...(Array.isArray(previous)?previous:[]),...ids])];setBusy(true);
-  try{if(typeof st.saveMetadata!=='function')throw Error('Недоступно сохранение чата.');await st.saveMetadata();status('Добавлено в список чата: '+ids.length);}catch(e){vars.naicom_chat_cast_ids=previous;status('Не удалось сохранить список: '+e.message);}finally{setBusy(false);}
+  const vars=st.chatMetadata.variables||={},previous=vars.sp_imagen_chat_cast_ids;vars.sp_imagen_chat_cast_ids=[...new Set([...(Array.isArray(previous)?previous:[]),...ids])];setBusy(true);
+  try{if(typeof st.saveMetadata!=='function')throw Error('Недоступно сохранение чата.');await st.saveMetadata();status('Добавлено в список чата: '+ids.length);}catch(e){vars.sp_imagen_chat_cast_ids=previous;status('Не удалось сохранить список: '+e.message);}finally{setBusy(false);}
  });
  view.add.onclick=()=>{if(!tryFlush())return;const id=newLibraryId('character',new Set(libraryEntries(draft).map(e=>e.id)));draft.characters[id]={name:'Новый персонаж',aliases:[],base:''};changed(true);editCharacter(id,'characters');};
  const upload=view.upload;
@@ -1002,7 +978,8 @@ async function openLibraryEditor(){
  view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
  search.oninput=()=>{if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=setTimeout(searchNow,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchNow();}};renderTags();renderList();
  status(restored.count?'Восстановлено полей из исходников: '+restored.count:libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
- const previousFocus=document.activeElement,stopViewport=mountDialog(overlay);virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
+ let onChatSwitch=()=>{};
+ const previousFocus=document.activeElement,stopViewport=mountDialog(overlay,()=>onChatSwitch());virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
  async function publishDraft(keepEditor=false){
   if(busy||done||!tryFlush())return false;
   closeTagPicker();setBusy(true);
@@ -1018,8 +995,10 @@ async function openLibraryEditor(){
  }
  return await new Promise(resolve=>{
   const finish=()=>{if(done)return;done=true;rulesDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
+  onChatSwitch=()=>finish(); // Discard stale modal state when the chat changes.
   close.onclick=()=>{if(busy)return;if(dirty&&!discardAsked){discardAsked=true;status('Сохрани изменения или нажми «Закрыть» ещё раз, чтобы отменить их.');return;}finish();};
-  const onKey=e=>{if(e.key==='Escape'&&!rulesDialog){e.preventDefault();e.stopPropagation();if(panel.querySelector('.ness-record-tag-popover'))closeTagPicker();else close.onclick();}};document.addEventListener('keydown',onKey,true);
+  panel.querySelector('.ness-close-dialog').onclick=()=>close.click();
+  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'&&!rulesDialog){e.preventDefault();e.stopPropagation();if(panel.querySelector('.ness-record-tag-popover'))closeTagPicker();else close.onclick();}};document.addEventListener('keydown',onKey,true);
   save.onclick=()=>publishDraft();
  });
 }

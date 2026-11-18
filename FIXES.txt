@@ -70,3 +70,43 @@ SP Imagen 2.4.0 — чистая реализация вместо надстр�
 Регрессионные проверки: tests/appearance.mjs и tests/smoke.mjs;
 браузерный mock-тест обоих диалогов (включая искусственно зависшее получение
 профилей и сохранение ввода при сворачивании). Реальный хост не тестировался.
+
+
+2.5.0 — CHANGES IN PRIMARY SOURCE MODULES
+• Removed runtime reads of ExtBlocks settings and migration from ExtBlocks prompt blocks.
+• New own chat-variable namespace: sp_imagen_* (small, one-time compatibility import of saved own chat settings and last prompt).
+• Restored last generated image prompt viewer, including raw director output, with Copy; does not start generation.
+• Saves last image prompt before initial NovelAI request and before gallery regeneration.
+• Unified duplicated header and overlay code into dialog-shell.js, with separate minimize and dismiss actions.
+• All review/library/settings dialogs unsubscribe and dismiss on CHAT_CHANGED; prevents persistent mobile bars.
+• Text requests set stream:false and includePreset:false, independent of ExtBlocks toggle state.
+• Official prompt module not modified.
+
+SP Imagen 2.6.0 — встроенное обучение (18.11.2026)
+-------------------------------------------------
+• Собственный модуль onboarding.js: единый сценарий обучения, один справочник
+  полей и кликабельных терминов. Никаких внешних расширений или перехватов.
+• Ссылка «Быстрый гайд» добавлена под действиями в меню волшебной палочки,
+  на обеих страницах главного окна и в настройках расширений.
+• 16 шагов безопасно открывают штатные окна SP Imagen и подсвечивают реальные
+  интерактивные элементы. Подсветка не запускает генерацию или сохранение.
+• В исходных функциях formField и createUiKit добавлены единые справочные
+  кнопки «?» с диалогами и доступным словарём терминов.
+• Тур отключается по Escape, кнопке отмены или смене чата и очищает слушатели.
+• Положение окон привязано к visualViewport; на телефонах обучение использует
+  нижнюю карточку с внутренней прокруткой и обходит нижние элементы.
+• Официальные тексты промптов и транспорт изображений не менялись.
+
+SP Imagen 2.6.1 — controlled operation lifetime (18.11.2026)
+----------------------------------------------------------
+• Added shared operation-timeout.js deadlines; runtime text/metadata timeouts
+  use the same utility without changing timeout values or prompts.
+• Media gallery file upload has 60 s deadline; chat save has 45 s deadline.
+• On a chat-save timeout, keep the produced image attached to the current
+  message and show an explicit warning that persistence is unconfirmed.
+  Confirmed save failures still roll back the gallery change.
+• Removed global commandBusy; only duplicate generate clicks within a chat
+  are suppressed. The SP Imagen menu and guide stay usable.
+• Included tests/operation-locks.mjs and tests/publish-regression.mjs for
+  timeouts, rejection rollback, repeat requests, and menu independence.
+• All official prompt bytes remain unchanged from 2.6.0.

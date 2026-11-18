@@ -8,7 +8,7 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-overlay[data-minimized="true"] #sp-imagen-review-panel .ness-header{padding:9px 12px!important;min-width:0;}
 #sp-imagen-review-overlay[data-minimized="true"] #sp-imagen-review-panel .ness-header h3{font-size:14px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #sp-imagen-review-overlay[data-minimized="true"] #sp-imagen-review-panel .ness-header p{display:none!important;}
-#sp-imagen-review-panel .ness-header .ness-minimize{flex:none;font-size:20px!important;}
+#sp-imagen-review-panel .ness-header .ness-minimize,#sp-imagen-review-panel .ness-header .ness-close-dialog{flex:none;font-size:20px!important;}
 #sp-imagen-review-panel .ness-child-shade[data-minimized="true"]{align-items:flex-end!important;justify-content:flex-end!important;pointer-events:none!important;background:transparent!important;}
 #sp-imagen-review-panel .ness-child-shade[data-minimized="true"] .ness-child{width:min(340px,100%)!important;max-height:none!important;pointer-events:auto!important;}
 #sp-imagen-review-panel .ness-child-shade[data-minimized="true"] .ness-child>:not(.ness-child-head){display:none!important;}
