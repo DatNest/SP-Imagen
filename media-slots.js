@@ -1,26 +1,19 @@
 // Generated from modules/media_slots.js.
-import { readPostDraft, clearDraftsForOtherPost } from './post-drafts.js';
-export async function installSpImagenMediaSlots() {
+export async function installSpImagenMediaSlots(options) {
   'use strict';
+  const { getExtension } = options || {};
 
-  const candidates = [];
-  for (const candidate of [window.parent, window.top, window]) {
-    try {
-      if (candidate?.SillyTavern?.getContext && candidate.document?.getElementById('chat') && !candidates.includes(candidate)) {
-        candidates.push(candidate);
-      }
-    } catch (_) {}
+  const host = window;
+  if (!host?.SillyTavern?.getContext || !document.getElementById('chat')) {
+    throw new Error('SP Imagen: контекст SillyTavern недоступен в текущем окне.');
   }
-  const host = candidates[0];
-  if (!host) throw new Error('SP Imagen: SillyTavern недоступен.');
-
-  const doc = host.document;
+  const doc = document;
   const context = () => host.SillyTavern.getContext();
   const STORE = 'ness_media_slots_v2';
   const KINDS = Object.freeze(['snapshot', 'comic', 'story_page']);
   const LABEL = Object.freeze({ snapshot: 'Snapshot', comic: 'Comic', story_page: 'Story Page' });
   const LIMIT = 10;
-  const CLEANUP_KEY = '__nessMediaSlotsV5Cleanup';
+  const CLEANUP_KEY = '__spImagenOwnedMediaSlotsCleanup';
   const mounted = new Map();
   const busy = new Set();
   const subscriptions = [];
@@ -28,7 +21,7 @@ export async function installSpImagenMediaSlots() {
   let wand = null;
 
   try { host[CLEANUP_KEY]?.(); } catch (_) {}
-  try { host.__nessImageSlotsV4?.dispose?.(); } catch (_) {}
+
 
   const safeUrl = value => typeof value === 'string'
     && /^(?:\/|user\/images\/|https?:\/\/|data:image\/(?:png|jpeg|webp);base64,)/i.test(value)
@@ -48,7 +41,7 @@ export async function installSpImagenMediaSlots() {
     if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
     if (create) {
       for (const kind of KINDS) {
-        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0, collapsed: true };
+        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0 };
       }
     }
     for (const kind of KINDS) {
@@ -58,7 +51,6 @@ export async function installSpImagenMediaSlots() {
         slot.versions = slot.versions.filter(item => safeUrl(item?.src));
       }
       slot.selected = Math.max(0, Math.min(Math.trunc(Number(slot.selected)) || 0, Math.max(0, slot.versions.length - 1)));
-      slot.collapsed = slot.collapsed !== false;
     }
     return slots;
   }
@@ -67,7 +59,6 @@ export async function installSpImagenMediaSlots() {
     if (!slot || !safeUrl(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
     slot.versions.push({ src: item.src, config: item.config || null, at: Number(item.at) || Date.now() });
     slot.selected = slot.versions.length - 1;
-    slot.collapsed = false;
     return true;
   }
 
@@ -112,7 +103,7 @@ export async function installSpImagenMediaSlots() {
       line-height: 1.35;
     }
     :host([data-ms="post"]) { clear: both; }
-    :host([data-ms="post"][hidden]), .gallery[hidden], .post-tools[hidden], .draft-icon[hidden], .draft-status[hidden] { display: none !important; }
+    :host([data-ms="post"][hidden]), .gallery[hidden], .post-tools[hidden] { display: none !important; }
     :host([data-ms="wand"]) { opacity: 1 !important; pointer-events: auto !important; }
     :host([data-ms="floating"]) {
       position: fixed !important;
@@ -153,21 +144,8 @@ export async function installSpImagenMediaSlots() {
       z-index: 1;
       display: flex;
       justify-content: center;
-      align-items: center;
-      gap: .28em;
       padding: .5em .75em;
     }
-    .draft-status { display:inline-flex; align-items:center; gap:.3em; }
-    .draft-icon {
-      min-inline-size: 25px; min-block-size: 25px;
-      display:inline-grid; place-items:center;
-      border:1px solid color-mix(in srgb, currentColor 40%, transparent);
-      border-radius: 8px;
-      font-size:.85em; line-height:1;
-      background: color-mix(in srgb, var(--SmartThemeQuoteColor, currentColor) 11%, transparent);
-    }
-    .draft-icon[data-kind="prompt"] { border-color: var(--SmartThemeQuoteColor,currentColor); color: var(--SmartThemeQuoteColor,currentColor); }
-    .draft-icon:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
     .generate, .tool, .option { border-radius: .4em; }
     .generate { opacity: .8; font-size: 1.25em; }
     .generate[aria-expanded="true"], .generate:focus-visible { opacity: 1; }
@@ -183,7 +161,7 @@ export async function installSpImagenMediaSlots() {
     }
     @media (hover: hover) {
       .generate:hover { opacity: 1; }
-      .tool:not(:disabled):hover, .option:hover, .heading:hover {
+      .tool:not(:disabled):hover, .option:hover {
         background: color-mix(in srgb, currentColor 12%, transparent);
       }
     }
@@ -196,23 +174,7 @@ export async function installSpImagenMediaSlots() {
       background: color-mix(in srgb, var(--ms-panel) 35%, transparent);
       font-size: .9em;
     }
-    .card[data-collapsed="true"] { padding-block-end: .35em; }
-    .heading {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: .5em;
-      inline-size: 100%;
-      padding: .15em .3em;
-      border-radius: .45em;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: left;
-    }
-    .heading-title { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; }
-    .heading-meta { display: inline-flex; align-items: center; gap: .45em; flex: none; opacity: .8; font-weight: 500; }
-    .heading-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .heading-chevron { inline-size: 1.1em; text-align: center; }
+    .heading { padding: .15em .3em .45em; font-weight: 600; }
     .frame {
       display: grid;
       inline-size: 100%;
@@ -305,7 +267,7 @@ export async function installSpImagenMediaSlots() {
 
   function eligible(message) {
     return message && !message.is_system && typeof message.mes === 'string' && message.mes.trim()
-      && message.name !== 'GlassPhone' && !message.extra?.isSmsSilent;
+      && message.name !== 'GlassPhone' && !message.extra?.isSmsSilent && !message.extra?.sp_imagen_transport;
   }
 
   function mountPost(anchor, index, message) {
@@ -316,22 +278,9 @@ export async function installSpImagenMediaSlots() {
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-expanded', 'false');
     const gallery = element('div', 'gallery');
-    const indicators = element('span', 'draft-status');
-    const parserIcon = element('button', 'draft-icon', '▤');
-    const promptIcon = element('button', 'draft-icon', '✎');
-    parserIcon.dataset.kind = 'parser';promptIcon.dataset.kind = 'prompt';
-    for(const [icon,type] of [[parserIcon,'parser'],[promptIcon,'prompt']]){
-      icon.hidden = true;
-      icon.addEventListener('click',()=>{
-        const draft=readPostDraft(context(),index);
-        if(!draft)return;
-        void executeCommand('sp_ness_resume_at',view,draft.kind,type);
-      });
-      indicators.append(icon);
-    }
-    const view = { node, anchor, index, message, tools, toggle, indicators, parserIcon, promptIcon, gallery, cards: new Map() };
+    const view = { node, anchor, index, message, tools, toggle, gallery, cards: new Map() };
     toggle.addEventListener('click', () => toggleToolsMenu(view));
-    tools.append(toggle, indicators);
+    tools.append(toggle);
     root.append(tools, gallery);
     anchor.parentElement.append(node);
     return view;
@@ -349,26 +298,10 @@ export async function installSpImagenMediaSlots() {
   function card(index, kind, slot, locked) {
     const selected = slot.selected;
     const item = slot.versions[selected];
-    const collapsed = slot.collapsed !== false;
     const section = element('section', 'card');
-    section.dataset.collapsed = String(collapsed);
-
-    const heading = element('button', 'heading');
-    heading.title = collapsed ? 'Развернуть изображение' : 'Свернуть изображение';
-    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${LABEL[kind]}`);
-    heading.setAttribute('aria-expanded', String(!collapsed));
-    const title = element('span', 'heading-title', LABEL[kind]);
-    const meta = element('span', 'heading-meta');
-    meta.append(
-      element('span', 'heading-count', `${selected + 1} / ${slot.versions.length}`),
-      element('span', 'heading-chevron', collapsed ? '▸' : '▾'),
-    );
-    heading.append(title, meta);
-    heading.addEventListener('click', () => void runAction(() => toggleCollapse(index, kind)));
-
+    const heading = element('div', 'heading', LABEL[kind]);
     const frame = element('button', 'frame');
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
-    frame.hidden = collapsed;
     const image = element('img');
     image.src = item.src;
     image.alt = `${LABEL[kind]} · версия ${selected + 1}`;
@@ -377,7 +310,6 @@ export async function installSpImagenMediaSlots() {
     frame.append(image);
 
     const bar = element('div', 'bar');
-    bar.hidden = collapsed;
     const navigation = element('div', 'actions');
     const actions = element('div', 'actions');
     navigation.append(
@@ -397,14 +329,6 @@ export async function installSpImagenMediaSlots() {
 
   function updatePost(view, slots, chatId) {
     view.tools.hidden = !eligible(view.message);
-    const draft=readPostDraft(context(),view.index);
-    view.parserIcon.hidden=!draft?.parser;
-    view.promptIcon.hidden=!draft?.final?.config?.prompt;
-    view.indicators.hidden=view.parserIcon.hidden&&view.promptIcon.hidden;
-    view.parserIcon.title='Сохранены данные разбора поста · нажми, чтобы продолжить';
-    view.promptIcon.title='Готовый промпт сохранён · нажми, чтобы открыть';
-    view.parserIcon.setAttribute('aria-label',view.parserIcon.title);
-    view.promptIcon.setAttribute('aria-label',view.promptIcon.title);
     for (const kind of KINDS) {
       const slot = slots?.[kind];
       const item = slot?.versions?.[slot.selected];
@@ -416,14 +340,14 @@ export async function installSpImagenMediaSlots() {
       }
       const locked = busy.has(`${chatId}|${view.index}|${kind}`);
       const count = slot.versions.length;
-      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked && previous.collapsed === slot.collapsed) continue;
+      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked) continue;
       const node = card(view.index, kind, slot, locked);
       if (previous) previous.node.replaceWith(node);
       else {
         const nextKind = KINDS.slice(KINDS.indexOf(kind) + 1).find(key => view.cards.has(key));
         view.gallery.insertBefore(node, view.cards.get(nextKind)?.node ?? null);
       }
-      view.cards.set(kind, { node, item, selected: slot.selected, count, locked, collapsed: slot.collapsed });
+      view.cards.set(kind, { node, item, selected: slot.selected, count, locked });
     }
     view.gallery.hidden = !view.cards.size;
     view.node.hidden = view.tools.hidden && view.gallery.hidden;
@@ -469,39 +393,41 @@ export async function installSpImagenMediaSlots() {
 
   async function publish(index, kind, item) {
     if (!KINDS.includes(kind) || !safeUrl(item?.src)) throw new Error('Неверный слот или адрес изображения.');
-    // Snapshot the origin BEFORE the asynchronous file upload. Otherwise a chat
-    // switch during upload could attach an image to the same index in another chat.
-    const origin = context();
-    const originalChat = origin?.chat;
-    const originalChatId = origin?.chatId;
-    const originalMessage = originalChat?.[index];
-    if (!originalMessage) throw new Error('Целевое сообщение не найдено.');
-    const extension = host.__spImagenExtension;
+    const current = context();
+    const originalChat = current.chat, originalId = current.chatId;
+    const message = originalChat?.[index];
+    if (!message || !eligible(message)) throw new Error('Целевой RP-пост не найден.');
+    const extension = getExtension?.();
     const storedSrc = typeof extension?.persistImageSource === 'function'
       ? await extension.persistImageSource(item.src)
       : item.src;
+    if (!safeUrl(storedSrc)) throw new Error('SP Imagen не смог сохранить файл изображения.');
+    if (context().chat !== originalChat || context().chatId !== originalId || originalChat[index] !== message) {
+      throw new Error('Чат изменился до сохранения картинки.');
+    }
+    const hadExtra = Boolean(message.extra);
+    const previous = hadExtra && Object.hasOwn(message.extra, STORE)
+      ? JSON.parse(JSON.stringify(message.extra[STORE])) : undefined;
     const storedItem = { ...item, src: storedSrc };
-    if (!safeUrl(storedItem.src)) throw new Error('SP Imagen не смог сохранить файл изображения.');
-    const current = context();
-    if (current?.chat !== originalChat || current?.chatId !== originalChatId || current.chat[index] !== originalMessage) {
-      throw new Error('Чат изменился во время загрузки файла картинки. В другой чат изображение не добавлено.');
-    }
-    const message = originalMessage;
-    migrateMessage(message);
-    const slots = slotsOf(message, true);
-    const before = { versions: slots[kind].versions.slice(), selected: slots[kind].selected };
-    if (!addVersion(slots[kind], storedItem)) {
-      return slots[kind].versions.find(version => version.src === storedItem.src) || storedItem;
-    }
-    try { await current.saveChat(); }
-    catch (error) {
-      slots[kind].versions = before.versions;
-      slots[kind].selected = before.selected;
+    try {
+      migrateMessage(message);
+      const slots = slotsOf(message, true);
+      addVersion(slots[kind], storedItem);
+      await current.saveChat();
+      if (context().chat !== originalChat || context().chatId !== originalId || originalChat[index] !== message) {
+        throw new Error('Чат изменился во время сохранения галереи.');
+      }
       paint();
-      throw new Error('Не удалось сохранить изображение в чат: ' + String(error?.message || error));
+      return storedItem;
+    } catch (error) {
+      if (message.extra) {
+        if (previous === undefined) delete message.extra[STORE];
+        else message.extra[STORE] = previous;
+        if (!hadExtra && !Object.keys(message.extra).length) delete message.extra;
+      }
+      paint();
+      throw error;
     }
-    paint();
-    return storedItem;
   }
 
   async function focus(index, kind) {
@@ -520,17 +446,6 @@ export async function installSpImagenMediaSlots() {
     paint();
     try { await current.saveChat(); }
     catch (error) { slot.selected = before; paint(); throw error; }
-  }
-
-  async function toggleCollapse(index, kind) {
-    const current = context();
-    const slot = slotsOf(current.chat?.[index], false)?.[kind];
-    if (!slot) return;
-    const before = slot.collapsed !== false;
-    slot.collapsed = !before;
-    paint();
-    try { await current.saveChat(); }
-    catch (error) { slot.collapsed = before; paint(); throw error; }
   }
 
   async function deleteSelected(index, kind) {
@@ -563,6 +478,10 @@ export async function installSpImagenMediaSlots() {
     host.URL.revokeObjectURL(url);
   }
 
+  function instruction(config) {
+    return JSON.stringify(config).replace(/&/g, '\\u0026').replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+  }
+
   async function regenerate(index, kind) {
     const current = context();
     const chat = current.chat;
@@ -570,16 +489,19 @@ export async function installSpImagenMediaSlots() {
     const slot = slotsOf(message, false)?.[kind];
     const item = slot?.versions?.[slot.selected];
     if (!item?.config) throw new Error('У этой версии не сохранён промпт.');
+    const extension = getExtension?.();
+    if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') {
+      throw new Error('Для повторной генерации включи SP Imagen → NovelAI и укажи API-токен.');
+    }
     const lock = `${current.chatId}|${index}|${kind}`;
     if (busy.has(lock)) return;
     busy.add(lock);
     paint();
-    const extension = host.__spImagenExtension;
-    if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') throw new Error('Включи подключение NovelAI в настройках SP Imagen.');
     try {
-      clearDraftsForOtherPost(current, index);
-      const generated = await extension.generateImage(item.config, { reuseSnapshot: true, kind });
-      if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) throw new Error('Чат изменился во время повторной генерации.');
+      const generated = await extension.generateImage(item.config, { reuseSnapshot: true });
+      if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) {
+        throw new Error('Чат изменился во время повторной генерации.');
+      }
       await publish(index, kind, generated);
     } finally {
       busy.delete(lock);
@@ -592,18 +514,20 @@ export async function installSpImagenMediaSlots() {
     catch (error) { host.toastr?.error?.(String(error?.message || error), 'SP Imagen'); }
   }
 
-  async function executeCommand(command, view, kind, mode = 'auto') {
+  let commandBusy = false;
+  async function executeCommand(command, view, kind) {
+    if (commandBusy) return;
     const current = context();
-    if (view && host.__nessPostRequest) return;
-    const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind, mode };
-    if (request) host.__nessPostRequest = request;
-    try {
-      const extension = host.__spImagenExtension;
-      if (!extension?.installed || typeof extension.run !== 'function') throw new Error('SP Imagen не загружен.');
-      await runAction(() => extension.run(command, kind));
-    } finally {
-      if (request && host.__nessPostRequest === request) delete host.__nessPostRequest;
+    const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind };
+    if (request && current.chat[request.index] !== request.message) return;
+    const extension = getExtension?.();
+    if (!extension?.installed || typeof extension.run !== 'function') {
+      host.toastr?.error?.('SP Imagen не загружен.', 'SP Imagen');
+      return;
     }
+    commandBusy = true;
+    try { await runAction(() => extension.run(command, kind, request)); }
+    finally { commandBusy = false; }
   }
 
   function installMenuCommands(force = false) {
@@ -611,7 +535,7 @@ export async function installSpImagenMediaSlots() {
     if (!menu || !force && wand?.node.parentNode === menu) return;
     wand?.node.remove();
     wand = component('wand');
-    const isNew = Boolean(host.__spImagenExtension?.hasNew);
+    const isNew = Boolean(getExtension?.()?.hasNew);
     for (const [command, label] of [
       ['sp_imagen_menu', `✧ SP Imagen${isNew ? '  NEW!' : ''}`],
     ]) {
@@ -679,15 +603,13 @@ export async function installSpImagenMediaSlots() {
     for (const view of mounted.values()) unmountPost(view);
     mounted.clear();
     wand?.node.remove();
-    if (host.__nessImageSlotsV4 === manager) delete host.__nessImageSlotsV4;
-    if (host.__nessImageSlotsV3 === manager) delete host.__nessImageSlotsV3;
     delete host[CLEANUP_KEY];
   }
 
   const manager = {
     installed: true,
-    version: 63,
-    controlsRevision: 25,
+    version: 62,
+    controlsRevision: 23,
     supportedKinds: KINDS,
     publish,
     focus,
@@ -696,7 +618,8 @@ export async function installSpImagenMediaSlots() {
     migrate: async () => migrateTail(),
     dispose,
   };
-  host.__nessImageSlotsV4 = manager;
-  host.__nessImageSlotsV3 = manager;
   host[CLEANUP_KEY] = dispose;
+  migrateTail();
+  paint();
+  return manager;
 }

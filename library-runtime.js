@@ -1,131 +1,188 @@
+import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_DEFAULTS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
+import { NESS_UI_CSS } from './shared-ui-css.js';
+import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 // Generated from NESS_GEN2_STUDIO/modules.
-export function createSpImagenLibraryRuntime(){
+export function createSpImagenLibraryRuntime({ getExtension } = {}){
+const NESS_RECOVERED_BODY={
+  "version": 1,
+  "records": {
+    "ness": {
+      "name": "Несс",
+      "aliases": [
+        "Ness",
+        "Несс",
+        "Инес",
+        "Анест",
+        "Нест"
+      ],
+      "fields": {
+        "nudeUpper": "\n      medium bust, pale pink nipples,\n      old pale thin ring-shaped scars around both areolas; \nsoft fleshy stomach, slight tummy,\nsmall lower belly pouch,\nsoft waist with gentle fullness\n    ",
+        "nudeLower": "\nprominent, slightly elongated labia minora,\nsoft inner labia visibly protruding beyond the outer labia,\ninner labia tapering upward into the upper vulvar folds\n"
+      }
+    },
+    "ji": {
+      "name": "Джи",
+      "aliases": [
+        "Джи",
+        "Анжеллис Каролайн",
+        "Анжеллис",
+        "Ji",
+        "Angellice"
+      ],
+      "fields": {
+        "nudeUpper": "\nsmall bust, AA cup, natural breast shape,\ndainty pale pink nipples\n  ",
+        "nudeLower": "\nsmall dark segmented plates on pubic area,\nsmooth skin surrounding plates,\nplump mons pubis,\nfull rounded labia majora,\nsoft natural contours\n  "
+      }
+    },
+    "yukio": {
+      "name": "Юкио Окумура",
+      "aliases": [
+        "Yukio Okumura",
+        "Юкио Окумура",
+        "Yukio",
+        "Юкио"
+      ],
+      "fields": {
+        "nudeUpper": "\n      lean athletic torso, defined pectorals,\n      broad shoulders, narrow waist, flat stomach,\n      subtle abdominal definition, natural muscular proportions, rare beauty marks all over the body\n    ",
+        "nudeLower": "\n      natural adult male anatomy, small-to-average-sized penis,\n      slightly upward curve with a couple of beauty marks\n      on foreskin, compact scrotum with one beauty mark,\n      non-exaggerated proportions\n    "
+      }
+    },
+    "clark": {
+      "name": "Кларк Кент",
+      "aliases": [
+        "Clark Kent",
+        "Кларк Кент",
+        "Clark",
+        "Кларк"
+      ],
+      "fields": {
+        "nudeUpper": "\n      massive beefy muscular upper body,\n      extremely broad shoulders, thick powerful neck,\n      huge full rounded pectorals, broad chest,\n      wide ribcage, thick upper arms, large rounded biceps,\n      thick forearms, solid dense torso, sturdy waist,\n      softly defined abdomen, slight lower belly softness,\n      smooth rounded muscle contours,\n      faint happy trail below navel, light underarm hair\n    ",
+        "nudeLower": "\n      natural adult male anatomy,\n      slightly above-average penis size,\n      proportionate scrotum, natural relaxed proportions,\n      heavy beefy lower body, broad hips,\n      thick powerful thighs, large rounded quadriceps,\n      full muscular glutes, thick calves, heavy solid proportions\n    "
+      }
+    },
+    "jimmy": {
+      "name": "Джимми Олсен",
+      "aliases": [
+        "Jimmy Olsen",
+        "Джимми Олсен",
+        "Jimmy",
+        "Джимми",
+        "James Olsen",
+        "Джеймс Олсен",
+        "James Bartholomew Olsen"
+      ],
+      "fields": {
+        "nudeUpper": "\n      slim youthful masculine torso, lean chest,\n      moderately defined shoulders, slender arms,\n      flat abdomen, subtle natural muscle definition\n    "
+      }
+    },
+    "superman": {
+      "name": "Супермен",
+      "aliases": [
+        "Superman",
+        "Супермен",
+        "Kal-El",
+        "Кал-Эл",
+        "Кал-Эль"
+      ],
+      "fields": {
+        "nudeUpper": "\n      broad muscular chest, large defined pectorals,\n      thick muscular arms, broad shoulders, defined abdomen,\n      narrow muscular waist, heroic athletic proportions\n    ",
+        "nudeLower": "\n      natural adult male anatomy, large athletic thighs,\n      strong legs, natural proportions\n    "
+      }
+    },
+    "perry": {
+      "name": "Перри Уайт",
+      "aliases": [
+        "Perry White",
+        "Перри Уайт",
+        "Perry",
+        "Перри"
+      ],
+      "fields": {
+        "nudeUpper": "\n      older masculine torso, broad chest, soft sturdy build,\n      moderate natural body hair on chest,\n      slightly softened abdomen, mature natural proportions\n    ",
+        "nudeLower": "\n      natural adult male anatomy, mature proportions,\n      no exaggerated anatomy\n    "
+      }
+    },
+    "cat": {
+      "name": "Кэт Грант",
+      "aliases": [
+        "Cat Grant",
+        "Кэт Грант",
+        "Cat",
+        "Кэт"
+      ],
+      "fields": {
+        "nudeUpper": "\n      slender adult female upper body,\n      narrow gently sloping shoulders,\n      delicate collarbones, slim neck,\n      slender upper arms, narrow wrists,\n      proportionate feminine bust,\n      gently defined ribcage, narrow waist,\n      smooth natural abdominal contours,\n      subtle waist definition,\n      warm medium brown skin\n    ",
+        "nudeLower": "\n      natural adult female anatomy,\n      slender feminine lower body,\n      gently rounded hips, slim pelvis,\n      long lean thighs, subtle natural curves,\n      softly rounded glutes, slender knees,\n      long tapered calves, narrow ankles,\n      elongated graceful leg proportions,\n      warm medium brown skin\n    "
+      }
+    },
+    "denji": {
+      "name": "Денджи",
+      "aliases": [
+        "Denji",
+        "Денджи"
+      ],
+      "fields": {
+        "nudeUpper": "\nlean athletic adult male torso,\nmoderately defined pectoral muscles,\nslightly visible ribcage,\nsubtle abdominal muscle definition,\nflat stomach, narrow waist,\nslim muscular arms,\nprominent collarbones,\nnatural masculine proportions,\nchainsaw starter cord protruding from sternum\n    ",
+        "nudeLower": "\nnatural adult male anatomy,\nsmall-to-average-sized penis,\nslightly curved shaft,\nsubtle natural asymmetry,\nproportionate scrotum,\nnatural relaxed proportions,\nnarrow hips, slim pelvis,\nlean muscular thighs,\nslender knees, defined calves,\nnatural masculine lower body proportions\n    "
+      }
+    },
+    "chainsaw_man": {
+      "name": "Человек-бензопила",
+      "aliases": [
+        "Chainsaw Man",
+        "Chainsawman",
+        "Человек-бензопила",
+        "Человек Бензопила"
+      ],
+      "fields": {
+        "nudeUpper": "\nlean muscular adult male torso,\ndefined pectoral muscles,\nnarrow muscular abdomen,\nvisible ribcage contours,\nmoderately broad shoulders,\nslim muscular upper arms,\nhuman skin on torso,\nmechanical chainsaw forearms,\nchainsaw starter cord in center of chest\n    ",
+        "nudeLower": "\nnatural adult male anatomy,\nsmall-to-average-sized penis,\nslightly curved shaft,\nsubtle natural asymmetry,\nproportionate scrotum,\nnatural relaxed proportions,\nnarrow hips, slim pelvis,\nlong lean muscular thighs,\ndefined knees, lean calves,\nhuman-shaped lower limbs,\nnatural masculine proportions\n    "
+      }
+    },
+    "kishibe": {
+      "name": "Кишибе",
+      "aliases": [
+        "Kishibe",
+        "Кишибе",
+        "岸辺"
+      ],
+      "fields": {
+        "nudeUpper": "\nmature masculine torso,\nlean muscular chest,\nbroad shoulders, strong upper arms,\ndefined forearms, prominent tendons,\nnatural pectoral muscles,\nfirm abdomen, subtle muscle definition,\nslightly softened lower stomach,\nnatural body hair,\nlight chest hair, faint happy trail,\nweathered skin texture\n  ",
+        "nudeLower": "\nnatural mature adult male anatomy,\naverage-sized penis,\nproportionate scrotum,\nnatural relaxed proportions,\nsubtle natural asymmetry,\nnarrow sturdy hips,\nlean muscular thighs,\ndefined quadriceps, strong calves,\nnatural body hair\n  "
+      }
+    },
+    "haruki": {
+      "name": "Харуки",
+      "aliases": [
+        "Харуки",
+        "Haruki",
+        "Хару"
+      ],
+      "fields": {
+        "nudeUpper": "\nslim masculine torso,\nflat narrow chest,\nslender shoulders,\nlong narrow ribcage,\ndefined collarbones,\nvisible clavicles,\nsoft rib definition,\nslim abdomen,\nnarrow waist,\ngentle lower abdominal definition,\ndelicate elegant build,\n\nextensive black-and-gray tattoos from neck to hips,\ndense tattoo coverage across chest sides, ribs, stomach, and lower abdomen,\nsnake-themed and abstract tattoo motifs,\nornamental black-and-gray tattoo composition\n  ",
+        "nudeLower": "\nnatural adult male anatomy,\nslender pelvis,\nnarrow hips,\nlean upper thighs,\nlong slim legs,\nsmall-to-average-sized penis,\nnatural relaxed proportions,\n\nblack-and-gray tattoo work continuing across lower abdomen,\nhips, and upper thighs\n  "
+      }
+    },
+    "astra": {
+      "name": "Астра Вайтон",
+      "aliases": [
+        "Astra",
+        "Astra Vayton",
+        "Астра",
+        "Vayton"
+      ],
+      "fields": {
+        "nudeUpper": "slender torso, pale skin, natural medium breasts, pink nipples, delicate collarbones, smooth skin",
+        "nudeLower": "slender legs, natural female anatomy, pale skin, narrow hips, pussy, hairless pussy"
+      }
+    }
+  }
+};
 async function activateNessProfile(){return true;}
-async function routeImages(method,kind){const map={generateAt:'sp_ness_generate_at',prepareRp:'sp_ness_'+kind+'_scene_parser',openSettings:'sp_ness_settings'};return globalThis.__spImagenExtension.run(map[method],kind);}
-
+async function routeImages(method,kind){const map={generateAt:'sp_ness_generate_at',prepareRp:'sp_ness_'+kind+'_scene_parser',openSettings:'sp_ness_settings'};return getExtension?.()?.run(map[method],kind);}
 // Module: field_help
-const NESS_FIELD_HELP={
-  "Помогатор: справка": "С чего начать?\n1. Выбери, что сделать: убрать вставку или найти одежду. В отдельном помогаторе исключений задача уже выбрана — сохранить нужное.\n2. Скопируй один полный фрагмент из поста и нажми «Обработать».\n3. Проверь показанный результат, нажми «Добавить в настройки», затем «Сохранить настройки» в основном окне. Код копировать не обязательно.\n\nГде взять пример?\nНужна вставка целиком: например ⟦SCORE:12⟧ или <span class=\"score\">12</span>. Если видна только оформленная карточка, открой редактирование сообщения и скопируй её исходный текст. Не нужно присылать весь пост или весь список правил.\n\nЧто такое метка?\nТекст в скобках, по которому можно найти служебную вставку. Например, в ⟦SCORE:12⟧ метка SCORE остаётся той же, а число 12 меняется. По одному примеру помогатор учится находить и другие числа с этой меткой.\n\nЧто такое HTML?\nРазметка для оформления текста: например <b>текст</b> делает его жирным. Нужное содержимое находится между частями <b> и </b>. Помогатору можно дать такой фрагмент целиком.\n\nЧто такое regex?\nПравило поиска похожих фрагментов. В отличие от обычного слова оно может найти, например, любое число после SCORE. Если у тебя уже есть такое правило, его тоже можно вставить. Не нужно учиться писать его самостоятельно.\n\nЧто делают исключения?\nДопустим, служебный блок нужно убрать, но число из него важно. Исключение сначала запоминает число, затем возвращает его без оформления. С подписью «Шкала отношений» результат будет: «Шкала отношений: 12».\n\nЗачем просить модель помочь?\nЕсли простой разбор не подошёл, используется текстовая модель, подключённая в SP Imagen. Ей передаётся только вставленный пример. Можно снять галочку — тогда помощник работает без обращения к модели.\n\nЗачем раздел с кодом?\nОн нужен для ручного переноса готового правила. JSON — просто способ записать настройки в виде кода. Для обычного использования достаточно кнопки «Добавить в настройки».\n\nЕсли не получилось\nВставь начало и конец фрагмента, а не только его значение. Например, ⟦SCORE:12⟧ вместо одного числа 12. В разделе ручной настройки можно указать, что вставлено: готовый код, дословный текст или текст между двумя метками.",
-  "Исключения": "Сначала извлекают нужное, потом позволяют удалить окружающий служебный блок.\nНапример: из ⟦SCORE:12⟧ оставить только «Шкала отношений: 12».\nОткрой «Помогатор исключений» и дай ему пример. Если два исключения находят одно и то же, действует первое.",
-  "Шаблон сохраняемого текста (regex)": "Код для поиска нужного фрагмента до удаления окружающего мусора.\nДля обычного использования его составляет отдельный помогатор исключений.\nВручную меняется только тогда, когда ты знаешь, как устроено правило поиска.",
-  "Группа извлечения": "Необязательно: какая часть уже найденного фрагмента нужна.\nНапример, value или 1 обозначает часть правила, а не само значение.\nПустое поле оставляет весь найденный фрагмент без оформления. По примеру это заполняется автоматически.",
-  "Подпись перед текстом (необязательно)": "Например: Шкала отношений.\nРежиссёр получит «Шкала отношений: извлечённый текст». Без подписи передаётся только текст.",
-  "Сложный формат: попросить модель": "Если локальный разбор не справится, вставленный пример уйдёт в текстовую модель, подключённую в SP Imagen.\nИстория чата не отправляется. При выключенной галочке запросов к модели не будет.",
-  "Что сделать": "Удаление скрывает найденный текст. Извлечение одежды связывает имя персонажа с его гардеробом.\nДля сохранения текста открой отдельный помогатор исключений.",
-  "Что вставляешь": "Автоформат распознаёт частые метки, HTML, regex с /разделителями/ и экспорт JSON.\nДля regex без разделителей или дословного текста выбери формат вручную.",
-  "Вставь один пример": "Один полный фрагмент из поста или исходник одного regex.\nНе нужно вставлять всю историю чата или весь список расширения.",
-  "Начальная метка": "Точный текст непосредственно перед нужным содержимым.\nНапример [PRIVATE]. Никакого экранирования вручную не требуется.",
-  "Конечная метка": "Точный текст после нужного содержимого.\nНапример [/PRIVATE]. Помогатор сам подготовит шаблон.",
-  "Готовое правило JSON": "Универсальная запись правила для этих настроек.\nКнопка «Добавить в настройки» перенесёт её в правильные поля. Не вставляй весь JSON в поле regex.",
-  "Источники одежды": "Здесь определяется, где в постах записана одежда.\nНапример: [OUTFIT:Анна]синяя рубашка[/OUTFIT]. По такой записи режиссёр узнает, что надето на Анне.\nНачни с кнопки «Найти одежду по примеру». Ручные поля нужны только для своей разметки.",
-  "Свои форматы одежды": "Дополнительные способы найти имя и одежду в посте.\nПроще открыть «Найти одежду по примеру»: помощник заполнит нужные поля.\nРучная настройка нужна, если готовый разбор не подошёл.",
-  "Распознавать прежнюю разметку одежды": "Читает записи вида ⟦ОДЕЖДА:Имя⟧описание одежды.\nОбщий блок ⟦ГАРДЕРОБ⟧…⟦/ГАРДЕРОБ⟧ необязателен.\nЕсли у тебя другой формат, добавь его ниже.",
-  "Примеры форматов": "Добавляет заполненный образец для ручной настройки.\nМетки — текст вокруг имени и одежды. Regex — правило поиска. HTML — запись в тегах <…>.\nДля своего примера удобнее кнопка «Найти одежду по примеру».",
-  "Использовать этот источник": "Включает извлечение одежды по этому правилу.\nВыключенное правило сохраняется, но не читает посты.",
-  "Количество постов": "Сколько последних сообщений прочитает модель, составляющая картинку.\nЭто не число кадров: 2 означает прочитать два последних поста.\nДля истории из нескольких событий может понадобиться больше постов.",
-  "Очистка постов": "Режиссёр получит события сцены без выбранных служебных вставок. Исходные посты чата сохраняются.\nХочешь убрать свою вставку? Нажми «Помогатор-кодировщик 3000».\nХочешь оставить нужное значение из неё? Открой «Исключения».",
-  "Скрытые мысли и служебные метки": "Скрывает распознаваемые внутренние мысли и технические маркеры.\nСобытия сцены и телефонная переписка остаются.",
-  "Комментарии в коде HTML": "Скрывает вставки <!-- комментарий -->.\nВидимый текст обычных HTML-элементов эта настройка не удаляет.",
-  "Скрытые элементы HTML": "Убирает скрытые HTML-блоки и переводит остальную разметку в читаемый текст.\nВидимые телефонные сообщения сохраняются.",
-  "Сводки в конце поста": "Убирает распознаваемую служебную сводку в конце сообщения.\nЕсли твоя сводка оформлена иначе, добавь её шаблон в «Свои правила удаления».",
-  "Свои правила удаления": "Для своих служебных вставок, которые не убираются галочками выше.\nОбычный путь: открыть помогатор, вставить пример, обработать и добавить правило.\nРучное поле ждёт готовый код поиска, а не описание словами «удалить это».",
-  "Шаблон удаляемого текста (regex)": "Код, по которому будут находиться ненужные вставки.\nНе вставляй сюда просьбу «удали комментарии». Вместо этого дай помогатору реальный пример из поста.\nОн заполнит это поле за тебя.",
-  "Текст на картинке": "Реплика — короткая фраза персонажа или сообщение из постов, выбранное для картинки.\nПервое ограничение — сколько таких фраз можно взять на всю страницу. Второе — длина каждой.\nКороткие фразы проще разместить и прочитать в комиксе. Это максимум: модель может выбрать меньше.",
-  "Максимум реплик на странице": "Верхняя граница числа фраз на всей странице.\nНапример, 2 — можно выбрать не больше двух реплик. 0 — не выбирать реплики.\nЭто не обязательное количество пузырей.",
-  "Максимум слов в реплике": "Ограничивает длину одной выбранной фразы.\nНапример, 7 — не больше семи слов в каждой реплике. Короткий текст легче разместить в пузыре и прочитать.",
-  "Предпросмотр": "Позволяет проверить и отредактировать готовый промпт до отправки генератору.",
-  "Теги персонажа": "Назначай теги кнопкой «+» под именем в карточке.\n«Сохранить» запоминает теги, их цвета, назначения и выбранный фильтр для всех чатов. Теги не попадают в промпт.",
-  "Имя": "Имя записи в библиотеке. Используется в списке, при поиске персонажа и сопоставлении с постами. Укажи привычное имя; другие варианты добавь в псевдонимы.",
-  "Тип записи": "Персона — персонаж пользователя; персонаж — остальные действующие лица. Определяет раздел библиотеки. Само описание внешности остаётся в поле «Постоянная внешность».",
-  "Постоянная внешность": "Постоянные признаки персонажа: идентичность, возраст взрослого персонажа, лицо, волосы, глаза, телосложение. Пиши по-английски тегами или короткими фразами. Режиссёр получает этот текст как фиксированный источник внешности; текущую одежду и действия указывай в сцене и гардеробе.",
-  "Другие имена и псевдонимы": "Варианты имени, которыми персонажа называют в постах: русское и английское имя, фамилия, прозвища. Введи один вариант и нажми Enter. Каждый тег — отдельный элемент aliases. Они помогают поиску и распознаванию персонажа, а не добавляют ему новые черты.",
-  "Имя для промпта": "Имя, которое режиссёр ставит после типа персонажа в его записи. Например, Kian даёт начало | boy, Kian, … при типе boy. Поле можно оставить пустым.",
-  "Тип персонажа для промпта": "Укажи girl, boy, cat или other. Режиссёр использует тип в начале записи персонажа и в счётчике видимых персонажей. Например, один видимый персонаж типа boy учитывается как 1boy. Поле можно оставить пустым.",
-  "Отметины на бёдрах": "Постоянные татуировки, шрамы и другие отметины на бёдрах. Короткое английское описание с указанием стороны, места и вида отметины. Учитывается, когда этот участок открыт и виден в кадре.",
-  "Отметины на коленях": "Постоянные отметины на коленях. Укажи левое или правое колено и внешний вид отметины по-английски. Используется при видимых открытых коленях.",
-  "Отметины на голенях": "Татуировки, шрамы и постоянные отметины на голенях. Укажи сторону и расположение по-английски. Применяется при видимой открытой коже этой области.",
-  "Отметины на плечах": "Постоянные отметины на плечах. Укажи сторону, форму и расположение по-английски. Режиссёр использует описание, когда плечи открыты и видны.",
-  "Отметины на предплечьях": "Постоянные отметины между локтем и запястьем. Разделяй левую и правую руку, если они различаются. Используется, когда соответствующая область открыта и видна.",
-  "Особенности открытого верха тела": "Постоянные особенности открытой верхней части тела, включая грудь, живот, шрамы и индивидуальные анатомические черты. Заполняй английскими визуальными описаниями. Передаётся режиссёру для использования только в видимых открытых областях подходящей сцены.",
-  "Особенности открытого низа тела": "Постоянные особенности открытой нижней части тела и индивидуальной анатомии. Пиши точные английские визуальные признаки. Используется только когда соответствующая область действительно открыта и видна в сцене.",
-  "Название тега": "Короткое название группы, например Проект или Редакция. Нажми Enter или «Готово». Новый тег можно назначать нескольким персонажам; его название используется только для организации библиотеки.",
-  "Поиск": "Ищет по имени, псевдонимам и ключу записи. Ограничивает только отображаемый список; выбранные теги и сами персонажи сохраняются.",
-  "Импорт библиотеки JSON": "Выбери экспортированный JSON библиотеки с полями version, personas и characters. Он заменит черновик окна. Перед окончательным сохранением можно проверить записи; действующая версия сохраняется как резервная копия.",
-  "Сохранить для": "Настройки общие для всех чатов и применяются при следующей подготовке картинки.",
-  "Формат": "Укажи, как одежда записана в исходном посте.\nМетки: [OUTFIT:Имя]одежда[/OUTFIT].\nHTML: запись внутри <…>.\nRegex: готовое правило поиска, которое узнаёт имя и одежду.",
-  "Маркер перед именем": "Скопируй текст непосредственно перед именем.\nДля [OUTFIT:Анна]синяя рубашка[/OUTFIT] это [OUTFIT:.\nСамо имя Анна сюда не вставляется.",
-  "Маркер после имени": "Скопируй то, что отделяет имя от описания одежды.\nДля [OUTFIT:Анна]синяя рубашка[/OUTFIT] это ].",
-  "Регулярное выражение": "Готовый код, который находит в посте имя и одежду.\nЭто не описание одежды обычными словами.\nЕсли не пишешь такие правила, используй «Найти одежду по примеру»: код будет составлен автоматически.",
-  "Флаги": "Буквы, меняющие способ поиска. Это не искомый текст. Обычно можно оставить gm.\ng — искать все совпадения; m — ^ и $ работают для каждой строки; i — не различать заглавные и строчные буквы.\ns — точка . захватывает переносы строк; u — работа с символами Unicode. Пиши буквы без пробелов.",
-  "Comic: максимум реплик": "Верхняя граница количества коротких реплик для Comic: от 0 до 8. Ноль отключает выбор реплик. Это максимум, а не обязательное число пузырей.",
-  "Comic: слов в реплике": "Максимальная длина одной выбранной реплики Comic: от 1 до 40 слов. Короткие реплики обычно легче разместить в пузырях.",
-  "Story Page: максимум реплик": "Максимальное количество выбранных реплик Story Page: от 0 до 8. Ноль отключает выбор реплик; при меньшем числе подходящих реплик используются только они.",
-  "Story Page: слов в реплике": "Максимальное число слов в одной реплике Story Page: от 1 до 40. Ограничивает отбор текста для иллюстрации.",
-  "Включено": "Включает это правило извлечения гардероба. Выключенное правило сохраняется в настройках, но не применяется к постам.",
-  "Исходные RP-посты": "Текст постов, который получит режиссёр для текущей картинки. Можно уточнить факты или убрать лишнее. Редактирование действует на эту генерацию и не переписывает историю чата.",
-  "Описание сцены": "Свободное описание текущей картинки: кто присутствует, что делает и где находится. Для ручного режима замещает собранные посты.",
-  "Гардероб персонажей": "Текущая одежда и открытые участки тела: одна запись Имя_outfit: описание на строку. Пиши то, что действительно надето в сцене. Эти данные определяют, какие части внешности видны.",
-  "Пожелания к композиции": "Пожелания к кадрированию, ракурсу, панелям, рамкам и размещению текста. Можно выбрать категорию и дописать своё. При смене категории её стандартный текст заменяет содержимое поля.",
-  "Категория композиции": "Выбирает стандартный набор композиционных пожеланий для текущей картинки. Смена категории заменяет текст пожеланий ниже; после выбора его можно дополнить вручную.",
-  "Имя или роль NPC": "Имя или понятная роль дополнительного участника, например «охранник». Используется для связи внешности NPC с его действиями в сцене.",
-  "Внешность и одежда NPC": "Короткое описание двумя частями: Appearance: внешность и Clothing: одежда. Можно исправить предложенный образ. Оно передаётся как источник для этого NPC в текущей картинке.",
-  "Итоговый промпт": "Готовый текст, который будет отправлен в генератор изображений после подтверждения. Можно исправить его вручную; отправляется именно содержимое этого поля.",
-  "Конец одежды": "Скопируй окончание записи после одежды.\nДля [OUTFIT:Анна]синяя рубашка[/OUTFIT] это [/OUTFIT].\nЕсли отдельного окончания нет, оставь пустым: чтение идёт до следующей записи или конца блока.",
-  "Начало блока": "Заполняется, только если все записи одежды обёрнуты в общий блок.\nНапример, для [WARDROBE]…[/WARDROBE] начало — [WARDROBE].\nЕсли такого блока нет, оставь это поле и поле конца пустыми.",
-  "Конец блока": "Закрывающая часть общего блока одежды.\nДля [WARDROBE]…[/WARDROBE] это [/WARDROBE].\nЗаполняется вместе с началом блока. Если блока нет — пусто.",
-  "Группа имени": "Указывает, какая часть готового regex содержит имя персонажа.\nНапример, для (?<name>…) введи name; для первой части в круглых скобках — 1.\nСамо имя персонажа сюда не вставляется. Помогатор может заполнить это за тебя.",
-  "Группа одежды": "Указывает часть готового regex с описанием одежды.\nНапример, для (?<outfit>…) введи outfit; для второй части в скобках — 2.\nСам текст одежды сюда не вставляется.",
-  "Запись персонажа": "Адрес HTML-записи с одним персонажем.\nНапример, class=\"wardrobe-entry\" → .wardrobe-entry, а id=\"outfit\" → #outfit. Такие адреса называются CSS-селекторами.\nЕсли не знаешь адрес, используй помогатор с целым примером записи.",
-  "Элемент имени": "Адрес части HTML-записи, где лежит имя.\nНапример, <span class=\"name\">Анна</span> → .name.\nЕсли имя записано как data-name=\"Анна\" в самой записи, оставь это поле пустым и укажи data-name в поле атрибута.",
-  "Атрибут имени": "Атрибут — значение, записанное прямо в открывающем теге.\nДля <div data-name=\"Анна\">…</div> укажи data-name.\nЕсли имя написано обычным текстом внутри элемента, оставь пустым.",
-  "Элемент одежды": "Адрес части записи с описанием одежды.\nНапример, <span class=\"outfit\">рубашка</span> → .outfit.\nПустое поле использует всю запись.",
-  "Атрибут одежды": "Если одежда записана прямо в открывающем теге, укажи название её атрибута.\nДля data-outfit=\"рубашка\" это data-outfit.\nЕсли одежда находится внутри элемента обычным текстом, оставь пустым.",
-  "Удаляемый контейнер": "Адрес общего блока с техническими записями одежды.\nНапример, class=\"wardrobe\" → .wardrobe. После извлечения одежды этот блок не будет читаться как событие сцены.\nОбычно можно оставить пустым: удалятся найденные записи персонажей.",
-  "Что удалить из постов": "Выражение для удаления собственных служебных вставок перед отправкой постов режиссёру. Оно удаляет всё совпадение; проверь, чтобы оно не захватывало нужные события и реплики.",
-  "Snapshot": "Сколько последних настоящих RP-постов читать для одного снимка: от 1 до 20. Скрытые телефонные логи и технические записи не считаются постами сцены.",
-  "Comic": "Сколько последних настоящих RP-постов использовать для Comic: от 1 до 20. Влияет на контекст, который получит режиссёр, а не напрямую на число панелей.",
-  "Story Page": "Сколько последних настоящих RP-постов использовать для Story Page: от 1 до 20. Более длинный контекст позволяет выбрать последовательные события; число панелей задаётся отдельно режиссёром.",
-  "Служебные маркеры": "Исключает распознаваемые технические маркеры, скрытые мысли и внутренние вставки. Обычные события и явно включённые в RP телефонные сообщения остаются источником сцены.",
-  "HTML-комментарии": "Удаляет технические комментарии вида <!-- ... --> из текста, который получает режиссёр.",
-  "Скрытые блоки": "Извлекает полезный текст из HTML и исключает скрытые блоки. Правила гардероба читают исходный HTML до этой очистки.",
-  "Читать сохранённый формат одежды": "Включает ранее использованный формат извлечения одежды. Твои существующие правила сохраняются. Для другого формата добавь своё правило маркеров, regex или HTML; пример можно взять из секции «Примеры форматов».",
-  "Служебные сводки": "Применяет сохранённое правило удаления служебной сводки в конце поста. Для собственной разметки добавь редактируемый фильтр: так можно точно указать, какие технические вставки исключать.",
-  "Показывать промпт перед отправкой": "Промпт — готовое текстовое задание для генератора картинки.\nЕсли включено, перед отправкой откроется окно, где можно его прочитать и исправить.\nЕсли выключено, этот шаг пропускается.",
-  "Реплик": "Максимум реплик для режима в этой строке: от 0 до 8. Ноль отключает выбор реплик. Это верхняя граница, а не обязательное число пузырей.",
-  "Слов": "Максимальная длина одной реплики для режима в этой строке: от 1 до 40 слов. Короткий текст обычно легче разместить на странице.",
-  "Цвет тега": "Цвет этого тега в полосе фильтров и карточках персонажей. Выбери любой оттенок; он сохраняется вместе с тегом и не влияет на цвета иллюстрации.",
-  "Настройки: с чего начать": "Режиссёр — модель, которая составляет задание для картинки. Эти настройки определяют, что она узнает из постов.\n\n▤ Последние посты — сколько сообщений прочитать, чтобы понять сцену.\n❞ Текст на картинке — сколько коротких фраз выбрать для комикса.\n◇ Одежда — как найти в постах записи о том, что надето.\n✂ Очистка — какие служебные вставки не показывать режиссёру.\n✓ Проверка задания — можно ли отредактировать готовое описание до генерации.\n\nХочешь убрать свою служебную вставку? Открой помогатор в разделе «Что скрыть от режиссёра».\nХочешь сохранить из неё число или текст? Открой там «Исключения» и отдельный помогатор.\n\nВ конце нажми «Сохранить настройки». Сами сообщения чата не переписываются.",
-  "Задача помогатора": "«Не передавать» — такие вставки будут скрыты от модели, составляющей картинку.\n«Найти имя и одежду» — найденная одежда станет частью данных о персонаже.\nЕсли нужен текст из удаляемого блока, используй отдельный помогатор исключений.",
-  "Пример для помогатора": "Скопируй один фрагмент целиком, включая скобки или теги.\nНапример: ⟦SCORE:12⟧, а не просто 12.\nМожно также вставить одно готовое правило поиска из расширения regex.",
-  "Название извлечённых данных": "Необязательная подпись перед найденным значением.\nПример: подпись «Шкала отношений» + найденное число 12 → «Шкала отношений: 12».\nОставь пустым, если нужна только сама найденная информация.",
-  "Способ поиска": "Обычно подходит автоматическое определение.\n«Точно такой же текст» — ищет только то, что вставлено, без замены чисел.\n«Между началом и концом» — позволяет отдельно указать две окружающие метки.\n«Готовое правило поиска» — если ты копируешь сам regex, а не его результат.",
-  "Готовое правило": "Код с настройками поиска. Он уже заполнен помощником.\nДля обычной работы нажми «Добавить в настройки».\nКопирование нужно лишь для ручного переноса в другое место.",
-  "Попросить модель помочь, если пример не распознан": "Когда обычный разбор не справляется, пример обрабатывает текстовая модель SP Imagen.\nЕй отправляется только вставленный фрагмент, а не история чата.\nЕсли снять галочку, помощник не обращается к модели.",
-  "Читать одежду из меток ⟦ОДЕЖДА:Имя⟧": "Находит записи вида ⟦ОДЕЖДА:Анна⟧синяя рубашка.\nЕсли у тебя одежда записана иначе, нажми «Найти одежду по примеру».\nСмена этой галочки не удаляет записи библиотеки.",
-  "Служебные комментарии <!-- … -->": "Убирает технические заметки между <!-- и -->.\nНапример: <!-- SCORE:12 -->. Обычно читателю они не видны.\nЕсли значение внутри нужно для картинки, сохрани его через исключение.",
-  "Скрытые блоки и HTML-оформление": "HTML — оформление с тегами вроде <div>текст</div>.\nЭта галочка убирает теги оформления и скрытые блоки. Обычный видимый текст внутри остаётся.\nЧтобы убрать весь конкретный блок вместе с содержимым, создай правило через помогатор.",
-  "Служебная сводка в конце поста": "Убирает распознаваемую техническую сводку, добавленную в конце сообщения.\nЕсли твоя сводка оформлена иначе, дай помогатору её полный пример.",
-  "Перенос настроек: инструкция": "НАСТРОИТЬ С ИИ\n1. Скопировать инструкцию.\n2. Вставить в ИИ → добавить пожелания и 2 полных поста с метками.\n3. Ответ ИИ → «Импорт настроек».\n4. «Проверить настройки» → «Загрузить в настройки» → «Сохранить настройки».\n\nПЕРЕНЕСТИ ГОТОВЫЕ НАСТРОЙКИ\n«Скачать JSON настроек» → передать файл → «Импорт настроек» → проверить → загрузить → сохранить.\n\nПосле сохранения настройки применяются ко всем чатам.\nФайл содержит только настройки генерации — без постов, библиотеки и подключений.",
-  "Инструкция для копирования": "Готовое сообщение для твоего ИИ, уже с текущими настройками.\nСкопируй целиком, добавь свои пожелания и два полных поста в отмеченные места.\nЗатем верни ответ ИИ через импорт настроек.",
-  "Или вставь ответ ИИ целиком": "Вставь весь JSON, полученный от ИИ: от первой { до последней }.\nНе вставляй сюда сами посты или только отдельное правило.\nНажми «Проверить настройки», чтобы увидеть сводку перед загрузкой."
-};
-const NESS_HELP_LABELS={
-  "Текст перед именем": "Маркер перед именем",
-  "Текст сразу после имени": "Маркер после имени",
-  "Текст после описания одежды": "Конец одежды",
-  "Общий блок: начало (если есть)": "Начало блока",
-  "Общий блок: конец (если есть)": "Конец блока",
-  "Готовое правило поиска": "Регулярное выражение",
-  "Как искать (флаги)": "Флаги",
-  "Часть правила с именем": "Группа имени",
-  "Часть правила с одеждой": "Группа одежды",
-  "Как найти запись персонажа": "Запись персонажа",
-  "Как найти имя внутри записи": "Элемент имени",
-  "Имя хранится в атрибуте": "Атрибут имени",
-  "Как найти одежду внутри записи": "Элемент одежды",
-  "Одежда хранится в атрибуте": "Атрибут одежды",
-  "Как найти общий блок для удаления": "Удаляемый контейнер"
-};
+
+
 function nessFieldHelp(title){const key=String(title).replace(/^[^\p{L}\p{N}]+/u,'').trim();return NESS_FIELD_HELP[NESS_HELP_LABELS[key]||key]||'Поле сохраняется вместе с этой записью. Укажи данные по его названию; если оно необязательное, его можно оставить пустым.';}
 
 // Module: ui_popovers
@@ -149,7 +206,7 @@ function bindNessTooltip(D,anchor,text,{hover=true,onToggle=()=>{},id=''}={}){
  function later(){cancelHide();timer=setTimeout(hide,100);}
  function show(){
   cancelHide();if(popup?.isConnected)return popup;closeNessTooltip();
-  popup=D.createElement('div');popup.className='ness-tooltip';if(id)popup.id=id;popup.setAttribute('role','tooltip');popup.textContent=text.replace(/([.!?])\s+(?=[А-ЯЁ«])/gu,'$1\n');
+  popup=D.createElement('div');popup.className='ness-tooltip';if(id)popup.id=id;popup.setAttribute('role','tooltip');popup.textContent=text.replace(/([.!?])\s+(?=[А-ЯЁ«])/gu,'$1\n');applyNessTheme(popup,loadNessTheme());
   (D.querySelector('#sp-imagen-review-overlay')||D.body).appendChild(popup);positionNessPopover(popup,anchor);
   popup.onmouseenter=cancelHide;popup.onmouseleave=later;D.addEventListener('pointerdown',outside,true);D.addEventListener('scroll',scroll,true);nessOpenTip=hide;onToggle(true);return popup;
  }
@@ -157,14 +214,52 @@ function bindNessTooltip(D,anchor,text,{hover=true,onToggle=()=>{},id=''}={}){
  return {show,hide,later,cancelHide,toggle(){if(popup?.isConnected)hide();else show();},get body(){return popup;}};
 }
 
-// Module: ui_header
+// Module: ui_theme
+
+
+function normalizeNessTheme(value){const theme={...NESS_THEME_DEFAULTS};for(const key of Object.keys(theme))if(/^#[0-9a-f]{6}$/i.test(value?.[key]||''))theme[key]=value[key];return theme;}
+function loadNessTheme(){try{const value=SillyTavern.getContext()?.extensionSettings?.variables?.global?.sp_ness_ui_theme_v1;return normalizeNessTheme(typeof value==='string'?JSON.parse(value):value);}catch{return {...NESS_THEME_DEFAULTS};}}
+function applyNessTheme(panel,theme){
+ const normalized=normalizeNessTheme(theme),targets=[panel];if(panel.id==='sp-imagen-review-panel'&&panel.parentNode?.id==='sp-imagen-review-overlay')targets.push(panel.parentNode);
+ for(const target of targets)for(const [key,value]of Object.entries(normalized)){const name='--ness-'+key,current=typeof target.style.getPropertyValue==='function'?target.style.getPropertyValue(name):target.style[name];if(current!==value)target.style.setProperty(name,value);}
+}
+let nessCloseTheme=null;
+function closeNessTheme(){if(nessCloseTheme){const close=nessCloseTheme;nessCloseTheme=null;close();}}
+function openNessTheme(D,panel,anchor){
+ if(nessCloseTheme){closeNessTheme();return;}closeNessTooltip();
+ const ui=createUiKit(D),original=loadNessTheme(),draft={...original},popup=ui.el('div',undefined,panel,'ness-theme-popover');popup.setAttribute('role','dialog');popup.setAttribute('aria-label','Палитра интерфейса');
+ ui.el('strong','Палитра интерфейса',popup);ui.note(popup,'8 цветов для всех окон. Остальные оттенки связаны с ними.');
+ const grid=ui.el('div',undefined,popup,'ness-theme-grid'),inputs={};
+ for(const key of Object.keys(draft)){const label=ui.el('label',undefined,grid,'ness-theme-color');ui.el('span',NESS_THEME_LABELS[key],label);const input=ui.input(draft[key],'color');label.appendChild(input);inputs[key]=input;input.oninput=()=>{draft[key]=input.value;applyNessTheme(panel,draft);};}
+ const message=ui.note(popup,''),actions=ui.row(popup);let saving=false,finished=false;
+ const setSaving=value=>{saving=value;for(const node of [...popup.querySelectorAll('input'),...popup.querySelectorAll('button')])node.disabled=value;};
+ function outside(e){if(!popup.contains(e.target)&&!anchor.contains(e.target))finish(false);}
+ function finish(saved,force=false){if(finished||saving&&!force)return;finished=true;if(!saved)applyNessTheme(panel,original);D.removeEventListener('pointerdown',outside,true);popup.remove();if(nessCloseTheme===ownClose)nessCloseTheme=null;}
+ ui.button('Вернуть палитру',actions,()=>{Object.assign(draft,NESS_THEME_DEFAULTS);for(const key of Object.keys(inputs))inputs[key].value=draft[key];applyNessTheme(panel,draft);},'quiet');
+ ui.button('Применить',actions,async()=>{if(saving||finished)return;setSaving(true);const st=SillyTavern.getContext();let global,previous,serialized;try{if(!st?.extensionSettings||typeof st.saveSettingsDebounced!=='function')throw Error('Сохранение настроек недоступно.');st.extensionSettings.variables||={};global=st.extensionSettings.variables.global||={};previous=global.sp_ness_ui_theme_v1;serialized=JSON.stringify(normalizeNessTheme(draft));global.sp_ness_ui_theme_v1=serialized;await st.saveSettingsDebounced();saving=false;finish(true);}catch(e){if(global&&global.sp_ness_ui_theme_v1===serialized){if(previous===undefined)delete global.sp_ness_ui_theme_v1;else global.sp_ness_ui_theme_v1=previous;}if(!finished){message.textContent=e.message;setSaving(false);}}},'primary');
+ ui.button('×',actions,()=>finish(false),'icon quiet').setAttribute('aria-label','Закрыть палитру');
+ const ownClose=()=>finish(false,true);D.addEventListener('pointerdown',outside,true);nessCloseTheme=ownClose;positionNessPopover(popup,anchor,true);
+}
 function createNessHeader(D,panel,title,subtitle,badgeText){
- const ui=createUiKit(D),header=ui.el('header',undefined,panel,'ness-header'),copy=ui.el('div',undefined,header,'ness-header-copy');
- ui.el('h3',title,copy);
- if(subtitle)ui.el('p',subtitle,copy);
- const actions=ui.el('div',undefined,header,'ness-row');
- const badge=ui.el('span',badgeText||'',actions,'ness-badge');
- return {header,badge};
+ const ui=createUiKit(D),header=ui.el('header',undefined,panel,'ness-header'),copy=ui.el('div',undefined,header,'ness-header-copy');ui.el('h3',title,copy);if(subtitle)ui.el('p',subtitle,copy);
+ const actions=ui.el('div',undefined,header,'ness-row'),badge=ui.el('span',badgeText||'',actions,'ness-badge');
+ const minimize=ui.button('−',actions,undefined,'icon quiet ness-minimize');
+ minimize.setAttribute('aria-label','Свернуть окно');minimize.setAttribute('aria-expanded','true');
+ minimize.title='Свернуть окно';
+ minimize.onclick=()=>{
+  // A nested dialog owns its own focus. Collapse that dialog first.
+  if(panel.querySelector('[data-ness-child-dialog]'))return;
+  const overlay=panel.parentElement;if(!overlay)return;
+  const collapsed=overlay.dataset.minimized==='true';
+  if(collapsed)delete overlay.dataset.minimized;else overlay.dataset.minimized='true';
+  panel.setAttribute('aria-modal',collapsed?'true':'false');
+  minimize.textContent=collapsed?'−':'□';
+  minimize.title=collapsed?'Свернуть окно':'Развернуть окно';
+  minimize.setAttribute('aria-label',minimize.title);
+  minimize.setAttribute('aria-expanded',String(collapsed));
+  minimize.focus();
+ };
+ const theme=ui.button('⚙',actions,()=>openNessTheme(D,panel,theme),'icon quiet');theme.setAttribute('aria-label','Цвета интерфейса');ui.tip(theme,'Цвета всех окон: фон, поля, текст, линии и акцент.');return {header,badge};
 }
 
 // Module: ui_components
@@ -219,12 +314,14 @@ function createNessTabs(ui,parent,label){
  }};
 }
 
+// Module: ui_styles
+
 
 // Module: ui_child_dialog
 // One lifecycle for child dialogs in Settings: focus, inert background, dismissal and cleanup.
 function createNessChildDialog(D,panel,{title,marker,onClose=()=>{}}){
  if(panel.querySelector('[data-ness-child-dialog]'))throw Error('Сначала закрой открытое дополнительное окно.');
- const ui=createUiKit(D),{el,button}=ui;closeNessTooltip();const previous=D.activeElement;
+ const ui=createUiKit(D),{el,button}=ui;closeNessTooltip();closeNessTheme();const previous=D.activeElement;
  const shade=el('div',undefined,panel,'ness-child-shade');shade.setAttribute('data-ness-child-dialog','');if(marker)shade.setAttribute(marker,'');
  const box=el('div',undefined,shade,'ness-child');box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label',title);
  const siblings=[...panel.children].filter(e=>e!==shade).map(e=>[e,e.inert]);for(const [e]of siblings)e.inert=true;
@@ -289,13 +386,16 @@ function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyT
 
 // Module: dialogs
 function createDialogShell(kind='review'){
- const overlay=document.createElement('div');overlay.id='sp-imagen-review-overlay';
+ const overlay=document.createElement('div');overlay.id='sp-imagen-review-overlay';applyNessTheme(overlay,loadNessTheme());
  const panel=document.createElement('div');panel.id='sp-imagen-review-panel';panel.className='ness-ui';
  panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label',({library:'Библиотека персонажей',settings:'Настройки генерации'})[kind]||'Подготовка иллюстрации');panel.setAttribute('data-dialog',kind);
- 
+ applyNessTheme(panel,loadNessTheme());
+ let style=document.querySelector('#sp-imagen-ui-style-v2');
+ if(!style){style=document.createElement('style');style.id='sp-imagen-ui-style-v2';(document.head||document.documentElement||document.body).appendChild(style);}
+ if(style.textContent!==NESS_UI_CSS)style.textContent=NESS_UI_CSS;
  overlay.appendChild(panel);return {overlay,panel};
 }
-function mountDialog(overlay){(document.documentElement||document.body).appendChild(overlay);const stop=trackDialogViewport(overlay);return ()=>{stop();closeNessTooltip();};}
+function mountDialog(overlay){(document.documentElement||document.body).appendChild(overlay);const stop=trackDialogViewport(overlay);return ()=>{stop();closeNessTooltip();closeNessTheme();};}
 function trackDialogViewport(overlay){
 const viewport=window.visualViewport;let frame=null,last='',stopped=false;
   const queueFit=()=>{if(stopped)return;if(typeof window.requestAnimationFrame!=='function'){fitViewport();return;}if(frame===null)frame=window.requestAnimationFrame(()=>{frame=null;if(!stopped)fitViewport();});};
@@ -380,7 +480,7 @@ function createLibraryView(D){
  ui.tip(exportButton,'Экспорт всей текущей библиотеки в JSON: записи, внешность, псевдонимы, теги и их цвета.');
  const upload=input('','file');upload.hidden=true;upload.accept='.json,application/json';upload.setAttribute('data-library-import','');footerLeft.appendChild(upload);importButton.onclick=()=>upload.click();
  const message=el('p','',actions,'ness-status');message.setAttribute('role','status');message.setAttribute('aria-live','polite');
- const close=button(globalThis.__spImagenHubChild?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
+ const close=button(getExtension?.()?.hubChildOpen?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
  function resetEditor(){ui.clear(form);const empty=el('div',undefined,form,'ness-library-empty');el('div','✧',empty,'ness-empty-symbol');el('h4','Выбери персонажа',empty);note(empty,'Нажми на строку слева, чтобы открыть запись.');panel.setAttribute('data-view','list');}
  function showEditor(){panel.setAttribute('data-view','editor');form.scrollTop=0;}
  function selection(n){count.textContent='Выбрано: '+n;bulk.hidden=n===0;}
@@ -388,117 +488,12 @@ function createLibraryView(D){
  resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkTags,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton};
 }
 
-// Module: appearance_visibility
-const NESS_APPEARANCE_REGIONS={face:'Лицо',hair:'Волосы и голова',upper:'Верх тела',lower:'Низ тела',arms:'Руки и предплечья',hands:'Кисти и пальцы',legs:'Ноги и стопы'};
-const NESS_APPEARANCE_VIEWS={front:'Спереди',back:'Сзади',side:'Сбоку'};
-const NESS_APPEARANCE_ALWAYS='always';
-const NESS_UPPER_REGIONS=['hair','upper','arms','hands'];
-const NESS_APPEARANCE_PRESETS={
- face:{label:'Только лицо',view:'front',regions:['face']},
- head:{label:'Голова целиком',view:'front',regions:['face','hair']},
- upper_front:{label:'Верх тела спереди',view:'front',regions:['face',...NESS_UPPER_REGIONS]},
- upper_back:{label:'Верх тела сзади',view:'back',regions:NESS_UPPER_REGIONS},
- full_front:{label:'Полный рост спереди',view:'front',regions:['face',...NESS_UPPER_REGIONS,'lower','legs']},
- full_back:{label:'Полный рост сзади',view:'back',regions:[...NESS_UPPER_REGIONS,'lower','legs']},
- arms:{label:'Только руки',view:'front',regions:['arms','hands']},
- legs:{label:'Только ноги',view:'front',regions:['legs']}
-};
-const NESS_APPEARANCE_RULES={
- priority:['Общий выбор','Если персонаж показан в нескольких панелях, выбирай самый широкий ракурс, в котором его фигура действительно различима. Крупный план детали не заменяет более широкий кадр. При равном охвате бери ракурс из главной панели персонажа.'],
- face:['Только лицо','В кадре только черты лица. Волосы и форма головы не читаются целиком.'],
- head:['Голова целиком','Читается голова с волосами или её силуэтом. Корпус за пределами кадра.'],
- upper_front:['Верх тела спереди','Виден корпус примерно по пояс спереди или в три четверти спереди. Ноги за пределами кадра.'],
- upper_back:['Верх тела сзади','Виден верх тела со спины. Нижняя часть тела за пределами кадра.'],
- full_front:['Полный рост спереди','Видна фигура от головы до ног спереди или в три четверти спереди.'],
- full_back:['Полный рост сзади','Видна фигура от головы до ног со спины.'],
- arms:['Только руки','Крупный план руки, предплечья или кисти без головы и корпуса.'],
- legs:['Только ноги','Крупный план ноги или стопы без головы и корпуса.'],
- none:['Без деталей ракурса','Персонаж присутствует, но его внешность не читается, например виден только силуэт за препятствием.']
-};
-
-function normalizeAppearanceRules(rules){
- return Object.fromEntries(Object.keys(NESS_APPEARANCE_RULES).flatMap(id=>{
-  const text=typeof rules?.[id]==='string'?rules[id].trim().slice(0,1200):'';
-  return text&&text!==NESS_APPEARANCE_RULES[id][1]?[[id,text]]:[];
- }));
-}
-
-function normalizeAppearanceRanges(base,ranges,allowUnclassified=false){
- if(!Array.isArray(ranges))return [];
- const valid=ranges.filter(r=>r&&Number.isInteger(r.start)&&Number.isInteger(r.end)&&r.start>=0&&r.end>r.start&&r.end<=base.length&&typeof r.text==='string'&&r.text.trim()&&base.slice(r.start,r.end)===r.text&&((allowUnclassified&&r.region==null)||(Object.hasOwn(NESS_APPEARANCE_REGIONS,r.region)&&(r.view==='any'||Object.hasOwn(NESS_APPEARANCE_VIEWS,r.view))))).sort((a,b)=>a.start-b.start);
- const result=[];
- for(const {start,end,text,region,view} of valid){
-  if(start<(result.at(-1)?.end??0))continue;
-  result.push(region==null?{start,end,text}:{start,end,text,region,view});
- }
- return result;
-}
-
-function normalizeAppearanceSelections(base,selections){
- if(!selections||typeof selections!=='object')return {};
- const result=Object.fromEntries(Object.entries(selections).filter(([id,ranges])=>(id===NESS_APPEARANCE_ALWAYS||Object.hasOwn(NESS_APPEARANCE_PRESETS,id))&&Array.isArray(ranges)).map(([id,ranges])=>[id,normalizeAppearanceRanges(base,ranges,true)]));
- if(Array.isArray(selections.upper_no_face)){
-  const rear=result.upper_back||[];
-  const legacy=normalizeAppearanceRanges(base,selections.upper_no_face,true).filter(r=>isRearUpperAppearanceRange(r)&&!rear.some(s=>s.start<r.end&&r.start<s.end));
-  result.upper_back=normalizeAppearanceRanges(base,[...rear,...legacy],true);
- }
- return result;
-}
-
-function isRearUpperAppearanceRange(range){
- return (!range.region||NESS_UPPER_REGIONS.includes(range.region))&&(!range.view||range.view==='any'||range.view==='back');
-}
-
-function visibleAppearanceRanges(ranges,id,selections={},includeAlways=false){
- const preset=NESS_APPEARANCE_PRESETS[id];
- const selected=selections[id]??(preset?ranges.filter(r=>preset.regions.includes(r.region)&&(r.view==='any'||r.view===preset.view)):[]);
- const visible=[...selected];
- if(includeAlways&&id!==NESS_APPEARANCE_ALWAYS)visible.push(...(selections[NESS_APPEARANCE_ALWAYS]||[]));
- visible.sort((a,b)=>a.start-b.start||b.end-a.end);
- const result=[],seen=new Set();
- for(const r of visible){
-  const previous=result.at(-1);
-  if(previous&&r.start<previous.end){
-   if(r.end>previous.end){previous.text+=r.text.slice(previous.end-r.start);previous.end=r.end;}
-   continue;
-  }
-  const key=r.text.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
-  if(seen.has(key))continue;
-  seen.add(key);result.push({...r});
- }
- return result;
-}
-
-function appearanceVisibilityInstruction(records,rules={}){
- if(!records.size)return '';
- const descriptions=Object.entries(NESS_APPEARANCE_RULES).map(([id,[,text]])=>id+': '+(rules[id]||text)).join('\n');
- return `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:id:upper_back]]. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:id:none]]. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n${descriptions}`;
-}
-
-function insertVisibleAppearance(prompt,records){
- const seen=new Set();
- const result=prompt.replace(/([ \t]*,[ \t]*)?\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]([ \t]*[,;])?/g,(_,before,id,spec,after)=>{
-  if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
-  seen.add(id);
-  if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
-  const record=records.get(id),{ranges,selections}=record;
-  const tags=visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean);
-  const exposure=reviewedWardrobeExposure(record.outfit);
-  const regions=NESS_APPEARANCE_PRESETS[spec]?.regions||[];
-  if(exposure.upper&&regions.some(region=>NESS_UPPER_REGIONS.includes(region))&&record.nudeUpper)tags.push(record.nudeUpper.replace(/\s+/g,' ').replace(/[,;]+$/,''));
-  if(exposure.lower&&regions.some(region=>region==='lower'||region==='legs')&&record.nudeLower)tags.push(record.nudeLower.replace(/\s+/g,' ').replace(/[,;]+$/,''));
-  return tags.length?(before||'')+tags.join(', ')+';':after||'';
- });
- if(result.includes('[[NESS_VIS:'))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
- return result;
-}
-
 // Module: library_store
-const MASTER_LIBRARY_KEY='sp_ness_master_library_v1';
-const MASTER_SNAPSHOT_KEY='sp_ness_master_library_snapshot_text';
-const MASTER_BACKUP_KEY='sp_ness_master_library_previous_v1';
-const cloneLibrary=value=>JSON.parse(JSON.stringify(value));
-const safeLibraryId=id=>/^[a-z][a-z0-9_]*$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
+
+
+
+
+
 function libraryEntries(data){
  return [...Object.entries(data.personas).map(([id,entry])=>({id,group:'personas',entry})),...Object.entries(data.characters).map(([id,entry])=>({id,group:'characters',entry}))];
 }
@@ -570,6 +565,28 @@ async function saveMasterLibrary(input,expectedRaw){
 }
 function newLibraryId(prefix,existing){
  let id;do{id=prefix+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}while(existing.has(id));return id;
+}
+
+// Module: library_recovery
+function restoreLibraryBodyFields(input){
+ const source=NESS_RECOVERED_BODY;
+ if(!Object.keys(source.records).length)return {data:input,changed:false,count:0};
+ if(Number(input.bodyRecoveryVersion)>=source.version)return {data:input,changed:false,count:0};
+ const data=cloneLibrary(input);
+ const norm=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
+ let count=0,matched=false;
+ for(const {id,entry} of libraryEntries(data)){
+  const saved=source.records[id];if(!saved)continue;
+  const names=[saved.name,...saved.aliases].map(norm),current=[entry.name,...(entry.aliases||[])].map(norm);
+  if(!current.some(n=>n&&names.includes(n)))continue;
+  matched=true;
+  for(const key of ['nudeUpper','nudeLower']){
+   const value=saved.fields[key];
+   if(typeof value==='string'&&value.trim()&&(entry[key]===undefined||typeof entry[key]==='string'&&!entry[key].trim())){entry[key]=value;count++;}
+  }
+ }
+ if(matched)data.bodyRecoveryVersion=source.version;
+ return {data,changed:matched,count};
 }
 
 // Module: appearance_visibility_editor
@@ -843,22 +860,14 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  return {get value(){sync();return {ranges,selections};}};
 }
 
-function defaultNessTagColor(){
- const raw=typeof getComputedStyle==='function'
-  ? getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeQuoteColor').trim()
-  : '';
- if(/^#[0-9a-f]{6}$/i.test(raw))return raw;
- if(/^#[0-9a-f]{3}$/i.test(raw))return '#'+[...raw.slice(1)].map(v=>v+v).join('');
- return '#c4b3db';
-}
-
 // Module: library_editor
 async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
  let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
- // Opening the editor must never silently mutate a saved library.
- const selected=new Set();
+ const restored=restoreLibraryBodyFields(draft);
+ if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;}
+ const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  const view=createLibraryView(document);
  const {overlay,panel,el,clear,input,area,field,button,choice,section,search,bulkActions,list,form,message,save,close}=view;
  const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта',thighMarks:'Отметины на бёдрах',kneeMarks:'Отметины на коленях',shinMarks:'Отметины на голенях',shoulderMarks:'Отметины на плечах',forearmMarks:'Отметины на предплечьях',nudeUpper:'Особенности открытого верха тела',nudeLower:'Особенности открытого низа тела'};
@@ -933,7 +942,7 @@ async function openLibraryEditor(){
  }
  function openRecordTags(id,anchor){
   if(busy||!tryFlush())return;closeTagPicker();closeNessTooltip();
-  const box=el('div',undefined,panel,'ness-record-tag-popover');box.setAttribute('role','dialog');box.setAttribute('aria-label','Теги записи');
+  const box=el('div',undefined,panel,'ness-record-tag-popover');box.setAttribute('role','dialog');box.setAttribute('aria-label','Теги записи');applyNessTheme(box,loadNessTheme());
   const heading=el('div',undefined,box,'ness-row');el('strong','Теги записи',heading);const quit=button('×',heading,()=>closeTagPicker(),'icon quiet');quit.setAttribute('aria-label','Закрыть выбор тегов');
   const choices=el('div',undefined,box,'ness-tag-choices');
   function paint(){clear(choices);const ids=new Set(draft.organizer.characters[id]?.tagIds||[]);
@@ -986,7 +995,7 @@ async function openLibraryEditor(){
   view.showEditor();renderList();
  }
  function showTagEditor(id=null){
-  if(!tryFlush())return;closeTagPicker();editingTag=id;deleteTagAsked=false;view.deleteTag.textContent='Удалить';view.tagEditor.hidden=false;view.tagName.value=draft.organizer.tags.find(t=>t.id===id)?.name||'';view.tagColor.value=draft.organizer.tags.find(t=>t.id===id)?.color||defaultNessTagColor();view.deleteTag.hidden=!id;renderTags();view.tagName.focus();
+  if(!tryFlush())return;closeTagPicker();editingTag=id;deleteTagAsked=false;view.deleteTag.textContent='Удалить';view.tagEditor.hidden=false;view.tagName.value=draft.organizer.tags.find(t=>t.id===id)?.name||'';view.tagColor.value=draft.organizer.tags.find(t=>t.id===id)?.color||loadNessTheme().accent;view.deleteTag.hidden=!id;renderTags();view.tagName.focus();
  }
  function applyTag(){
   if(busy)return;const name=view.tagName.value.trim();if(!name){status('Введи название тега.');return;}
@@ -999,26 +1008,18 @@ async function openLibraryEditor(){
  let deleteTagAsked=false;view.deleteTag.onclick=()=>{if(!deleteTagAsked){deleteTagAsked=true;view.deleteTag.textContent='Удалить у всех?';return;}draft.organizer.tags=draft.organizer.tags.filter(t=>t.id!==editingTag);for(const meta of Object.values(draft.organizer.characters))meta.tagIds=(meta.tagIds||[]).filter(t=>t!==editingTag);editor?.tagIds.delete(editingTag);if(draft.organizer.filterTagId===editingTag)draft.organizer.filterTagId='*';view.tagEditor.hidden=true;editingTag=null;deleteTagAsked=false;view.deleteTag.textContent='Удалить';changed();renderTags();renderList();};
  function assignSelectedTag(id,add){if(!tryFlush())return;for(const actor of selected){const meta=draft.organizer.characters[actor]||{},tags=new Set(meta.tagIds||[]);if(add)tags.add(id);else tags.delete(id);draft.organizer.characters[actor]={...meta,tagIds:[...tags]};if(editor?.id===actor)editor.tagIds=new Set(tags);}changed();renderList();}
  button('Снять выделение',bulkActions,()=>{selected.clear();renderList();},'quiet');
- button('Добавить в участники',bulkActions,async()=>{
-  if(busy||!tryFlush())return;
-  const st=SillyTavern.getContext(),ids=[...selected];
-  const known=new Set(libraryEntries(loadMasterLibrary()).map(e=>e.id));
-  if(ids.some(id=>!known.has(id))){status('Сначала сохрани новых персонажей.');return;}
-  if(!st?.extensionSettings||typeof st.saveSettingsDebounced!=='function'){status('Общие настройки недоступны.');return;}
-  st.extensionSettings.variables||={};
-  const global=st.extensionSettings.variables.global||={},key='sp_ness_global_cast_ids_v1',previous=global[key];
-  const next=[...new Set([...(Array.isArray(previous)?previous:[]),...ids])];
-  global[key]=next;setBusy(true);
-  try{await st.saveSettingsDebounced();status('Добавлено в общий список участников: '+ids.length);}
-  catch(e){if(global[key]===next){if(previous===undefined)delete global[key];else global[key]=previous;}status('Не удалось сохранить список: '+e.message);}
-  finally{setBusy(false);}
+ button('В этот чат',bulkActions,async()=>{
+  if(busy||!tryFlush())return;const st=SillyTavern.getContext();if(st.chat!==originChat||st.chatId!==originId||!st.chatMetadata){status('Чат изменился. Открой библиотеку заново.');return;}
+  const ids=[...selected],known=new Set(libraryEntries(loadMasterLibrary()).map(e=>e.id));if(ids.some(id=>!known.has(id))){status('Сначала сохрани новых персонажей.');return;}
+  const vars=st.chatMetadata.variables||={},previous=vars.naicom_chat_cast_ids;vars.naicom_chat_cast_ids=[...new Set([...(Array.isArray(previous)?previous:[]),...ids])];setBusy(true);
+  try{if(typeof st.saveMetadata!=='function')throw Error('Недоступно сохранение чата.');await st.saveMetadata();status('Добавлено в список чата: '+ids.length);}catch(e){vars.naicom_chat_cast_ids=previous;status('Не удалось сохранить список: '+e.message);}finally{setBusy(false);}
  });
  view.add.onclick=()=>{if(!tryFlush())return;const id=newLibraryId('character',new Set(libraryEntries(draft).map(e=>e.id)));draft.characters[id]={name:'Новый персонаж',aliases:[],base:''};changed(true);editCharacter(id,'characters');};
  const upload=view.upload;
  upload.onchange=async()=>{if(busy||!upload.files?.[0]||!tryFlush())return;setBusy(true);try{const value=validateMasterLibrary(JSON.parse((await upload.files[0].text()).replace(/^\uFEFF/,'')));draft=value;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Импортировано в черновик. Нажми «Сохранить».');}catch(e){status('Импорт не выполнен: '+e.message);}finally{upload.value='';setBusy(false);}};
  view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
  search.oninput=()=>{if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=setTimeout(searchNow,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchNow();}};renderTags();renderList();
- status(libraryEntries(draft).length?'Библиотека загружена. Изменения сохраняются для всех чатов.':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
+ status(restored.count?'Восстановлено полей из исходников: '+restored.count:libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
  const previousFocus=document.activeElement,stopViewport=mountDialog(overlay);virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
  async function publishDraft(keepEditor=false){
   if(busy||done||!tryFlush())return false;
@@ -1042,6 +1043,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {openLibraryEditor,routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {openLibraryEditor,routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
