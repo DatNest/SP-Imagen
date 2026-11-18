@@ -96,10 +96,10 @@ export async function generateTextCompletion(input, messages, signal, context = 
     return content.trim();
 }
 
-export async function testSillyTavernProfile(context, input, signal) {
+export async function testSillyTavernProfile(context, input, signal, systemPrompt = 'Проверка подключения. Ответь только OK.') {
     const settings = normalizeTextApiSettings(input);
     return await generateWithSillyTavernProfile(context, { ...settings, maxTokens: 64 }, [
-        { role: 'system', content: 'Проверка подключения. Ответь только OK.' },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: 'OK' },
     ], signal);
 }

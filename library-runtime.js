@@ -1,6 +1,7 @@
+import { loadNessTheme, applyNessTheme, normalizeNessTheme, activeNessThemeForEditor, themeSettingsLocation, NESS_THEME_MODE_KEY, NESS_CUSTOM_THEME_KEY } from './theme-runtime.js';
 import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
-import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_DEFAULTS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
+import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
@@ -218,26 +219,20 @@ function bindNessTooltip(D,anchor,text,{hover=true,onToggle=()=>{},id=''}={}){
 // Module: ui_theme
 
 
-function normalizeNessTheme(value){const theme={...NESS_THEME_DEFAULTS};for(const key of Object.keys(theme))if(/^#[0-9a-f]{6}$/i.test(value?.[key]||''))theme[key]=value[key];return theme;}
-function loadNessTheme(){try{const value=SillyTavern.getContext()?.extensionSettings?.variables?.global?.sp_ness_ui_theme_v1;return normalizeNessTheme(typeof value==='string'?JSON.parse(value):value);}catch{return {...NESS_THEME_DEFAULTS};}}
-function applyNessTheme(panel,theme){
- const normalized=normalizeNessTheme(theme),targets=[panel];if(panel.id==='sp-imagen-review-panel'&&panel.parentNode?.id==='sp-imagen-review-overlay')targets.push(panel.parentNode);
- for(const target of targets)for(const [key,value]of Object.entries(normalized)){const name='--ness-'+key,current=typeof target.style.getPropertyValue==='function'?target.style.getPropertyValue(name):target.style[name];if(current!==value)target.style.setProperty(name,value);}
-}
 let nessCloseTheme=null;
 function closeNessTheme(){if(nessCloseTheme){const close=nessCloseTheme;nessCloseTheme=null;close();}}
 function openNessTheme(D,panel,anchor){
  if(nessCloseTheme){closeNessTheme();return;}closeNessTooltip();
- const ui=createUiKit(D),original=loadNessTheme(),draft={...original},popup=ui.el('div',undefined,panel,'ness-theme-popover');popup.setAttribute('role','dialog');popup.setAttribute('aria-label','Палитра интерфейса');
+ const ui=createUiKit(D),original=loadNessTheme(),draft={...(original || activeNessThemeForEditor(D))};let useChatTheme=!original;const popup=ui.el('div',undefined,panel,'ness-theme-popover');popup.setAttribute('role','dialog');popup.setAttribute('aria-label','Палитра интерфейса');
  ui.el('strong','Палитра интерфейса',popup);ui.note(popup,'8 цветов для всех окон. Остальные оттенки связаны с ними.');
  const grid=ui.el('div',undefined,popup,'ness-theme-grid'),inputs={};
- for(const key of Object.keys(draft)){const label=ui.el('label',undefined,grid,'ness-theme-color');ui.el('span',NESS_THEME_LABELS[key],label);const input=ui.input(draft[key],'color');label.appendChild(input);inputs[key]=input;input.oninput=()=>{draft[key]=input.value;applyNessTheme(panel,draft);};}
+ for(const key of Object.keys(draft)){const label=ui.el('label',undefined,grid,'ness-theme-color');ui.el('span',NESS_THEME_LABELS[key],label);const input=ui.input(draft[key],'color');label.appendChild(input);inputs[key]=input;input.oninput=()=>{useChatTheme=false;draft[key]=input.value;applyNessTheme(panel,draft);};}
  const message=ui.note(popup,''),actions=ui.row(popup);let saving=false,finished=false;
  const setSaving=value=>{saving=value;for(const node of [...popup.querySelectorAll('input'),...popup.querySelectorAll('button')])node.disabled=value;};
  function outside(e){if(!popup.contains(e.target)&&!anchor.contains(e.target))finish(false);}
  function finish(saved,force=false){if(finished||saving&&!force)return;finished=true;if(!saved)applyNessTheme(panel,original);D.removeEventListener('pointerdown',outside,true);popup.remove();if(nessCloseTheme===ownClose)nessCloseTheme=null;}
- ui.button('Вернуть палитру',actions,()=>{Object.assign(draft,NESS_THEME_DEFAULTS);for(const key of Object.keys(inputs))inputs[key].value=draft[key];applyNessTheme(panel,draft);},'quiet');
- ui.button('Применить',actions,async()=>{if(saving||finished)return;setSaving(true);const st=SillyTavern.getContext();let global,previous,serialized;try{if(!st?.extensionSettings||typeof st.saveSettingsDebounced!=='function')throw Error('Сохранение настроек недоступно.');st.extensionSettings.variables||={};global=st.extensionSettings.variables.global||={};previous=global.sp_ness_ui_theme_v1;serialized=JSON.stringify(normalizeNessTheme(draft));global.sp_ness_ui_theme_v1=serialized;await st.saveSettingsDebounced();saving=false;finish(true);}catch(e){if(global&&global.sp_ness_ui_theme_v1===serialized){if(previous===undefined)delete global.sp_ness_ui_theme_v1;else global.sp_ness_ui_theme_v1=previous;}if(!finished){message.textContent=e.message;setSaving(false);}}},'primary');
+ ui.button('Как в теме чата',actions,()=>{useChatTheme=true;Object.assign(draft,activeNessThemeForEditor(D));for(const key of Object.keys(inputs))inputs[key].value=draft[key];applyNessTheme(panel,null);},'quiet');
+ ui.button('Применить',actions,async()=>{if(saving||finished)return;setSaving(true);let global,previous,previousMode;try{({global}=themeSettingsLocation());previous=global[NESS_CUSTOM_THEME_KEY];previousMode=global[NESS_THEME_MODE_KEY];if(useChatTheme){delete global[NESS_CUSTOM_THEME_KEY];global[NESS_THEME_MODE_KEY]='auto';}else{global[NESS_CUSTOM_THEME_KEY]=JSON.stringify(normalizeNessTheme(draft));global[NESS_THEME_MODE_KEY]='custom';}await SillyTavern.getContext().saveSettingsDebounced();saving=false;finish(true);}catch(e){if(global){if(previous===undefined)delete global[NESS_CUSTOM_THEME_KEY];else global[NESS_CUSTOM_THEME_KEY]=previous;if(previousMode===undefined)delete global[NESS_THEME_MODE_KEY];else global[NESS_THEME_MODE_KEY]=previousMode;}if(!finished){message.textContent=e.message;setSaving(false);}}},'primary');
  ui.button('×',actions,()=>finish(false),'icon quiet').setAttribute('aria-label','Закрыть палитру');
  const ownClose=()=>finish(false,true);D.addEventListener('pointerdown',outside,true);nessCloseTheme=ownClose;positionNessPopover(popup,anchor,true);
 }
@@ -819,6 +814,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
 }
 
 // Module: library_editor
+let guideOpenFirstRecord = () => false;
 async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
@@ -831,7 +827,7 @@ async function openLibraryEditor(){
  const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта',thighMarks:'Отметины на бёдрах',kneeMarks:'Отметины на коленях',shinMarks:'Отметины на голенях',shoulderMarks:'Отметины на плечах',forearmMarks:'Отметины на предплечьях',nudeUpper:'Особенности открытого верха тела',nudeLower:'Особенности открытого низа тела'};
  const norm=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
  const status=text=>{if(message.textContent!==text)message.textContent=text;};
- let revision=0,indexedRevision=-1,searchIndex=[];
+ let revision=0,indexedRevision=-1,searchIndex=[],currentVisibleRecords=[];
  const changed=(indexChanged=false)=>{if(indexChanged===true)revision++;dirty=true;discardAsked=false;status('Не сохранено');};
  const setBusy=value=>{busy=value;for(const tag of ['input','textarea','select','button'])for(const e of panel.querySelectorAll(tag))e.disabled=value;};
  function flushEditor(){
@@ -897,6 +893,8 @@ async function openLibraryEditor(){
   });
   view.selection(selected.size);view.counts(searchIndex.length,entries.length);renderBulkTags();
   virtualList.setItems(entries,{reset});
+  // The guide follows the first record in the CURRENT filtered list, not the full catalogue.
+  currentVisibleRecords = entries;
  }
  function openRecordTags(id,anchor){
   if(busy||!tryFlush())return;closeTagPicker();closeNessTooltip();
@@ -952,8 +950,17 @@ async function openLibraryEditor(){
   let asked=false;const remove=button('Удалить персонажа',body,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }
+ guideOpenFirstRecord = () => {
+  if (done || busy) return false;
+  if (editor) return true; // A newly created trial card is already open.
+  // Respect the user’s search and tag filter. Never silently create a record.
+  const first = currentVisibleRecords[0];
+  if (!first) return false;
+  if (editor?.id !== first.id) editCharacter(first.id, first.group);
+  return true;
+ };
  function showTagEditor(id=null){
-  if(!tryFlush())return;closeTagPicker();editingTag=id;deleteTagAsked=false;view.deleteTag.textContent='Удалить';view.tagEditor.hidden=false;view.tagName.value=draft.organizer.tags.find(t=>t.id===id)?.name||'';view.tagColor.value=draft.organizer.tags.find(t=>t.id===id)?.color||loadNessTheme().accent;view.deleteTag.hidden=!id;renderTags();view.tagName.focus();
+  if(!tryFlush())return;closeTagPicker();editingTag=id;deleteTagAsked=false;view.deleteTag.textContent='Удалить';view.tagEditor.hidden=false;view.tagName.value=draft.organizer.tags.find(t=>t.id===id)?.name||'';view.tagColor.value=draft.organizer.tags.find(t=>t.id===id)?.color||(loadNessTheme()?.accent || activeNessThemeForEditor().accent);view.deleteTag.hidden=!id;renderTags();view.tagName.focus();
  }
  function applyTag(){
   if(busy)return;const name=view.tagName.value.trim();if(!name){status('Введи название тега.');return;}
@@ -994,7 +1001,7 @@ async function openLibraryEditor(){
   finally{setBusy(false);renderList();}
  }
  return await new Promise(resolve=>{
-  const finish=()=>{if(done)return;done=true;rulesDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
+  const finish=()=>{if(done)return;done=true;guideOpenFirstRecord=()=>false;rulesDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
   onChatSwitch=()=>finish(); // Discard stale modal state when the chat changes.
   close.onclick=()=>{if(busy)return;if(dirty&&!discardAsked){discardAsked=true;status('Сохрани изменения или нажми «Закрыть» ещё раз, чтобы отменить их.');return;}finish();};
   panel.querySelector('.ness-close-dialog').onclick=()=>close.click();
@@ -1004,6 +1011,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {openLibraryEditor,routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }

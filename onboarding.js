@@ -2,7 +2,7 @@
 import { getVisibleViewport, mountViewportOverlay } from './viewport-overlay.js';
 
 export const IMAGEN_GLOSSARY = Object.freeze({
-    'API': 'Способ, которым SP Imagen отправляет запрос выбранному сервису. Обычно достаточно настроить подключение один раз.',
+    'API': 'Способ, которым SP Imagen связывается с выбранным сервисом. Обычно подключение настраивают один раз.',
     'API-ключ': 'Личный секретный код доступа к сервису. Бери его в своём аккаунте провайдера. Не публикуй и не отправляй другим людям.',
     'Endpoint': 'Адрес сервера, куда отправляется запрос. Заполняй только при прямом подключении и копируй из инструкции своего провайдера.',
     'JSON': 'Обычный текстовый файл с данными и настройками. Удобен, чтобы сохранить копию или перенести библиотеку.',
@@ -13,7 +13,7 @@ export const IMAGEN_GLOSSARY = Object.freeze({
     'Промпт': 'Текстовое задание для модели: что нарисовать, кого показать и какие детали учесть.',
     'Режиссёр': 'Текстовая модель, которая читает события чата и подготавливает описание будущей картинки. Сама она картинку не рисует.',
     'Токен': 'Небольшая единица текста, которую обрабатывает модель. Чем больше текста, тем больше расход токенов.',
-    'Профиль': 'Сохранённый вариант настроек или подключения. Это не персонаж и не отдельный чат.',
+    'Профиль подключения': 'Сохранённый набор настроек связи с текстовой моделью. Выбираешь его из списка, и SP Imagen пользуется им для режиссёра. Это не персонаж, не отдельный чат и не твой профиль иллюстрации.',
     'Модель': 'Программа ИИ, которая выполняет задание: одна составляет описание сцены, другая создаёт изображение.',
     'NovelAI': 'Сервис, который создаёт картинки по подготовленному описанию. Для прямой генерации нужен доступ к его API.',
     'Anlas': 'Внутренняя валюта NovelAI. Если не хочешь её расходовать, оставь включённой защиту Anlas.',
@@ -135,24 +135,41 @@ export function addFieldHelp(parent,title,oldHelp='') {
 }
 
 // The guide describes real, existing UI elements. No generation or settings writes.
-export const GUIDE_STEPS = Object.freeze([
-    {view:'home',selector:'[data-spi-action="settings"]',title:'С чего начать',text:'Привет! SP Imagen читает сцену из твоего чата, готовит описание и отправляет его генератору картинок. Сначала настроим два подключения. Всё остальное можно изучать позже.',click:true},
-    {view:'settings',selector:'[data-spi-action="text-api"]',title:'Шаг 1. Текстовая модель',text:'Это помощник-режиссёр: он разбирает, кто находится в сцене и что происходит. Нажми на этот пункт или «Далее», чтобы посмотреть подключение.',click:true},
-    {view:'text-api',selector:'.spi-connection-window .spi-form-grid',title:'Как подключить режиссёра',text:'Если у тебя уже есть рабочий профиль текстовой модели в SillyTavern — выбери его из списка. Или настрой прямой API. У обеих схем одна задача: получить текст сцены. Нажми «Проверить», а потом «Сохранить». Во время обучения ничего вводить не нужно.'},
-    {view:'settings',selector:'[data-spi-action="novelai"]',title:'Шаг 2. NovelAI',text:'Теперь нужен сам художник — NovelAI. Его настройка независима от текстовой модели и от любых других расширений. Откроем его подключение.',click:true},
-    {view:'novelai',selector:'.spi-connection-window .spi-form-grid',title:'Настраиваем создание картинок',text:'Здесь включается прямая генерация и вводится API-токен NovelAI. Остальные значения пока можно оставить стандартными. Позже проверь подключение и сохрани настройки. Токен никогда не показывай другим.'},
-    {view:'home',selector:'[data-spi-action="library"]',title:'Шаг 3. Библиотека',text:'Добавь главных персонажей, чтобы ИИ не придумывал их внешность заново в каждой сцене. Для начала хватит имени и обычного описания внешности.',click:true},
-    {view:'library',selector:'#sp-imagen-review-panel [data-library-search]',title:'Где искать персонажей',text:'Это поиск по библиотеке. Если запись уже есть, найди её по имени. Пустой поиск показывает всех персонажей.'},
-    {view:'library',selector:'#sp-imagen-review-panel .ness-library-filters .ness-button',title:'Как добавить персонажа',text:'Кнопка «+ Персонаж» создаёт новую запись. Впиши имя и внешность. Ракурсы необязательны: если они не заполнены, используется полное основное описание. Не забудь сохранить библиотеку.'},
-    {view:'home',selector:'[data-spi-action="prompts"]',title:'Шаг 4. Промпты режиссёра',text:'Это инструкции, по которым режиссёр готовит картинки. Здесь уже есть готовые варианты. Для первого запуска ничего менять не нужно.',click:true},
-    {view:'prompts',selector:'.spi-prompt-center .spi-prompt-list',title:'Три формата истории',text:'Snapshot — один кадр, Comic — комикс, Story Page — страница истории. Можно открывать и редактировать инструкции, но для первых проб лучше оставить их как есть.'},
-    {view:'settings',selector:'[data-spi-action="generation"]',title:'Шаг 5. Правила подготовки',text:'Здесь регулируется, сколько постов читать, как распознавать одежду и что убирать из текста перед отправкой режиссёру. По умолчанию можно ничего не трогать.',click:true},
-    {view:'generation',selector:'#sp-imagen-review-panel [data-review-scroll]',title:'Необязательные тонкие настройки',text:'Эти правила нужны, если в твоих RP-постах особая разметка одежды, комментарии или служебные блоки. Сначала попробуй обычную генерацию. Значки «?» объясняют каждое поле и приводят примеры.'},
-    {view:'settings',selector:'[data-spi-action="styles"]',title:'Стили картинок',text:'Здесь можно выбрать или подготовить стиль изображения. Это украшение результата, а не обязательная часть первого запуска.',click:true},
-    {view:'styles',selector:'.spi-style-layout',title:'Как работают стили',text:'Можно выбрать готовый стиль, сделать свой или оставить «Без стиля». Префикс — короткое описание художественного оформления, например warm colors, soft lineart. Для первого изображения этот шаг необязателен.'},
-    {view:'home',selector:'[data-spi-action="last-prompt"]',title:'Где посмотреть результат работы режиссёра',text:'После генерации этот пункт покажет последний итоговый промпт и ответ режиссёра. Он ничего не запускает — только позволяет посмотреть и скопировать текст.'},
-    {view:'finish',selector:null,title:'Готово. Можно пробовать!',text:'Вернись в чат и нажми кнопку ✨ под подходящим постом. Выбери Snapshot, Comic или Story Page, проверь сцену и отправь картинку в NovelAI. Настройки и описание внешности можно улучшать постепенно. Ты можешь запустить этот гайд снова в любой момент.'},
-]);
+// The route is short everywhere except the library, where each real control is shown.
+// A first visit with an empty library includes a hands-on 'create character' step.
+export function makeGuideSteps(hasCharacters = false) {
+ return [
+  {view:'home',selector:'[data-spi-action="settings"]',title:'Начнём с подключений',text:'Привет! SP Imagen берёт события из ролевого чата и помогает сделать по ним картинку. Сначала покажу, где подключить помощника и художника. Нажми подсвеченный пункт или «Далее».',click:true},
+  {view:'settings',selector:'[data-spi-action="text-api"]',title:'Текстовая модель — наш режиссёр',text:'Она читает сцену и готовит понятное описание для картинки. Откроем её подключение.',click:true},
+  {view:'text-api',selector:'.spi-connection-window .spi-form-grid',title:'Подключение режиссёра',text:'Если в SillyTavern уже есть рабочий профиль подключения, выбери его. Иначе можно ввести адрес и ключ своего API. Потом нажми «Проверить» и «Сохранить». Сейчас ничего вводить не обязательно.'},
+  {view:'settings',selector:'[data-spi-action="novelai"]',title:'А теперь подключим художника',text:'NovelAI рисует картинку по описанию, которое подготовил режиссёр. Он работает напрямую через SP Imagen.',click:true},
+  {view:'novelai',selector:'.spi-connection-window .spi-form-grid',title:'Подключение NovelAI',text:'Здесь включается генерация и вводится секретный токен NovelAI. Оставь остальные параметры стандартными для первого изображения. Токен никому не показывай.'},
+  {view:'home',selector:'[data-spi-action="library"]',title:'Знакомимся с библиотекой',text:'Библиотека помогает рисовать одних и тех же героев узнаваемыми. Здесь хранятся имена, внешность и другие постоянные детали.',click:true},
+  {view:'library',selector:'#sp-imagen-review-panel [data-library-search]',title:'Поиск персонажей',text:'Ищи героя по имени в этой строке. Можно искать и по тегам. Пустой поиск показывает все записи, подходящие под выбранный тег.'},
+  {view:'library',selector:'#sp-imagen-review-panel .ness-tag-tools',title:'Теги поиска',text:'Теги — это твои папочки-метки для героев, например «Семья» или «Главные». «+ Тег» создаёт новый. Нажатие на готовый тег показывает только персонажей этой группы. Изменять тег можно рядом с лентой.'},
+  {view:'library',selector:'#sp-imagen-review-panel [data-library-list]',title:'Как назначать теги',text:'У каждого персонажа в строке списка есть маленький «+». Нажми его, чтобы выбрать уже созданные поисковые теги. Это только удобный фильтр библиотеки; в промпт для NovelAI эти названия не добавляются.'},
+  ...(!hasCharacters ? [{view:'library',selector:'#sp-imagen-review-panel .ness-library-filters .ness-button',title:'Создадим пробного персонажа?',text:'Библиотека пока пустая. Нажми «+ Персонаж» — не бойся, потом запись можно будет отредактировать или удалить. Она не сохранится, пока ты сама не нажмёшь «Сохранить».',click:'native',requireClick:true}] : []),
+  {view:'library-first',selector:'#sp-imagen-review-panel [data-library-editor] .ness-editor-heading',title:'Откроем карточку персонажа',text:hasCharacters?'Я открыла первого персонажа из твоего текущего списка — с учётом поиска и выбранного тега. Мы просто изучим его поля: ничего менять не нужно.':'Теперь посмотрим, из чего состоит карточка созданного персонажа. Можешь заполнить её позже: пока я покажу нужные поля.'},
+  {view:'library-appearance',selector:'#sp-imagen-review-panel [data-library-editor] .ness-appearance-wrap',title:'Основная внешность: теги, а не сочинение',text:'Записывай постоянную внешность короткими фразами через запятые: hair color, eye color, freckles, body type. Каждая фраза становится отдельным тегом внешности. Эти теги можно поправлять, удалять и перетаскивать, не переписывая описание целиком. Одежду для отдельной сцены лучше хранить отдельно.'},
+  {view:'library-appearance',selector:'#sp-imagen-review-panel [data-library-editor] .ness-appearance-pencil',title:'Карандаш: выбираем нужные теги',text:'Нажми карандаш ✎, выбери нужный ракурс и нажимай на уже созданные теги внешности. Подсвеченные теги попадут в этот ракурс. Снова нажми карандаш, чтобы закончить редактирование. Никакого второго описания вводить не нужно.'},
+  {view:'library-appearance',selector:'#sp-imagen-review-panel [data-library-editor] .ness-appearance-presets',title:'Ракурсы: какая часть персонажа видна',text:'Ракурс — это вид спереди, со спины, крупное лицо и другие варианты. Заполнять их НЕ обязательно: пустой ракурс автоматически использует всю основную внешность. Но NovelAI старается нарисовать всё, что получила в тексте. Если нужен только портрет, а ей дать длинное описание тела, лишние детали могут испортить результат. Выбранные теги помогают точнее показывать нужную часть и дают модели больше свободы.'},
+  {view:'library-appearance',selector:'#sp-imagen-review-panel [data-library-editor] .ness-appearance-copy',title:'Не выбирай одни и те же теги сто раз',text:'При редактировании ракурса есть «Добавить из ракурса». Выбери другой уже заполненный ракурс и перенеси из него отмеченные теги. Это быстрее, чем заново выбирать одинаковые волосы, глаза или одежду для каждого вида.',fallback:'#sp-imagen-review-panel [data-library-editor] .ness-appearance-tools'},
+  {view:'library-aliases',selector:'#sp-imagen-review-panel [role="tabpanel"]:not([hidden])',title:'Другие имена',text:'Если персонажа называют сокращённо, по фамилии или прозвищу — добавь эти имена здесь. Тогда режиссёр поймёт, что речь об одном герое. Если прозвищ нет, оставь пусто.'},
+  {view:'library-prompt',selector:'#sp-imagen-review-panel [role="tabpanel"]:not([hidden])',title:'Данные для промпта',text:'«Имя для промпта» — как генератор должен назвать героя; «Тип» — коротко girl, boy, cat и так далее. Можно оставить пустыми: это уточнения, а не обязательная анкета.'},
+  {view:'library-body',selector:'#sp-imagen-review-panel [role="tabpanel"]:not([hidden])',title:'Отметины и особенности тела',text:'Здесь можно отдельно хранить шрамы, татуировки и другие детали, которые показывают только когда нужно. Необязательные поля спокойно оставляй пустыми.'},
+  {view:'library',selector:'#sp-imagen-review-panel [data-library-save]',title:'Сохранение библиотеки',text:'Изменения не записываются навсегда, пока ты не нажмёшь «Сохранить». Если просто изучала карточку и ничего не меняла, сохранять не нужно.'},
+  {view:'home',selector:'[data-spi-action="prompts"]',title:'Профили иллюстраций',text:'Здесь живут готовые Snapshot (кадр), Comic (комикс) и Story Page (страница истории). Можно добавить свой профиль с личными правилами, не затрагивая встроенные.',click:true},
+  {view:'prompts',selector:'.spi-prompt-center .spi-prompt-list',title:'Готовые и свои профили',text:'Открой готовый вариант, чтобы прочитать его инструкцию, или добавь собственный. Для первого изображения можно ничего не менять.'},
+  {view:'settings',selector:'[data-spi-action="generation"]',title:'Тонкие настройки',text:'Сколько сообщений учитывать, как находить одежду и что убирать из текста? Всё это настраивается здесь. Первую генерацию можно сделать с обычными значениями.',click:true},
+  {view:'generation',selector:'#sp-imagen-review-panel [data-review-scroll]',title:'Поля с вопросиком',text:'Кнопка «?» рядом с каждым параметром объясняет, зачем он нужен, нужно ли его заполнять и что означают непонятные слова. Можно не трогать то, в чём пока не разобралась.'},
+  {view:'settings',selector:'[data-spi-action="styles"]',title:'Художественный стиль',text:'Отдельно можно выбрать цвет, линию и настроение рисунка. Стиль не нужен для первого запуска — это настройка на вкус.',click:true},
+  {view:'styles',selector:'.spi-style-layout',title:'Стиль — по желанию',text:'Это просто несколько слов про оформление картинки, например warm colors, soft lineart. Никакие чужие стили у тебя автоматически не появятся.'},
+  {view:'home',selector:'[data-spi-action="all-prompts"]',title:'Все остальные системные промпты',text:'Здесь хранятся внутренние инструкции помощника, кроме профилей. Новичку их менять не нужно. Можно посмотреть оригинал и при необходимости вернуть заводские настройки.'},
+  {view:'home',selector:'[data-spi-action="last-prompt"]',title:'Где посмотреть результат',text:'После генерации здесь появятся последнее готовое описание картинки и ответ режиссёра. Просмотр ничего не генерирует.'},
+  {view:'finish',selector:null,title:'Теперь можно пробовать!',text:'Вернись к RP-чату, нажми ✨ у подходящего сообщения, выбери формат и проверь описание перед отправкой. Гайд всегда можно запустить заново. И помни: при желании можно исправить или удалить любую созданную запись.'}
+ ];
+}
+export const GUIDE_STEPS = Object.freeze(makeGuideSteps(true));
 
 let stopCurrentGuide = null;
 export function stopQuickGuide() { stopCurrentGuide?.(); }
@@ -192,18 +209,25 @@ export function startQuickGuide({navigate,steps=GUIDE_STEPS,onExit=()=>{}}={}) {
         count.textContent=`💡 Быстрый гайд · ${index+1} / ${steps.length}`;
         heading.textContent=step.title;copy.replaceChildren();textWithTerms(copy,step.text);
         prev.hidden=false;stop.textContent='Прервать обучение';prev.disabled=index===0;next.textContent=index===steps.length-1?'Завершить ✓':'Далее →';spotlight.hidden=true;next.disabled=true;
-        try{await navigate(step.view);}catch(error){console.warn('[SP Imagen guide] section not available:',error);}
+        try{await navigate(step.view);}catch(error){
+            console.warn('[SP Imagen guide] section not available:',error);
+            const warning=document.createElement('p');warning.className='spi-tour-unavailable';
+            warning.textContent=String(error?.message||'Не удалось открыть этот раздел. Попробуй ещё раз.');
+            copy.append(warning);next.disabled=false;return;
+        }
         if(abort||mine!==requestId)return;
         for(let attempt=0;attempt<14;attempt++){
             target=step.selector?document.querySelector(step.selector):null;
+            if ((!target || !target.getClientRects().length) && step.fallback) target=document.querySelector(step.fallback);
             if(!step.selector||target?.getClientRects().length)break;
             await new Promise(resolve=>setTimeout(resolve,55));
             if(abort||mine!==requestId)return;
         }
         if(!target?.isConnected)target=null;
         if(step.selector && !target){const note=document.createElement('p');note.className='spi-tour-unavailable';note.textContent='Этот раздел пока недоступен в открытом чате. Можно продолжить обучение или вернуться к нему позже.';copy.append(note);}
-        if(step.click&&target){handleClick=event=>{event.preventDefault();event.stopImmediatePropagation();void go(index+1);};target.addEventListener('click',handleClick,true);}
-        next.disabled=false;fit();
+        if(step.click&&target){handleClick=event=>{if(step.click !== 'native'){event.preventDefault();event.stopImmediatePropagation();}if(step.requireClick)next.disabled=false;queueMicrotask(()=>void go(index+1));};target.addEventListener('click',handleClick,true);}
+        if(step.requireClick){next.disabled=true; next.title='Сначала нажми выделенную кнопку, или прерви обучение';}else next.title='';
+        if (!step.requireClick) next.disabled=false;fit();
         // Do not steal focus from a highlighted clickable control when a mobile keyboard is open.
         next.focus({preventScroll:true});
     }

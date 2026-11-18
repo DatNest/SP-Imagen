@@ -166,8 +166,6 @@ export async function installSpImagenMediaSlots(options) {
         background: color-mix(in srgb, currentColor 12%, transparent);
       }
     }
-    .quick-guide { display: inline-block; inline-size: auto; min-block-size: 32px; padding-inline: .65em; font-size: .9em; opacity: .7; color: inherit; background: transparent; border: 0; border-radius: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
-    .quick-guide:focus-visible, .quick-guide:hover { opacity: 1; text-shadow: 0 0 9px color-mix(in srgb, currentColor 35%, transparent); }
     .gallery { display: grid; gap: .65em; margin-block: .25em .65em; }
     .card {
       min-inline-size: 0;
@@ -581,10 +579,6 @@ export async function installSpImagenMediaSlots(options) {
       entry.addEventListener('click', () => void executeCommand(command));
       wand.root.append(entry);
     }
-    const guide = element('button', 'option quick-guide', '💡 Быстрый гайд');
-    guide.title = 'Пошаговое знакомство с SP Imagen';
-    guide.addEventListener('click', () => void executeCommand('sp_imagen_quick_guide'));
-    wand.root.append(guide);
     menu.append(wand.node);
   }
 

@@ -55,10 +55,11 @@ export function visibleAppearanceRanges(ranges,id,selections={},includeAlways=fa
  return result;
 }
 
-export function appearanceVisibilityInstruction(records,rules={}){
+export function appearanceVisibilityInstruction(records,rules={},customTemplate){
  if(!records.size)return '';
  const descriptions=Object.entries(NESS_APPEARANCE_RULES).map(([id,[,text]])=>id+': '+(rules[id]||text)).join('\n');
- return `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:id:upper_back]]. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:id:none]]. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n${descriptions}`;
+ const template=typeof customTemplate==='string' && customTemplate.trim() ? customTemplate : `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:id:upper_back]]. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:id:none]]. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n{{rules}}`;
+ return template.includes('{{rules}}') ? template.replaceAll('{{rules}}',descriptions) : template+'\n'+descriptions;
 }
 
 export function insertVisibleAppearance(prompt,records){

@@ -1,4 +1,6 @@
-import { startQuickGuide, stopQuickGuide, addFieldHelp } from './onboarding.js';
+import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
+import { PROFILE_SWITCHES, PROFILE_KINDS, normalizeProfile, normalizeProfileStore, activeProfile } from './profiles.js';
+import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
 import { eventSource, event_types } from '../../../../script.js';
 import { createPromptJson, parsePromptJson, SP_IMAGEN_PROMPT_JSON_KEYS } from './prompt-json.js';
@@ -85,6 +87,9 @@ function settings() {
     value.novelai = normalizeNovelAISettings(value.novelai);
     value.textApi = normalizeTextApiSettings(value.textApi);
     value.prompts ??= {};
+    value.codePrompts ??= {};
+    value.customProfiles ??= [];
+    value.activeProfiles ??= {};
     return value;
 }
 
@@ -144,7 +149,7 @@ function refreshNewIndicators() {
     const value = hasNew();
     document.querySelectorAll('[data-spi-new]').forEach(node => { node.hidden = !value; });
     document.querySelectorAll('[data-spi-prompts]').forEach(node => {
-        node.textContent = `Промпты${value ? '  NEW!' : ''}`;
+        node.textContent = `Профили${value ? '  NEW!' : ''}`;
     });
     mediaSlots?.refresh?.();
     mediaSlots?.refreshMenu?.();
@@ -379,7 +384,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     promptCenterOpen = true;
     const state = settings();
     const pending = new Set(Object.keys(state.pendingPrompts));
-    const { dialog, close, closed } = shell('SP Imagen · Промпты', 'spi-prompt-center', {
+    const { dialog, close, closed } = shell('SP Imagen · Профили', 'spi-prompt-center', {
         back: backToHub,
         onClose: reason => { promptCenterOpen = false; refreshNewIndicators(); if (backToHub && reason !== 'chat') openHub(); },
     });
@@ -412,6 +417,38 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         } else button('Открыть', actions, () => openPromptWindow(name));
         row.append(title, actions); list.append(row);
     }
+    // Personal profiles are optional. The three shipped director formats above always stay.
+    const customTitle=document.createElement('h3'); customTitle.textContent='Мои профили';
+    const customList=document.createElement('div'); customList.className='spi-custom-profile-list';
+    const assignments=document.createElement('div'); assignments.className='spi-profile-assignments';
+    const renderCustom = () => {
+        const store=normalizeProfileStore(settings());
+        customList.replaceChildren(); assignments.replaceChildren();
+        if (!store.profiles.length) {
+            const message=document.createElement('p');message.className='spi-status';message.textContent='Твоих профилей пока нет. Готовые форматы выше уже работают.';
+            customList.append(message);
+        }
+        for (const profile of store.profiles) {
+            const row=document.createElement('div');row.className='spi-prompt-row';
+            const label=document.createElement('strong');label.textContent=profile.name;
+            const actions=document.createElement('div');actions.className='spi-dialog-actions';
+            button('Изменить',actions,()=>openCustomProfileEditor(profile,renderCustom));
+            row.append(label,actions);customList.append(row);
+        }
+        for(const [kind,title] of [['snapshot','Snapshot'],['comic','Comic'],['story_page','Story Page']]) {
+            const select=document.createElement('select');select.className='spi-profile-select';
+            const builtin=document.createElement('option');builtin.value='';builtin.textContent='Встроенный профиль';select.append(builtin);
+            for(const profile of store.profiles.filter(p=>p.kind==='all'||p.kind===kind)) {
+                const opt=document.createElement('option');opt.value=profile.id;opt.textContent=profile.name;select.append(opt);
+            }
+            select.value=store.activeProfiles[kind] || '';
+            select.addEventListener('change',()=>{settings().activeProfiles[kind]=select.value;saveSettings();});
+            formField(assignments, `Дополнение для ${title}`,select,'Можно оставить встроенный профиль, либо выбрать свой. Исходная инструкция формата остаётся на месте.');
+        }
+    };
+    const addProfile=document.createElement('div');addProfile.className='spi-dialog-actions';
+    button('＋ Добавить профиль',addProfile,()=>openCustomProfileEditor(null,renderCustom),true);
+    renderCustom();
     const footer = document.createElement('div');
     footer.className = 'spi-dialog-actions';
     button('Закрыть', footer, () => {
@@ -421,10 +458,73 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     const transfer = document.createElement('div');
     transfer.className = 'spi-dialog-actions spi-prompt-transfer';
     button('↥ ↧ Импорт / экспорт JSON', transfer, openPromptJsonTransfer);
+    const scroll=document.createElement('div');scroll.className='spi-profile-scroll';
+    scroll.append(list, customTitle, customList, addProfile, assignments);
     if (pending.size) dialog.append(copy);
-    dialog.append(transfer, list, footer);
+    dialog.append(transfer, scroll, footer);
     if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
     return closed;
+}
+
+function openCustomProfileEditor(existing,refresh=()=>{}) {
+    const { dialog,close }=shell(`SP Imagen · ${existing ? 'Изменить профиль' : 'Новый профиль'}`, 'spi-prompt-window spi-custom-profile-editor');
+    const form=document.createElement('div');form.className='spi-custom-profile-form';
+    const name=document.createElement('input');name.type='text';name.maxLength=100;name.value=existing?.name||'';
+    name.placeholder='Например, Мои акварельные иллюстрации';
+    formField(form,'Название',name,'Чтобы быстро найти этот профиль.');
+    const kind=document.createElement('select');
+    for(const [id,label] of Object.entries(PROFILE_KINDS)){const opt=document.createElement('option');opt.value=id;opt.textContent=label;kind.append(opt);}
+    kind.value=existing?.kind||'all';
+    formField(form,'Для каких форматов',kind,'Можно использовать один профиль для всех трёх форматов или только для выбранного.');
+    const prompt=document.createElement('textarea');prompt.className='spi-custom-prompt';prompt.value=existing?.prompt||'';
+    prompt.placeholder='Например: warm ambient lighting, hand-painted backgrounds, delicate expressions';prompt.maxLength=20000;
+    formField(form,'Мои правила создания изображения',prompt,'Личные пожелания к композиции и оформлению. Новая запись не заменяет обязательные инструкции режиссёра.');
+    const checks=document.createElement('fieldset');checks.className='spi-profile-checks';
+    const legend=document.createElement('legend');legend.textContent='Что учитывать при генерации';checks.append(legend);
+    const values={};
+    for(const [key,[label,help]] of Object.entries(PROFILE_SWITCHES)) {
+        const row=document.createElement('label');row.className='spi-profile-check';
+        const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=existing?.options?.[key]!==false;
+        const title=document.createElement('span');title.textContent=label;
+        row.append(checkbox,title);addFieldHelp(row,label,help);checks.append(row);values[key]=checkbox;
+    }
+    form.append(checks);
+    const status=document.createElement('p');status.className='spi-status';status.setAttribute('role','status');
+    const actions=document.createElement('div');actions.className='spi-dialog-actions';
+    if(existing)button('Удалить профиль',actions,()=>{
+        if(!confirm(`Удалить профиль «${existing.name}»? Встроенные профили не затронутся.`))return;
+        const state=settings();state.customProfiles=state.customProfiles.filter(p=>p.id!==existing.id);
+        for(const key of ['snapshot','comic','story_page'])if(state.activeProfiles[key]===existing.id)state.activeProfiles[key]='';
+        saveSettings();close();refresh();
+    });
+    button('Отмена',actions,close);
+    button('Сохранить',actions,()=>{
+        const profile=normalizeProfile({id:existing?.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),name:name.value,kind:kind.value,prompt:prompt.value,options:Object.fromEntries(Object.entries(values).map(([key,node])=>[key,node.checked]))});
+        if(!profile){status.textContent='Сначала введи название профиля.';return;}
+        const state=settings();const at=state.customProfiles.findIndex(item=>item.id===profile.id);
+        if(at>=0)state.customProfiles[at]=profile;else state.customProfiles.push(profile);
+        for(const format of ['snapshot','comic','story_page'])if(state.activeProfiles[format]===profile.id&&profile.kind!=='all'&&profile.kind!==format)state.activeProfiles[format]='';
+        saveSettings();close();refresh();
+    },true);
+    dialog.append(form,status,actions);name.focus({preventScroll:true});
+}
+
+function openAllCodePrompts() {
+    const {dialog,close}=shell('SP Imagen · Все системные промпты','spi-all-code-prompts');
+    const intro=document.createElement('p');intro.textContent='Здесь все остальные системные инструкции, кроме профилей Snapshot, Comic и Story Page. Изменения действуют только внутри SP Imagen. Каждый текст можно вернуть к исходному.';
+    const list=document.createElement('div');list.className='spi-code-prompt-list';
+    for (const [key,label] of Object.entries(CODE_PROMPT_LABELS)) {
+        const details=document.createElement('details');details.className='spi-code-prompt';
+        const summary=document.createElement('summary');summary.textContent=label;details.append(summary);
+        const area=document.createElement('textarea');area.value=resolveCodePrompt(settings().codePrompts,key);area.className='spi-code-prompt-area';area.spellcheck=false;
+        const actions=document.createElement('div');actions.className='spi-dialog-actions';
+        const status=document.createElement('span');status.className='spi-status';
+        button('Вернуть исходный',actions,()=>{if(!confirm('Вернуть исходную инструкцию?'))return;delete settings().codePrompts[key];area.value=CODE_PROMPT_DEFAULTS[key];saveSettings();status.textContent='Восстановлено.';});
+        button('Сохранить',actions,()=>{if(!area.value.trim()){status.textContent='Пустую инструкцию сохранить нельзя.';return;}settings().codePrompts[key]=area.value;saveSettings();status.textContent='Сохранено.';},true);
+        details.append(area,actions,status);list.append(details);
+    }
+    const footer=document.createElement('div');footer.className='spi-dialog-actions';button('Закрыть',footer,close,true);
+    dialog.append(intro,list,footer);
 }
 
 function formField(parent, labelText, control, note = '') {
@@ -525,7 +625,7 @@ function openTextApiSettings({ back = false } = {}) {
         const control = event.currentTarget; control.disabled = true; status.textContent = 'Проверяю подключение…';
         try {
             const next = readDraft();
-            if (next.mode === 'st') { await testSillyTavernProfile(context(), next); status.textContent = 'Выбранный профиль SillyTavern ответил.'; }
+            if (next.mode === 'st') { await testSillyTavernProfile(context(), next, undefined, resolveCodePrompt(settings().codePrompts,'text_profile_connection_test')); status.textContent = 'Выбранный профиль SillyTavern ответил.'; }
             else { const models = await testTextApi(next); status.textContent = models.length ? `Подключение работает. Моделей найдено: ${models.length}.` : 'Подключение ответило, но список моделей пуст.'; }
         } catch (error) { status.textContent = String(error?.message || error); }
         finally { control.disabled = false; }
@@ -715,8 +815,9 @@ function openHub(page = 'home') {
         heading.textContent = currentPage === 'home' ? 'SP Imagen' : 'SP Imagen · Настройки';
         if (currentPage === 'home') {
             button('⚙ Настройки', body, () => render('settings')).dataset.spiAction = 'settings';
-            const prompts = button(`✎ Промпты${hasNew() ? '  NEW!' : ''}`, body, () => void openPromptCenter({ backToHub: true }));
+            const prompts = button(`✎ Профили${hasNew() ? '  NEW!' : ''}`, body, () => void openPromptCenter({ backToHub: true }));
             prompts.dataset.spiPrompts = ''; prompts.dataset.spiAction = 'prompts';
+            button('▤ Все промпты', body, openAllCodePrompts).dataset.spiAction='all-prompts';
             button('▤ Посмотреть последний промпт', body, openLastPrompt).dataset.spiAction = 'last-prompt';
             button('📚 Библиотека', body, () => void openRuntimeChild(openLibrary)).dataset.spiAction = 'library';
         } else {
@@ -762,12 +863,36 @@ function openHub(page = 'home') {
 
 // Navigation is part of the existing SP Imagen dialogs, not a parallel UI implementation.
 // The guide never generates an image, sends a model request or saves user settings.
+// Navigate actual SP Imagen screens. Keep the library mounted while introducing its fields.
 async function showGuideSection(view) {
-    // Close only the SP Imagen panels opened by the tour; the main hub stays available.
+    const isLibrary = view === 'library' || view.startsWith('library-');
+    const libraryOverlay = document.querySelector('#sp-imagen-review-overlay');
+    if (isLibrary && libraryOverlay) {
+        if (view === 'library-first') {
+            const api = await getLibraryRuntime();
+            api.openFirstVisibleRecordForGuide();
+        }
+        const tabNames = { 'library-appearance': 'Внешность', 'library-aliases': 'Другие имена', 'library-prompt': 'Данные для промпта', 'library-body': 'Отметины и тело' };
+        const tab = tabNames[view];
+        if (tab) {
+            const element = [...libraryOverlay.querySelectorAll('[role="tab"]')].find(node => node.textContent.trim() === tab);
+            element?.click();
+        }
+        return;
+    }
+    // All previous feature panels are dismissed by their existing close handlers.
     const otherOverlays = [...document.querySelectorAll('.spi-overlay')].filter(node => !node.querySelector('.spi-hub'));
     for (const overlay of otherOverlays.reverse()) overlay.querySelector('.spi-close')?.click();
-    const existing = document.querySelector('#sp-imagen-review-overlay');
-    if (existing) existing.querySelector('.ness-close-dialog')?.click();
+    if (libraryOverlay) {
+        const closeLibrary=libraryOverlay.querySelector('.ness-close-dialog');
+        closeLibrary?.click();
+        if (libraryOverlay.isConnected) {
+            if (!confirm('В библиотеке остались несохранённые изменения. Закрыть без сохранения и продолжить обучение?')) {
+                throw new Error('Сначала сохрани библиотеку или закрой её вручную, чтобы продолжить обучение.');
+            }
+            closeLibrary?.click();
+        }
+    }
     await Promise.resolve();
     if (view === 'finish') { openHub(); activeHub?.render('home'); return; }
     openHub();
@@ -778,19 +903,23 @@ async function showGuideSection(view) {
     else if (view === 'text-api') void openTextApiSettings().catch(error => console.warn('[SP Imagen] guide text API:',error));
     else if (view === 'novelai') void openNovelAISettings().catch(error => console.warn('[SP Imagen] guide NovelAI:',error));
     else if (view === 'styles') void openStyleLibrary().catch(error => console.warn('[SP Imagen] guide styles:',error));
-    else if (view === 'library') {
+    else if (isLibrary) {
         const api = await getLibraryRuntime();
         void api.openLibraryEditor().catch(error => console.warn('[SP Imagen] guide library:',error));
     } else if (view === 'generation') {
-        if (!context().chatMetadata) return; // Before entering a chat the form is unavailable.
+        if (!context().chatMetadata) return;
         const api = await getRuntime();
         void api.openSettings().catch(error => console.warn('[SP Imagen] guide settings:',error));
     }
 }
 
 function launchQuickGuide() {
-    // The guide opens through the wand, the hub, or settings; all use one state machine.
-    return startQuickGuide({ navigate: showGuideSection });
+    let hasCharacters = false;
+    try {
+        const api = libraryRuntime ?? createSpImagenLibraryRuntime({getExtension:()=>extensionApi});
+        hasCharacters = api.utilities.libraryEntries(api.utilities.loadMasterLibrary()).length > 0;
+    } catch (error) { console.warn('[SP Imagen] library guide availability:',error); }
+    return startQuickGuide({ navigate: showGuideSection, steps: makeGuideSteps(hasCharacters) });
 }
 
 function openLastPrompt() {
@@ -873,11 +1002,14 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
     const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
     const style = snapshot?.style || activeStyle(saved) || { id: '', name: 'Без стиля', value: '' };
-    const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : saved;
+    const profile = activeProfile(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
+    const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
+    if (profile?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
-        style: style.value,
+        style: profile?.options?.useArtStyle === false ? '' : style.value,
+        mediumNegative: resolveCodePrompt(settings().codePrompts,'nai_medium_negative'),
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
     });
@@ -893,7 +1025,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         src: result.src,
         config: {
             ...config,
-            spImagenDirect: { version: 1, provider: 'novelai', style: clone(style), settings: publicSettings, generatedSeed: result.seed },
+            spImagenDirect: { version: 1, provider: 'novelai', style: profile?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style), settings: publicSettings, generatedSeed: result.seed },
         },
     };
 }
@@ -963,7 +1095,7 @@ async function initialize() {
 
 const extensionApi = {
     installed: true,
-    version: '2.6.1',
+    version: '2.7.0',
     get hasNew() { return hasNew(); },
     get hubChildOpen() { return hubChildOpen; },
     run,
@@ -976,6 +1108,8 @@ const extensionApi = {
     directGenerationEnabled,
     generateImage,
     getDirector,
+    getActiveProfile: kind => activeProfile(settings(),kind),
+    getCodePrompt: key => resolveCodePrompt(settings().codePrompts,key),
     generateText,
 };
 

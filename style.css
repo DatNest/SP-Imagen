@@ -17,6 +17,28 @@
 .spi-dialog h3 { margin: 0 0 9px; font-size: 15px; }
 .spi-dialog p { margin: 5px 0 10px; line-height: 1.4; }
 .spi-prompt-list { display: grid; gap: 8px; }
+
+/* Profile and editable internal prompt panels share the original SP Imagen design. */
+.spi-profile-scroll { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; display:grid; align-content:start; gap:11px; padding:2px 4px 10px 1px; }
+.spi-profile-scroll .spi-prompt-list { display:grid; gap:8px; }
+.spi-custom-profile-list { display: grid; gap: 8px; min-height: 0; }
+.spi-profile-assignments { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:9px; margin-block:10px; }
+.spi-profile-select { min-height:39px; width:100%; min-width:0; background:var(--black30a,rgba(0,0,0,.3)); color:inherit; border:1px solid var(--SmartThemeBorderColor,#777); border-radius:9px; }
+.spi-custom-profile-editor { overflow:hidden; }
+.spi-custom-profile-form { flex:1 1 auto; min-height:0; overflow-y:auto; display:grid; align-content:start; gap:13px; padding-inline:2px; }
+.spi-custom-prompt { min-height:140px; max-height:270px; resize:vertical; }
+.spi-profile-checks { min-width:0; display:grid; gap:7px; border:1px solid var(--SmartThemeBorderColor,#777); border-radius:11px; padding:10px; }
+.spi-profile-checks legend { padding-inline:5px; font-weight:650; }
+.spi-profile-check { min-width:0; display:flex; gap:10px; align-items:center; padding-block:5px; cursor:pointer; }
+.spi-profile-check span { flex:1; }
+.spi-profile-check input { flex:none; width:19px; height:19px; }
+.spi-all-code-prompts { display:flex; flex-direction:column; height:min(750px,100%); overflow:hidden; min-height:0; }
+.spi-code-prompt-list { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; display:grid; align-content:start; gap:8px; }
+.spi-code-prompt { border:1px solid var(--SmartThemeBorderColor,#777); border-radius:10px; padding:10px; min-width:0; }
+.spi-code-prompt summary { cursor:pointer; font-weight:650; }
+.spi-code-prompt-area { display:block; width:100%; height:220px; min-height:140px; margin-top:12px; resize:vertical; }
+@media(max-width:620px){.spi-profile-assignments{grid-template-columns:1fr}.spi-custom-profile-editor .spi-dialog-actions{gap:6px}}
+
 .spi-prompt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 10px; }
 .spi-prompt-row strong { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .spi-dialog textarea { width: 100%; resize: vertical; box-sizing: border-box; padding: 10px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 9px; background: var(--black30a, rgba(0,0,0,.3)); color: inherit; font: 13px/1.45 ui-monospace, monospace; }

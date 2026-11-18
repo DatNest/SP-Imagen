@@ -102,11 +102,11 @@ function validate(settings, aspectRatio) {
     if (errors.length) throw new Error(errors.join(' '));
 }
 
-function buildParameters(settings, prompt, negativePrompt, aspectRatio) {
+function buildParameters(settings, prompt, negativePrompt, aspectRatio, mediumNegative = MEDIUM_NEGATIVE) {
     validate(settings, aspectRatio);
     const positive = splitCharacterPrompts(prompt);
     const medium = settings.model === MEDIUM_MODEL;
-    const negative = splitCharacterPrompts(medium ? MEDIUM_NEGATIVE : negativePrompt);
+    const negative = splitCharacterPrompts(medium ? mediumNegative : negativePrompt);
     const maxCharacters = settings.model.startsWith('nai-diffusion-5-') ? 22 : 6;
     if (Math.max(positive.characters.length, negative.characters.length) > maxCharacters) throw new Error(`Эта модель поддерживает до ${maxCharacters} отдельных секций персонажей.`);
     const caption = (base, characters) => ({
@@ -170,11 +170,11 @@ async function verifyFreeAccess(settings, signal) {
     if (settings.model.startsWith('nai-diffusion-5-') && !regular) throw new Error('Защита Anlas: бесплатный лимит V5 исчерпан или его состояние неизвестно.');
 }
 
-export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', signal }) {
+export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', signal, mediumNegative = MEDIUM_NEGATIVE }) {
     const settings = resolveRequestSettings(input);
     const fullPrompt = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
     if (!fullPrompt) throw new Error('Промпт изображения пуст.');
-    const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio);
+    const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio, mediumNegative);
     if (settings.neverSpendAnlas) await verifyFreeAccess(settings, signal);
     const response = await fetchWithTimeout(requestUrl(settings), {
         method: 'POST',
