@@ -19,6 +19,8 @@ export async function installSpImagenMediaSlots(options) {
   const busy = new Set();
   const subscriptions = [];
   let openMenu = null;
+  let promptPopup = null;
+  let guideDemo = null;
   let wand = null;
 
   try { host[CLEANUP_KEY]?.(); } catch (_) {}
@@ -106,7 +108,7 @@ export async function installSpImagenMediaSlots(options) {
     :host([data-ms="post"]) { clear: both; }
     :host([data-ms="post"][hidden]), .gallery[hidden], .post-tools[hidden] { display: none !important; }
     :host([data-ms="wand"]) { opacity: 1 !important; pointer-events: auto !important; }
-    :host([data-ms="floating"]) {
+    :host([data-ms="floating"]), :host([data-ms="prompt-preview"]) {
       position: fixed !important;
       inset: var(--ms-top, 0px) auto auto var(--ms-left, 0px) !important;
       z-index: 2147482000 !important;
@@ -121,6 +123,16 @@ export async function installSpImagenMediaSlots(options) {
       backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
       box-shadow: 0 4px 16px color-mix(in srgb, var(--SmartThemeShadowColor, CanvasText), transparent 70%);
     }
+    :host([data-ms="prompt-preview"]) { --ms-panel: var(--SmartThemeBlurTintColor, #2c2734); color: var(--SmartThemeBodyColor, #f7edf7); inline-size: min(360px, var(--ms-max-width)); padding: 12px; }
+    .prompt-title { font-weight: 700; margin: 0 0 8px; white-space: normal; }
+    .prompt-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: min(40dvh, 320px);
+      overflow: auto; font: 12px/1.5 ui-monospace, monospace; padding: 9px; border: 1px solid var(--ms-line);
+      border-radius: 6px; background: color-mix(in srgb, var(--ms-panel) 65%, transparent); }
+    .prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-block-start: 9px; }
+    .prompt-actions button { border: 1px solid var(--ms-line); border-radius: 6px; padding: 7px 10px; }
+    .guide-saved { border: 1px dashed var(--ms-line); border-radius: 7px; font-size: 16px; }
+    .guide-result { margin-block: 8px; }
+    .guide-result p { white-space: normal; margin: 6px 4px; }
     *, *::before, *::after { box-sizing: border-box; }
     button {
       appearance: none;
@@ -228,23 +240,8 @@ export async function installSpImagenMediaSlots(options) {
     if (restoreFocus && toggle.isConnected) toggle.focus({ preventScroll: true });
   }
 
-  function toggleToolsMenu(view) {
-    const wasOpen = openMenu?.toggle === view.toggle;
-    closeToolsMenu();
-    if (wasOpen) return;
-
-    const { node, root } = component('floating');
-    for (const kind of KINDS) {
-      const option = element('button', 'option', LABEL[kind]);
-      option.addEventListener('click', () => {
-        closeToolsMenu(true);
-        if (context().chat?.[view.index] === view.message) {
-          void executeCommand('sp_ness_generate_at', view, kind);
-        }
-      });
-      root.append(option);
-    }
-
+  // All popovers use the same mobile-viewport positioning; none depend on other extensions.
+  function positionPopup(node, anchor) {
     const viewport = host.visualViewport;
     const left = viewport?.offsetLeft ?? 0;
     const top = viewport?.offsetTop ?? 0;
@@ -254,13 +251,68 @@ export async function installSpImagenMediaSlots(options) {
     node.style.setProperty('--ms-max-width', Math.max(0, right - left - gap * 2) + 'px');
     node.style.setProperty('--ms-max-height', Math.max(0, bottom - top - gap * 2) + 'px');
     doc.body.append(node);
-    const anchor = view.toggle.getBoundingClientRect();
-    const menu = node.getBoundingClientRect();
-    const x = Math.max(left + gap, Math.min(anchor.left, right - menu.width - gap));
-    const preferredY = anchor.bottom + gap + menu.height <= bottom - gap ? anchor.bottom + gap : anchor.top - gap - menu.height;
-    const y = Math.max(top + gap, Math.min(preferredY, bottom - menu.height - gap));
+    const reference = anchor.getBoundingClientRect();
+    const rect = node.getBoundingClientRect();
+    const x = Math.max(left + gap, Math.min(reference.left, right - rect.width - gap));
+    const below = reference.bottom + gap + rect.height <= bottom - gap;
+    const desiredY = below ? reference.bottom + gap : reference.top - gap - rect.height;
+    const y = Math.max(top + gap, Math.min(desiredY, bottom - rect.height - gap));
     node.style.setProperty('--ms-left', x + 'px');
     node.style.setProperty('--ms-top', y + 'px');
+  }
+
+  function closePromptPopup() {
+    promptPopup?.node.remove();
+    promptPopup = null;
+  }
+
+  function showPromptPopup(anchor, prompt, label) {
+    closeToolsMenu();
+    closePromptPopup();
+    const { node, root } = component('prompt-preview');
+    node.setAttribute('role', 'dialog');
+    node.setAttribute('aria-label', label);
+    const title = element('div', 'prompt-title', label);
+    const text = element('div', 'prompt-text', String(prompt || 'Промпт отсутствует.'));
+    const actions = element('div', 'prompt-actions');
+    const close = element('button', '', 'Закрыть');
+    close.addEventListener('click', closePromptPopup);
+    actions.append(close);
+    root.append(title, text, actions);
+    positionPopup(node, anchor);
+    promptPopup = { node, anchor, text };
+    return text;
+  }
+
+  function toggleToolsMenu(view) {
+    const wasOpen = openMenu?.toggle === view.toggle;
+    closeToolsMenu();
+    closePromptPopup();
+    if (wasOpen) return;
+    if (guideDemo?.view === view && guideDemo.clearOnStar) {
+      guideDemo.marker?.remove();
+      guideDemo.marker = null;
+      guideDemo.clearOnStar = false;
+    }
+
+    const { node, root } = component('floating');
+    for (const kind of KINDS) {
+      const option = element('button', 'option', LABEL[kind]);
+      option.addEventListener('click', () => {
+        closeToolsMenu(true);
+        // Training uses the REAL profile menu but never runs a model or saves chat data.
+        if (guideDemo?.view === view) {
+          guideDemo.kind = kind;
+          return;
+        }
+        if (context().chat?.[view.index] === view.message) {
+          void executeCommand('sp_ness_generate_at', view, kind);
+        }
+      });
+      root.append(option);
+    }
+
+    positionPopup(node, view.toggle);
     view.toggle.setAttribute('aria-expanded', 'true');
     openMenu = { node, toggle: view.toggle };
     root.querySelector('button')?.focus({ preventScroll: true });
@@ -279,7 +331,7 @@ export async function installSpImagenMediaSlots(options) {
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-expanded', 'false');
     const gallery = element('div', 'gallery');
-    const view = { node, anchor, index, message, tools, toggle, gallery, cards: new Map() };
+    const view = { node, root, anchor, index, message, tools, toggle, gallery, promptButton: null, cards: new Map() };
     toggle.addEventListener('click', () => toggleToolsMenu(view));
     tools.append(toggle);
     root.append(tools, gallery);
@@ -328,8 +380,41 @@ export async function installSpImagenMediaSlots(options) {
     return section;
   }
 
+  function newestSavedPrompt(slots) {
+    let latest = null;
+    for (const kind of KINDS) {
+      for (const version of slots?.[kind]?.versions || []) {
+        if (typeof version.config?.prompt !== 'string' || !version.config.prompt.trim()) continue;
+        if (!latest || Number(version.at || 0) > Number(latest.at || 0)) latest = { ...version, kind };
+      }
+    }
+    return latest;
+  }
+
+  function updatePostPromptIcon(view, slots) {
+    const saved = newestSavedPrompt(slots);
+    if (!saved) {
+      view.promptButton?.remove();
+      view.promptButton = null;
+      return;
+    }
+    if (!view.promptButton) {
+      const button = element('button', 'tool prompt-saved', '▤');
+      button.title = 'Открыть промпт последней сохранённой картинки';
+      button.setAttribute('aria-label', button.title);
+      button.addEventListener('click', () => {
+        if (guideDemo?.view === view) return;
+        const actual = newestSavedPrompt(slotsOf(context().chat?.[view.index]));
+        if (actual) showPromptPopup(button, actual.config.prompt, `Промпт · ${LABEL[actual.kind]}`);
+      });
+      view.tools.append(button);
+      view.promptButton = button;
+    }
+  }
+
   function updatePost(view, slots, chatId) {
     view.tools.hidden = !eligible(view.message);
+    updatePostPromptIcon(view, slots);
     for (const kind of KINDS) {
       const slot = slots?.[kind];
       const item = slot?.versions?.[slot.selected];
@@ -356,6 +441,7 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   function unmountPost(view) {
+    if (guideDemo?.view === view) endGuideDemo();
     if (openMenu?.toggle === view.toggle) closeToolsMenu();
     view.node.remove();
   }
@@ -390,6 +476,106 @@ export async function installSpImagenMediaSlots(options) {
       }
       updatePost(view, slots, current.chatId);
     }
+  }
+
+  // Guide UI is transient DOM only. No chat metadata, message extras, network calls or real generation.
+  function endGuideDemo() {
+    if (!guideDemo) return;
+    const demo = guideDemo;
+    guideDemo = null;
+    closeToolsMenu();
+    closePromptPopup();
+    demo.marker?.remove();
+    demo.result?.remove();
+    if (demo.view?.promptButton) demo.view.promptButton.hidden = false;
+    if (demo.extraMount && mounted.get(demo.view.index) === demo.view) {
+      unmountPost(demo.view);
+      mounted.delete(demo.view.index);
+    }
+  }
+
+  function currentGuideView() {
+    if (guideDemo && context().chat === guideDemo.chat && context().chatId === guideDemo.chatId
+       && guideDemo.view.node.isConnected && context().chat?.[guideDemo.view.index] === guideDemo.view.message) {
+      return guideDemo.view;
+    }
+    endGuideDemo();
+    paint();
+    let view = [...mounted.values()].reverse().find(candidate => eligible(candidate.message) && !candidate.tools.hidden);
+    let extraMount = false;
+    if (!view) {
+      // A long conversation may have its newest visible RP message outside the usual ten-post gallery window.
+      const current = context(), chatElement = doc.getElementById('chat');
+      for (let index = (current.chat?.length || 0) - 1; index >= 0; index--) {
+        const message = current.chat[index];
+        if (!eligible(message)) continue;
+        const anchor = chatElement?.querySelector(`.mes[mesid="${index}"] .mes_text`);
+        if (!anchor) continue;
+        view = mountPost(anchor, index, message);
+        mounted.set(index, view);
+        updatePost(view, slotsOf(message), current.chatId);
+        extraMount = true;
+        break;
+      }
+    }
+    if (!view) return null;
+    guideDemo = { view, chat: context().chat, chatId: context().chatId, marker: null,
+      result: null, kind: 'snapshot', clearOnStar: false, extraMount };
+    if (view.promptButton) view.promptButton.hidden = true;
+    return view;
+  }
+
+  function guideStep(section) {
+    const view = currentGuideView();
+    if (!view) return null;
+    if (section === 'post-star') {
+      closeToolsMenu(); closePromptPopup();
+      view.toggle.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+      return view.toggle;
+    }
+    if (section === 'post-formats') {
+      if (openMenu?.toggle !== view.toggle) toggleToolsMenu(view);
+      return openMenu?.node.shadowRoot?.querySelector('.option') ?? null;
+    }
+    if (section === 'post-saved' || section === 'post-view') {
+      if (!guideDemo.marker) {
+        const marker = element('button', 'tool guide-saved', '▤');
+        marker.title = 'Учебный значок сохранённого промпта';
+        marker.setAttribute('aria-label', marker.title);
+        marker.addEventListener('click', () => showPromptPopup(marker,
+          'Учебный пример (не отправляется в NovelAI):\n\n1girl, blue eyes, soft lighting, sitting at a table',
+          `Учебный промпт · ${LABEL[guideDemo?.kind || 'snapshot']}`));
+        view.tools.append(marker);
+        guideDemo.marker = marker;
+      }
+      if (section === 'post-view') return promptPopup?.text
+        || showPromptPopup(guideDemo.marker, 'Учебный пример: 1girl, blue eyes, soft lighting', 'Учебный промпт');
+      closePromptPopup();
+      return guideDemo.marker;
+    }
+    if (section === 'post-replace') {
+      closePromptPopup(); closeToolsMenu();
+      guideDemo.clearOnStar = true;
+      return view.toggle;
+    }
+    if (section === 'post-cleared') {
+      return openMenu?.node.shadowRoot?.querySelector('.option') ?? view.toggle;
+    }
+    if (section === 'post-result') {
+      closeToolsMenu(); closePromptPopup();
+      if (view.cards.size) return view.gallery;
+      if (!guideDemo.result) {
+        const example = element('div', 'card guide-result');
+        example.append(element('div','heading','Готовая картинка — учебный пример'));
+        example.append(element('p','', 'Здесь появится изображение после генерации.'));
+        example.append(element('p','', '←  1 / 1  →      ↻   ↓   🗑'));
+        view.root.append(example);
+        guideDemo.result = example;
+      }
+      guideDemo.result.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
+      return guideDemo.result;
+    }
+    return view.toggle;
   }
 
   async function publish(index, kind, item) {
@@ -554,6 +740,7 @@ export async function installSpImagenMediaSlots(options) {
     const current = context();
     const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind };
     if (request && current.chat[request.index] !== request.message) return;
+    if (command === 'sp_ness_generate_at' && typeof guideDemo !== 'undefined' && guideDemo) return;
     const extension = getExtension?.();
     if (!extension?.installed || typeof extension.run !== 'function') {
       host.toastr?.error?.('SP Imagen не загружен.', 'SP Imagen');
@@ -584,21 +771,23 @@ export async function installSpImagenMediaSlots(options) {
 
   function documentClick(event) {
     if (event.target.closest?.('#extensionsMenuButton')) installMenuCommands();
-    if (!openMenu) return;
     const clicked = event.composedPath();
-    if (!clicked.includes(openMenu.node) && !clicked.includes(openMenu.toggle)) closeToolsMenu();
+    if (openMenu && !clicked.includes(openMenu.node) && !clicked.includes(openMenu.toggle)) closeToolsMenu();
+    if (promptPopup && !clicked.includes(promptPopup.node) && !clicked.includes(promptPopup.anchor)) closePromptPopup();
   }
 
   function escapeMenu(event) {
-    if (event.key === 'Escape' && openMenu) {
+    if (event.key === 'Escape' && (openMenu || promptPopup)) {
       event.preventDefault();
       event.stopPropagation();
       closeToolsMenu(true);
+      closePromptPopup();
     }
   }
 
   function viewportChanged(event) {
     if (openMenu && event.target !== openMenu.node) closeToolsMenu();
+    if (promptPopup && event.target !== promptPopup.node) closePromptPopup();
   }
 
   function subscribe(name, handler) {
@@ -617,7 +806,7 @@ export async function installSpImagenMediaSlots(options) {
   host.addEventListener('resize', viewportChanged);
   host.visualViewport?.addEventListener('resize', viewportChanged);
   host.visualViewport?.addEventListener('scroll', viewportChanged);
-  const chatChanged = () => { closeToolsMenu(); migrateTail(); installMenuCommands(); paint(); };
+  const chatChanged = () => { endGuideDemo(); closeToolsMenu(); closePromptPopup(); migrateTail(); installMenuCommands(); paint(); };
   const messageChanged = () => paint();
   subscribe('CHAT_CHANGED', chatChanged);
   for (const name of ['CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED']) {
@@ -625,7 +814,9 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   function dispose() {
+    endGuideDemo();
     closeToolsMenu();
+    closePromptPopup();
     doc.removeEventListener('click', documentClick, true);
     doc.removeEventListener('keydown', escapeMenu, true);
     doc.removeEventListener('scroll', viewportChanged, true);
@@ -645,7 +836,9 @@ export async function installSpImagenMediaSlots(options) {
   const manager = {
     installed: true,
     version: 62,
-    controlsRevision: 23,
+    controlsRevision: 24,
+    guideStep,
+    endGuideDemo,
     supportedKinds: KINDS,
     publish,
     focus,

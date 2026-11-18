@@ -2,6 +2,8 @@
 import { getVisibleViewport, mountViewportOverlay } from './viewport-overlay.js';
 
 export const IMAGEN_GLOSSARY = Object.freeze({
+    'Метка': 'Специальная подпись в сообщении, по которой SP Imagen узнаёт нужные данные. Например, ⟦ОДЕЖДА:Джи⟧blue shirt⟦/ОДЕЖДА⟧ сообщает, что на Джи надета голубая рубашка.',
+    'Сводка': 'Короткая техническая запись с итогом или значениями, которую некоторые инструменты добавляют после сцены. Обычно её не нужно рисовать.',
     'API': 'Способ, которым SP Imagen связывается с выбранным сервисом. Обычно подключение настраивают один раз.',
     'API-ключ': 'Личный секретный код доступа к сервису. Бери его в своём аккаунте провайдера. Не публикуй и не отправляй другим людям.',
     'Endpoint': 'Адрес сервера, куда отправляется запрос. Заполняй только при прямом подключении и копируй из инструкции своего провайдера.',
@@ -171,7 +173,14 @@ export function makeGuideSteps(hasCharacters = false) {
   {view:'styles',selector:'.spi-style-layout',title:'Стиль — по желанию',text:'Здесь можно написать стиль для модели-художника. Когда стиль активен, он автоматически вставляется как префикс в начало промпта.'},
   {view:'home',selector:'[data-spi-action="all-prompts"]',title:'Все системные промпты',text:'Здесь можно прочитать и при необходимости изменить остальные внутренние инструкции расширения. У каждого текста есть кнопка восстановления исходной версии.'},
   {view:'home',selector:'[data-spi-action="last-prompt"]',title:'Последний промпт',text:'После генерации здесь можно посмотреть итоговое описание картинки. Просмотр ничего не генерирует.'},
-  {view:'finish',selector:null,title:'Теперь можно создавать картинки',text:'Вернись в ролевой чат, нажми ✨ возле поста, выбери формат и при необходимости проверь описание перед отправкой. '}
+  {view:'post-star',selector:'[data-spi-post-demo]',title:'Генерация прямо из чата',text:'Нажми звёздочку ✧ под любым ролевым постом. Картинка будет прикреплена к этому посту.',click:'native',requireClick:true},
+  {view:'post-formats',selector:'[data-spi-post-demo]',title:'Выбираем формат',text:'Snapshot — один кадр. Comic — комикс с панелями. Story Page — страница истории. Нажми на подходящий формат. Сейчас это учебный выбор: генерация не запустится.',click:'native',clickGroup:'.option',requireClick:true},
+  {view:'post-saved',selector:'[data-spi-post-demo]',title:'Где сохранённый промпт?',text:'После создания картинки SP Imagen сохраняет её и использованный промпт под выбранным постом. Значок ▤ открывает этот текст. Сейчас значок учебный. Нажми на него.',click:'native',requireClick:true},
+  {view:'post-view',selector:'[data-spi-post-demo]',title:'Просмотр сохранённого промпта',text:'Здесь можно прочитать описание, с которым создавалась картинка. Просмотр не запускает генерацию. В учебном примере показан ненастоящий текст.'},
+  {view:'post-replace',selector:'[data-spi-post-demo]',title:'Начать новую генерацию',text:'Нажми звёздочку ещё раз. Учебный значок предыдущего задания исчезнет. В настоящем чате старые готовые изображения и их промпты останутся в галерее.',click:'native',requireClick:true},
+  {view:'post-cleared',selector:'[data-spi-post-demo]',title:'Новый выбор формата',text:'Звёздочка снова открыла список форматов. Выбор в обычном режиме запускает подготовку нового изображения.'},
+  {view:'post-result',selector:'[data-spi-post-demo]',title:'Где появится картинка',text:'Готовое изображение появится под выбранным постом. ← → перелистывают версии, ↻ повторяет генерацию, ↓ сохраняет файл, 🗑 удаляет выбранную картинку.'},
+  {view:'finish',selector:null,title:'Готово',text:'Чтобы сделать первую картинку, выбери пост, нажми ✧ и выбери формат. Учебные значки исчезнут после завершения гайда.'}
  ];
 }
 export const GUIDE_STEPS = Object.freeze(makeGuideSteps(true));
@@ -192,8 +201,8 @@ export function startQuickGuide({navigate,steps=GUIDE_STEPS,onExit=()=>{}}={}) {
     const next=document.createElement('button');next.type='button';next.className='spi-guide-primary';next.textContent='Далее →';
     controls.append(stop,prev,next);sheet.append(count,heading,copy,controls);host.append(spotlight,sheet);
     const unmount=mountViewportOverlay(host);
-    let index=-1,abort=false,requestId=0,target=null,handleClick=null,frame=null;
-    const detach=()=>{target?.removeEventListener('click',handleClick,true);target=null;handleClick=null;};
+    let index=-1,abort=false,requestId=0,target=null,handleClick=null,clickTargets=[],frame=null;
+    const detach=()=>{for(const node of clickTargets)node.removeEventListener('click',handleClick,true);clickTargets=[];target=null;handleClick=null;};
     function fit(){
         if(abort)return;
         const vp=getVisibleViewport();
@@ -202,8 +211,34 @@ export function startQuickGuide({navigate,steps=GUIDE_STEPS,onExit=()=>{}}={}) {
         if(right<=left||bottom<=top){spotlight.hidden=true;return;}
         spotlight.hidden=false;Object.assign(spotlight.style,{left:left+'px',top:top+'px',width:(right-left)+'px',height:(bottom-top)+'px'});
         const cardWidth=Math.min(sheet.offsetWidth||360,vp.width-20),cardHeight=sheet.offsetHeight||180,margin=10;
-        if(vp.width<660){sheet.style.left='10px';const atTop=top>cardHeight+26 && top>=vp.height-cardHeight-24;sheet.style.top=atTop?margin+'px':'auto';sheet.style.bottom=atTop?'auto':margin+'px';spotlight.style.opacity=top>vp.height-cardHeight-24&&!atTop?'0.5':'1';}
-        else{sheet.style.bottom='auto';const below=bottom+cardHeight+16<=vp.height;const y=below?bottom+12:Math.max(margin,top-cardHeight-12);sheet.style.left=Math.max(margin,Math.min(left,vp.width-cardWidth-margin))+'px';sheet.style.top=y+'px';spotlight.style.opacity='1';}
+        if(vp.width<660){
+            sheet.style.left='10px';
+            const overlap=(a,b)=>Math.max(0,Math.min(bottom,b)-Math.max(top,a));
+            const topOverlap=overlap(margin,margin+cardHeight);
+            const bottomOverlap=overlap(vp.height-cardHeight-margin,vp.height-margin);
+            const atTop=topOverlap<bottomOverlap;
+            sheet.style.top=atTop?margin+'px':'auto';
+            sheet.style.bottom=atTop?'auto':margin+'px';
+            spotlight.style.opacity=atTop||bottomOverlap===0?'1':topOverlap===0?'1':'0.65';
+        }
+        else{
+            sheet.style.bottom='auto';
+            const clamp=(value,min,max)=>Math.max(min,Math.min(value,Math.max(min,max)));
+            const maxX=vp.width-cardWidth-margin;
+            const maxY=vp.height-cardHeight-margin;
+            const besideY=clamp(top+(bottom-top-cardHeight)/2,margin,maxY);
+            const canRight=right+12+cardWidth<=vp.width-margin;
+            const canLeft=left-cardWidth-12>=margin;
+            let x,y;
+            if(canRight){x=right+12;y=besideY;}
+            else if(canLeft){x=left-cardWidth-12;y=besideY;}
+            else{
+                const canBelow=bottom+12+cardHeight<=vp.height-margin;
+                x=clamp(left,margin,maxX);
+                y=canBelow?bottom+12:clamp(top-cardHeight-12,margin,maxY);
+            }
+            sheet.style.left=x+'px';sheet.style.top=y+'px';spotlight.style.opacity='1';
+        }
     }
     const onPosition=()=>{if(frame!==null)cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{frame=null;fit();});};
     function exit(){if(abort)return;abort=true;activeExplanation?.();requestId++;detach();if(frame!==null)cancelAnimationFrame(frame);window.removeEventListener('resize',onPosition);window.removeEventListener('scroll',onPosition,true);window.visualViewport?.removeEventListener('resize',onPosition);window.visualViewport?.removeEventListener('scroll',onPosition);document.removeEventListener('keydown',onKeys,true);unmount();host.remove();if(stopCurrentGuide===exit)stopCurrentGuide=null;onExit();if(previous?.isConnected)previous.focus({preventScroll:true});}
@@ -214,7 +249,8 @@ export function startQuickGuide({navigate,steps=GUIDE_STEPS,onExit=()=>{}}={}) {
         count.textContent=`💡 Быстрый гайд · ${index+1} / ${steps.length}`;
         heading.textContent=step.title;copy.replaceChildren();textWithTerms(copy,step.text);
         prev.hidden=false;stop.textContent='Прервать обучение';prev.disabled=index===0;next.textContent=index===steps.length-1?'Завершить ✓':'Далее →';spotlight.hidden=true;next.disabled=true;
-        try{await navigate(step.view);}catch(error){
+        let navigationTarget = null;
+        try{navigationTarget = await navigate(step.view);}catch(error){
             console.warn('[SP Imagen guide] section not available:',error);
             const warning=document.createElement('p');warning.className='spi-tour-unavailable';
             warning.textContent=String(error?.message||'Не удалось открыть этот раздел. Попробуй ещё раз.');
@@ -222,7 +258,8 @@ export function startQuickGuide({navigate,steps=GUIDE_STEPS,onExit=()=>{}}={}) {
         }
         if(abort||mine!==requestId)return;
         for(let attempt=0;attempt<14;attempt++){
-            target=step.selector?document.querySelector(step.selector):null;
+            target=navigationTarget?.isConnected && typeof navigationTarget.getBoundingClientRect === 'function'
+                ? navigationTarget : (step.selector?document.querySelector(step.selector):null);
             if ((!target || !target.getClientRects().length) && step.fallback) target=document.querySelector(step.fallback);
             if(!step.selector||target?.getClientRects().length)break;
             await new Promise(resolve=>setTimeout(resolve,55));
@@ -230,9 +267,10 @@ export function startQuickGuide({navigate,steps=GUIDE_STEPS,onExit=()=>{}}={}) {
         }
         if(!target?.isConnected)target=null;
         if(step.selector && !target){const note=document.createElement('p');note.className='spi-tour-unavailable';note.textContent='Этот раздел пока недоступен в открытом чате. Можно продолжить обучение или вернуться к нему позже.';copy.append(note);}
-        if(step.click&&target){handleClick=event=>{if(step.click !== 'native'){event.preventDefault();event.stopImmediatePropagation();}if(step.requireClick)next.disabled=false;queueMicrotask(()=>void go(index+1));};target.addEventListener('click',handleClick,true);}
-        if(step.requireClick){next.disabled=true; next.title='Сначала нажми выделенную кнопку, или прерви обучение';}else next.title='';
-        if (!step.requireClick) next.disabled=false;fit();
+        if(step.click&&target){handleClick=event=>{if(step.click !== 'native'){event.preventDefault();event.stopImmediatePropagation();}if(step.requireClick)next.disabled=false;const nextIndex=index+1,visit=requestId;setTimeout(()=>{if(!abort&&visit===requestId)void go(nextIndex);},0);};clickTargets=step.clickGroup ? [...target.getRootNode().querySelectorAll(step.clickGroup)] : [target];for(const node of clickTargets)node.addEventListener('click',handleClick,true);}
+        if(step.requireClick && target){next.disabled=true; next.title='Сначала нажми выделенную кнопку или прерви обучение';}
+        else {next.disabled=false; next.title='';}
+        fit();
         // Do not steal focus from a highlighted clickable control when a mobile keyboard is open.
         next.focus({preventScroll:true});
     }

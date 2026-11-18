@@ -864,6 +864,16 @@ function openHub(page = 'home') {
 // The guide never generates an image, sends a model request or saves user settings.
 // Navigate actual SP Imagen screens. Keep the library mounted while introducing its fields.
 async function showGuideSection(view) {
+    if (view.startsWith('post-')) {
+        if (view === 'post-star') {
+            // Leave all editing dialogs using their normal close handlers before touring the chat.
+            for (const overlay of [...document.querySelectorAll('.spi-overlay')].reverse()) {
+                overlay.querySelector('.spi-close')?.click();
+            }
+            activeHub?.close?.();
+        }
+        return mediaSlots?.guideStep?.(view) ?? null;
+    }
     const isLibrary = view === 'library' || view.startsWith('library-');
     const libraryOverlay = document.querySelector('#sp-imagen-review-overlay');
     if (isLibrary && libraryOverlay) {
@@ -893,7 +903,7 @@ async function showGuideSection(view) {
         }
     }
     await Promise.resolve();
-    if (view === 'finish') { openHub(); activeHub?.render('home'); return; }
+    if (view === 'finish') return;
     openHub();
     if (['settings','text-api','novelai','generation','styles'].includes(view)) activeHub?.render('settings');
     else activeHub?.render('home');
@@ -918,7 +928,7 @@ function launchQuickGuide() {
         const api = libraryRuntime ?? createSpImagenLibraryRuntime({getExtension:()=>extensionApi});
         hasCharacters = api.utilities.libraryEntries(api.utilities.loadMasterLibrary()).length > 0;
     } catch (error) { console.warn('[SP Imagen] library guide availability:',error); }
-    return startQuickGuide({ navigate: showGuideSection, steps: makeGuideSteps(hasCharacters) });
+    return startQuickGuide({ navigate: showGuideSection, steps: makeGuideSteps(hasCharacters), onExit: () => mediaSlots?.endGuideDemo?.() });
 }
 
 function openLastPrompt() {
@@ -1094,7 +1104,7 @@ async function initialize() {
 
 const extensionApi = {
     installed: true,
-    version: '2.7.0',
+    version: '2.8.4',
     get hasNew() { return hasNew(); },
     get hubChildOpen() { return hubChildOpen; },
     run,

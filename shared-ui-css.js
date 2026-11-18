@@ -183,6 +183,25 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel .ness-settings-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:3px 0 12px;}
 #sp-imagen-review-panel .ness-settings-transferbar{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding-bottom:10px;}
 #sp-imagen-review-panel .ness-transfer-ai{margin:10px 0 4px;padding-top:10px;border-top:1px solid var(--ness-border);}
+#sp-imagen-review-panel .ness-settings-lead{margin:0 0 15px!important;color:var(--ness-muted);font-size:13px;line-height:1.6;overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-source-step{display:flex;flex-direction:column;gap:9px;min-width:0;padding:14px;margin:10px 0;border:1px solid var(--ness-border);border-radius:12px;background:color-mix(in srgb,var(--ness-surface) 63%,transparent);}
+#sp-imagen-review-panel .ness-step-title{font-size:14px;font-weight:700;line-height:1.45;color:var(--ness-text);}
+#sp-imagen-review-panel .ness-step-desc{margin:0!important;font-size:12px;line-height:1.55;color:var(--ness-muted);overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-settings-subgroup{display:flex;flex-direction:column;gap:9px;min-width:0;padding:12px 0 0;border-top:1px solid var(--ness-border);}
+#sp-imagen-review-panel .ness-settings-subgroup[hidden],#sp-imagen-review-panel .ness-source-step[hidden]{display:none!important;}
+#sp-imagen-review-panel .ness-source-step>.ness-field,#sp-imagen-review-panel .ness-settings-subgroup>.ness-field{width:100%;min-width:0;margin:0!important;}
+#sp-imagen-review-panel .ness-source-step select,#sp-imagen-review-panel .ness-source-step input:not([type=checkbox]){min-width:0;width:100%;max-width:100%;}
+#sp-imagen-review-panel .ness-settings-inline{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:15px;border:1px solid var(--ness-border);border-radius:14px;background:color-mix(in srgb,var(--ness-surface) 43%,var(--ness-bg));}
+#sp-imagen-review-panel .ness-settings-inline-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;position:relative;padding-right:25px;}
+#sp-imagen-review-panel .ness-settings-inline-text>strong{font-size:14px;line-height:1.4;color:var(--ness-text);overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-settings-inline>.ness-check-label{flex:0 0 auto;min-width:0;margin:0!important;padding:7px 8px!important;}
+#sp-imagen-review-panel .ness-clean-row{display:flex;flex-direction:column;gap:7px;padding:12px 0;border-bottom:1px solid var(--ness-border);min-width:0;}
+#sp-imagen-review-panel .ness-clean-row:last-of-type{border-bottom:0;}
+#sp-imagen-review-panel .ness-clean-row>.ness-check-label{min-height:40px;margin:0!important;}
+#sp-imagen-review-panel .ness-before-after{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;min-width:0;}
+#sp-imagen-review-panel .ness-before-after>div{min-width:0;padding:10px;border:1px solid var(--ness-border);border-radius:9px;background:var(--ness-surface);}
+#sp-imagen-review-panel .ness-before-after strong{font-size:12px;color:var(--ness-text);}
+#sp-imagen-review-panel .ness-before-after pre{font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0 0;color:var(--ness-text);}
 #sp-imagen-review-panel .ness-wardrobe-example{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,monospace;background:var(--ness-surface);border:1px solid var(--ness-border);border-radius:10px;padding:12px;max-height:170px;overflow:auto;user-select:text;}
 #sp-imagen-review-panel .ness-child-shade{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:12px;background:color-mix(in srgb,var(--ness-bg) 84%,transparent);}
 #sp-imagen-review-panel .ness-child{display:flex;flex-direction:column;width:min(560px,100%);max-height:100%;min-height:0;min-width:0;border:1px solid var(--ness-border);border-radius:14px;background:var(--ness-bg);box-shadow:0 12px 36px color-mix(in srgb,var(--ness-input) 70%,transparent);}
@@ -266,6 +285,10 @@ export const NESS_UI_CSS = String.raw`
  #sp-imagen-review-panel .ness-section>summary{min-height:44px;}
  #sp-imagen-review-panel .ness-check-grid,#sp-imagen-review-panel .ness-rule-fields{grid-template-columns:minmax(0,1fr);}
  #sp-imagen-review-panel .ness-dialogue-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;}
+ #sp-imagen-review-panel .ness-settings-inline{flex-wrap:wrap;gap:10px;padding:12px;}
+ #sp-imagen-review-panel .ness-settings-inline>.ness-check-label{margin-left:auto!important;}
+ #sp-imagen-review-panel .ness-source-step{padding:11px;margin:8px 0;}
+ #sp-imagen-review-panel .ness-before-after{grid-template-columns:minmax(0,1fr);gap:7px;}
  #sp-imagen-review-panel .ness-settings-form .ness-settings-card>summary{min-height:74px;}
  #sp-imagen-review-panel .ness-settings-form .ness-settings-card{padding-left:12px;padding-right:12px;}
  /* On narrow phones, each post count is a separate readable row. */
