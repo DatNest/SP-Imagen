@@ -116,6 +116,16 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel .ness-tab-strip .ness-tab[aria-selected=true]{background:var(--ness-input)!important;color:var(--ness-text)!important;border-top-color:var(--ness-accent)!important;}
 #sp-imagen-review-panel .ness-tab-viewport{flex:1;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--ness-border) transparent;}
 #sp-imagen-review-panel .ness-tab-content{padding:12px 3px 16px;min-width:0;}
+#sp-imagen-review-panel .ness-body-section{min-width:0;margin:0 0 16px;padding:13px;border:1px solid var(--ness-border);border-radius:12px;background:var(--ness-surface);}
+#sp-imagen-review-panel .ness-body-section h4{margin:0 0 7px!important;font-size:15px!important;}
+#sp-imagen-review-panel .ness-body-section .ness-note{margin:0 0 9px!important;line-height:1.5;}
+#sp-imagen-review-panel .ness-body-example{margin:0 0 12px!important;padding:8px 10px;border-radius:8px;background:var(--ness-input);color:var(--ness-text);font:12px/1.55 system-ui,sans-serif;overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-body-section .ness-grid{gap:12px;}
+#sp-imagen-review-panel .ness-body-section .ness-field:last-child{margin-bottom:0!important;}
+#sp-imagen-review-panel .ness-body-section textarea.ness-input{height:78px;min-height:70px;}
+#sp-imagen-review-panel .ness-body-important{margin:0 0 10px;padding:12px 13px;border:1px solid var(--ness-border);border-left:3px solid var(--ness-accent);border-radius:9px;background:var(--ness-surface);color:var(--ness-text);font-size:13px;line-height:1.55;overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-body-important strong{display:block;margin:0 0 4px;font-weight:750;letter-spacing:.025em;}
+#sp-imagen-review-panel .ness-body-important p{margin:0!important;}
 #sp-imagen-review-panel .ness-appearance-wrap{position:relative;min-width:0;padding:9px 46px 9px 9px;border:1px solid var(--ness-border);border-radius:10px;background:var(--ness-input);}
 #sp-imagen-review-panel .ness-appearance-wrap[data-marking=true]{background:color-mix(in srgb,var(--ness-appearance-color,var(--ness-accent)) 8%,var(--ness-input));}
 #sp-imagen-review-panel .ness-appearance-wrap .ness-appearance-pencil{position:absolute;top:3px;right:7px;z-index:1;}
@@ -144,15 +154,35 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel .ness-alias-chip{display:inline-flex;align-items:center;gap:2px;max-width:100%;padding-left:10px;border:1px solid var(--ness-border);border-radius:18px;background:var(--ness-surface);font-size:13px;overflow-wrap:anywhere;}
 #sp-imagen-review-panel .ness-alias-chip>span{min-width:0;}
 #sp-imagen-review-panel .ness-alias-chip>.ness-button.ness-icon{width:30px;height:32px;min-width:30px;min-height:32px;font-size:18px!important;}
-#sp-imagen-review-panel[data-dialog=settings]{width:min(1040px,100%)!important;}
-#sp-imagen-review-panel .ness-settings-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+/* Settings: one responsive form; the chat-theme palette supplies all colors. */
+#sp-imagen-review-panel[data-dialog=settings]{width:min(980px,100%)!important;}
+#sp-imagen-review-panel .ness-settings-form{display:flex;flex-direction:column;gap:12px;min-width:0;}
+#sp-imagen-review-panel .ness-settings-top{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;order:0;padding:0 0 10px;border-bottom:1px solid var(--ness-border);}
+#sp-imagen-review-panel .ness-settings-top>.ness-field{width:min(260px,100%);margin:0!important;}
+#sp-imagen-review-panel .ness-settings-intro{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:3px 12px;margin-top:2px;}
+#sp-imagen-review-panel .ness-settings-intro h4{font-size:17px!important;line-height:1.4;font-weight:700;}
+#sp-imagen-review-panel .ness-settings-intro p{margin:0!important;color:var(--ness-muted);font-size:12px;line-height:1.5;}
+#sp-imagen-review-panel .ness-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;min-width:0;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card{margin:0!important;padding:0 14px 12px;border-radius:14px;background:color-mix(in srgb,var(--ness-surface) 43%,var(--ness-bg));border:1px solid var(--ness-border);min-width:0;overflow:visible;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card:not([open]){padding-bottom:0;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>summary{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-height:82px;padding:13px 76px 13px 0!important;line-height:1.45;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>summary::after{position:absolute;top:50%;right:9px;transform:translateY(-50%);font-size:21px;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>summary>.spi-guide-help{position:absolute;top:50%;right:36px;transform:translateY(-50%);}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>summary:hover .ness-settings-card-title{color:var(--ness-accent);}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>summary:focus-visible{outline:2px solid var(--ness-accent)!important;outline-offset:2px;}
+#sp-imagen-review-panel .ness-settings-card-title{display:block;width:100%;font-size:14px;font-weight:700;color:var(--ness-text);overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-settings-card-desc{display:block;width:100%;font-size:12px;font-weight:400;line-height:1.5;color:var(--ness-muted);overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card[open]>summary{margin-bottom:12px;padding-bottom:10px!important;border-bottom:1px solid var(--ness-border);}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>.ness-section{background:var(--ness-bg);}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>.ness-check-label{padding:5px 30px 5px 0!important;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>.ness-check-label:last-child{margin-bottom:12px!important;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>.ness-numbers{padding:2px 0 4px;}
+#sp-imagen-review-panel .ness-settings-form .ness-settings-card>.ness-dialogue-row:last-child{margin-bottom:4px;}
+#sp-imagen-review-panel .ness-settings-form>.ness-settings-card{width:100%;}
+#sp-imagen-review-panel .ness-settings-form>.ness-settings-card[open]{padding-bottom:14px;}
+#sp-imagen-review-panel .ness-settings-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:3px 0 12px;}
 #sp-imagen-review-panel .ness-settings-transferbar{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding-bottom:10px;}
 #sp-imagen-review-panel .ness-transfer-ai{margin:10px 0 4px;padding-top:10px;border-top:1px solid var(--ness-border);}
-#sp-imagen-review-panel .ness-settings-top>.ness-field{width:min(280px,100%);margin:0!important;}
-#sp-imagen-review-panel .ness-settings-top>.ness-note{flex:1;min-width:200px;max-width:480px;margin:0!important;}
-#sp-imagen-review-panel .ness-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;}
-#sp-imagen-review-panel .ness-settings-column{min-width:0;display:flex;flex-direction:column;gap:0;}
-#sp-imagen-review-panel .ness-settings-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 0 12px;}
 #sp-imagen-review-panel .ness-wardrobe-example{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,monospace;background:var(--ness-surface);border:1px solid var(--ness-border);border-radius:10px;padding:12px;max-height:170px;overflow:auto;user-select:text;}
 #sp-imagen-review-panel .ness-child-shade{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:12px;background:color-mix(in srgb,var(--ness-bg) 84%,transparent);}
 #sp-imagen-review-panel .ness-child{display:flex;flex-direction:column;width:min(560px,100%);max-height:100%;min-height:0;min-width:0;border:1px solid var(--ness-border);border-radius:14px;background:var(--ness-bg);box-shadow:0 12px 36px color-mix(in srgb,var(--ness-input) 70%,transparent);}
@@ -163,14 +193,14 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel .ness-coder-result{margin-top:12px;}
 #sp-imagen-review-panel .ness-coder-preview{padding:9px 11px;margin:8px 0 12px;border-left:2px solid var(--ness-accent);background:var(--ness-surface);color:var(--ness-text);font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;}
 #sp-imagen-review-panel .ness-coder-result textarea{height:150px;font-family:ui-monospace,monospace!important;}
-#sp-imagen-review-panel .ness-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:end;}
+#sp-imagen-review-panel .ness-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end;min-width:0;}
 #sp-imagen-review-panel .ness-rule-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px;}
 #sp-imagen-review-panel .ness-rule-fields .ness-wide{grid-column:1/-1;}
 #sp-imagen-review-panel .ness-rule-fields textarea{height:72px;min-height:60px;font-family:ui-monospace,monospace!important;}
 #sp-imagen-review-panel .ness-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;}
-#sp-imagen-review-panel .ness-dialogue-row{display:grid;grid-template-columns:72px minmax(0,1fr) minmax(0,1fr);align-items:center;gap:8px;}
+#sp-imagen-review-panel .ness-dialogue-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end;gap:6px 10px;padding:8px 0;border-top:1px solid var(--ness-border);min-width:0;}
 #sp-imagen-review-panel .ness-dialogue-row>.ness-field{margin-bottom:8px!important;}
-#sp-imagen-review-panel .ness-dialogue-row>span{font-size:13px;color:var(--ness-muted);}
+#sp-imagen-review-panel .ness-dialogue-row>.ness-dialogue-title{grid-column:1/-1;font-size:13px;color:var(--ness-text);font-weight:650;}
 .ness-tooltip,.ness-theme-popover{position:fixed;z-index:2147483600;width:max-content;max-width:330px;border:1px solid var(--ness-border);border-radius:12px;background:var(--ness-surface);color:var(--ness-text);padding:11px 13px;font:14px/1.6 system-ui;letter-spacing:.005em;text-align:left;overflow:auto;box-shadow:0 8px 26px color-mix(in srgb,var(--ness-bg) 70%,transparent);overflow-wrap:anywhere;}
 .ness-tooltip{width:290px;max-width:calc(100vw - 24px);font-size:13px;line-height:1.55;white-space:pre-line;padding:10px 12px;}
 #sp-imagen-review-panel .ness-theme-popover{width:340px;max-width:calc(100vw - 24px);}
@@ -222,7 +252,7 @@ export const NESS_UI_CSS = String.raw`
  #sp-imagen-review-panel .ness-label{font-size:13px;}
  #sp-imagen-review-panel .ness-help-toggle{top:-6px;width:30px;height:30px;font-size:14px;}
  #sp-imagen-review-panel .ness-check-label{min-height:40px;}
- #sp-imagen-review-panel .ness-grid,#sp-imagen-review-panel .ness-settings-grid{grid-template-columns:minmax(0,1fr);gap:0;}
+ #sp-imagen-review-panel .ness-grid,#sp-imagen-review-panel .ness-settings-grid{grid-template-columns:minmax(0,1fr);gap:12px;}
  #sp-imagen-review-panel .ness-library-tools{padding:10px;max-height:42%;overflow:auto;}
  #sp-imagen-review-panel .ness-tag-strip{flex-wrap:nowrap;overflow-x:auto;max-height:none;}
  #sp-imagen-review-panel .ness-tag-filter{min-height:38px;}
@@ -235,8 +265,21 @@ export const NESS_UI_CSS = String.raw`
  #sp-imagen-review-panel .ness-alias-chip>.ness-button.ness-icon{width:40px;min-width:40px;height:44px;min-height:44px;}
  #sp-imagen-review-panel .ness-section>summary{min-height:44px;}
  #sp-imagen-review-panel .ness-check-grid,#sp-imagen-review-panel .ness-rule-fields{grid-template-columns:minmax(0,1fr);}
- #sp-imagen-review-panel .ness-dialogue-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;padding-top:8px;border-top:1px solid var(--ness-border);}
- #sp-imagen-review-panel .ness-dialogue-row>span{grid-column:1/-1;font-weight:600;}
+ #sp-imagen-review-panel .ness-dialogue-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;}
+ #sp-imagen-review-panel .ness-settings-form .ness-settings-card>summary{min-height:74px;}
+ #sp-imagen-review-panel .ness-settings-form .ness-settings-card{padding-left:12px;padding-right:12px;}
+ /* On narrow phones, each post count is a separate readable row. */
+ #sp-imagen-review-panel .ness-settings-form .ness-numbers{grid-template-columns:minmax(0,1fr);gap:7px;}
+ #sp-imagen-review-panel .ness-settings-form .ness-numbers>.ness-field{display:grid!important;grid-template-columns:minmax(0,1fr) 88px;align-items:center;gap:8px;min-height:46px;padding:3px 31px 3px 0!important;margin:0!important;}
+ #sp-imagen-review-panel .ness-settings-form .ness-numbers>.ness-field>.ness-label{grid-column:1;grid-row:1;padding-right:0!important;overflow-wrap:anywhere;}
+ #sp-imagen-review-panel .ness-settings-form .ness-numbers>.ness-field>.ness-input{grid-column:2;grid-row:1;min-width:0;}
+ #sp-imagen-review-panel .ness-settings-form .ness-numbers>.ness-field>.spi-guide-help{right:0;top:50%;transform:translateY(-50%);}
+ #sp-imagen-review-panel[data-dialog=settings] [data-review-actions]{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding:9px 10px!important;}
+ #sp-imagen-review-panel[data-dialog=settings] [data-review-actions]>.ness-status{grid-column:1/-1;min-width:0;margin:0!important;}
+ #sp-imagen-review-panel[data-dialog=settings] [data-review-actions]>.ness-button{width:100%;min-width:0;padding:8px 5px!important;font-size:12px!important;white-space:normal;overflow-wrap:anywhere;text-align:center;}
+ #sp-imagen-review-panel .ness-settings-top>.ness-field{width:100%;}
+ #sp-imagen-review-panel .ness-settings-transferbar{justify-content:stretch;}
+ #sp-imagen-review-panel .ness-settings-transferbar>.ness-button{flex:1;}
  #sp-imagen-review-panel .ness-library-item{height:80px;min-height:80px;}
  #sp-imagen-review-panel .ness-record-tags{height:36px;}
  #sp-imagen-review-panel .ness-tag-add{width:36px;min-height:36px;}

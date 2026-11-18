@@ -570,15 +570,32 @@ function openNessCoder(D,panel,{exceptions=false,initialGoal='auto',onAdd,onClos
 
 // Module: settings_ui
 function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
- const ui=createUiKit(D),{el,input,area,field,checkbox,choice,clear}=ui,root=el('div');root.oninput=onDirty;root.onchange=onDirty;
- const top=el('div',undefined,root,'ness-settings-top'),scope=field(top,'Сохранить для',choice([['chat','Этого чата'],['global','Всех чатов']],'chat'));
- const introduction=ui.section(root,'? С чего начать?');el('div',nessFieldHelp('Настройки: с чего начать'),introduction,'ness-coder-faq');ui.note(introduction,'Пример «Было → Станет»: в RP написано «⟦ОДЕЖДА:Аня⟧синий свитер». Режиссёр получит «Аня: синий свитер», а служебная метка не засорит сцену.');
+ const ui=createUiKit(D),{el,input,area,field,checkbox,choice,clear}=ui,root=el('div');root.className='ness-settings-form';root.oninput=onDirty;root.onchange=onDirty;
+ const top=el('div',undefined,root,'ness-settings-top'),scope=field(top,'Где сохранить?',choice([['chat','Только этот чат'],['global','Все чаты']],'chat'));
+ const intro=el('div',undefined,root,'ness-settings-intro');
+ el('h4','Основные настройки',intro);
+ el('p','Открывай только то, что хочешь изменить.',intro);
  const grid=el('div',undefined,root,'ness-settings-grid'),left=el('div',undefined,grid,'ness-settings-column'),right=el('div',undefined,grid,'ness-settings-column');
- const section=(parent,label,help,open=false)=>{const box=ui.section(parent,label,open);ui.help(box.children[0],help||label);return box;},message=ui.note(root,'');
+ // Sections start collapsed. Concise descriptions live in their headers; detailed help is on demand.
+ const summaries={
+  'Количество постов':'Сколько сообщений учитывать для каждого вида картинки',
+  'Текст на картинке':'Сколько реплик брать в комикс и на страницу истории',
+  'Предварительный просмотр промпта':'Посмотреть и при необходимости поправить задание',
+  'Источники одежды':'Где искать одежду персонажей',
+  'Очистка постов':'Какие служебные записи скрыть от режиссёра',
+  'Точные правила поиска':'Свои форматы, правила удаления и исключения',
+ };
+ const section=(parent,label,help,open=false)=>{
+  const box=ui.section(parent,label,open),summary=box.firstElementChild,description=summaries[help];
+  if(description){box.classList.add('ness-settings-card');summary.textContent='';el('span',label,summary,'ness-settings-card-title');el('span',description,summary,'ness-settings-card-desc');}
+  ui.help(summary,help||label);return box;
+ },message=ui.note(root,'');
  let closeCoder=null;
- const wardrobe=section(right,'◇ Найти одежду персонажей','Источники одежды'),keepSaved=checkbox(wardrobe,'Читать одежду из меток ⟦ОДЕЖДА:Имя⟧',initial.wardrobe.keepDefault);
+ const advanced=section(root,'⚙ Дополнительно','Точные правила поиска',false);
+ el('p','Здесь можно настроить нестандартные метки и исключения.',advanced,'ness-settings-mini-note');
+ const wardrobe=section(right,'👕 Одежда персонажей','Источники одежды'),keepSaved=checkbox(wardrobe,'Читать одежду из сообщений с меткой ⟦ОДЕЖДА:Имя⟧',initial.wardrobe.keepDefault);
  const cardSources=section(wardrobe,'Одежда из карточки и персоны','Необязательные отдельные источники одежды',false);
- ui.note(cardSources,'Если у персонажа нет постоянного неизменного комплекта одежды, лучше описывать её в RP или карточке персонажа. Поиск из карточки и персоны включай только тогда, когда используешь специальные границы блока.');
+ ui.note(cardSources,'Если одежда меняется в сюжете, её удобнее указывать в сообщениях. Для карточки и персоны используй отмеченные блоки.');
  const cardControls={};
  for(const [key,label,example] of [
   ['card','Из карточки персонажа','Для карточки-нарратора внутри блока запиши: ⟦ОДЕЖДА:Имя⟧синяя рубашка⟦/ОДЕЖДА⟧. Для одиночного персонажа можно просто написать одежду между границами.'],
@@ -588,7 +605,6 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
    cardControls[key]={enabled:checkbox(group,'Читать этот источник',opts.enabled)};
    cardControls[key].start=field(group,'Начало блока',input(opts.start));
    cardControls[key].end=field(group,'Конец блока',input(opts.end));
-   ui.note(group,example);
    const sample=key==='card'
     ? `${opts.start}\n⟦ОДЕЖДА:Джи⟧blue crop top⟦/ОДЕЖДА⟧\n⟦ОДЕЖДА:Кишибе⟧grey shirt⟦/ОДЕЖДА⟧\n${opts.end}`
     : `${opts.start}\nblue blouse, long skirt\n${opts.end}`;
@@ -598,8 +614,8 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
     catch{message.textContent='Не получилось скопировать автоматически. Выдели текст примера вручную.';}
    },'quiet');
  }
- const wardrobeActions=el('div',undefined,wardrobe,'ness-settings-actions');ui.button('⌘ Найти одежду по примеру',wardrobeActions,()=>launchCoder(false,'wardrobe'));
- const customSources=section(wardrobe,'Дополнительно · свои форматы одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
+ const wardrobeActions=el('div',undefined,wardrobe,'ness-settings-actions');ui.button('⌘ Помочь найти одежду',wardrobeActions,()=>launchCoder(false,'wardrobe'));
+ const customSources=section(advanced,'Свои форматы одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
  const shapes=WARDROBE_RULE_DEFAULTS;
  const formats={markers:'Запись между метками',regex:'Готовое правило поиска (regex)',html:'HTML — запись в тегах <…>'};
  const labels={namePrefix:'Текст перед именем',nameSuffix:'Текст сразу после имени',outfitEnd:'Текст после описания одежды',blockStart:'Общий блок: начало (если есть)',blockEnd:'Общий блок: конец (если есть)',pattern:'Готовое правило поиска',flags:'Как искать (флаги)',nameGroup:'Часть правила с именем',outfitGroup:'Часть правила с одеждой',rowSelector:'Как найти запись персонажа',nameSelector:'Как найти имя внутри записи',nameAttribute:'Имя хранится в атрибуте',outfitSelector:'Как найти одежду внутри записи',outfitAttribute:'Одежда хранится в атрибуте',stripSelector:'Как найти общий блок для удаления'};
@@ -616,12 +632,16 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  const examples=section(customSources,'Добавить готовый пример','Примеры форматов',false),exampleRow=ui.row(examples);
  const samples={markers:{type:'markers',enabled:true,namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧'},regex:{type:'regex',enabled:true,pattern:'(?<name>[^:\\n]+)_outfit:\\s*(?<outfit>[^\\n]+)',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},html:{type:'html',enabled:true,rowSelector:'.wardrobe-entry',nameSelector:'',nameAttribute:'data-name',outfitSelector:'.outfit',outfitAttribute:'',stripSelector:''}};
  for(const [key,title]of Object.entries(formats))ui.button(title,exampleRow,()=>{const added=addSource(samples[key]);if(added){added.row.open=true;onDirty();}});
- const posts=section(left,'▤ Сколько последних постов читать','Количество постов'),numbers=el('div',undefined,posts,'ness-numbers'),postFields={};
- for(const [key,title]of [['snapshot','Snapshot'],['comic','Comic'],['story_page','Story Page']]){const control=input(initial.posts[key],'number');control.min='1';control.max='20';control.setAttribute('data-setting','posts.'+key);postFields[key]=field(numbers,title,control);}
- const cleanup=section(right,'✂ Убрать ненужный текст','Очистка постов'),checks=el('div',undefined,cleanup,'ness-check-grid'),cleanFields={};
- for(const [key,title]of [['serviceTags','Скрытые мысли и служебные метки'],['comments','Служебные комментарии <!-- … -->'],['html','Скрытые блоки и HTML-оформление'],['mawsFooter','Служебная сводка в конце поста']]){cleanFields[key]=checkbox(checks,title,initial.cleanup[key]);cleanFields[key].setAttribute('data-setting','cleanup.'+key);}
+ const posts=section(left,'📖 История чата','Количество постов'),numbers=el('div',undefined,posts,'ness-numbers'),postFields={};
+ for(const [key,title,help]of [['snapshot','Кадр','Snapshot'],['comic','Комикс','Comic'],['story_page','Страница','Story Page']]){
+  const control=input(initial.posts[key],'number');control.min='1';control.max='20';control.inputMode='numeric';control.setAttribute('data-setting','posts.'+key);postFields[key]=field(numbers,title,control,help);
+ }
+ const cleanup=section(right,'🧹 Очистка текста','Очистка постов'),checks=el('div',undefined,cleanup,'ness-check-grid'),cleanFields={};
+ for(const [key,title]of [['serviceTags','Скрывать мысли и служебные метки'],['comments','Скрывать HTML-комментарии'],['html','Убирать скрытые блоки HTML'],['mawsFooter','Убирать служебную сводку']]){
+  cleanFields[key]=checkbox(checks,title,initial.cleanup[key]);cleanFields[key].setAttribute('data-setting','cleanup.'+key);
+ }
  const cleanupHelperActions=el('div',undefined,cleanup,'ness-settings-actions');ui.button('⌘ Найти лишнее по примеру',cleanupHelperActions,()=>launchCoder(false),'quiet');
- const customCleanup=section(cleanup,'Дополнительно · свои правила удаления','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
+ const customCleanup=section(advanced,'Свои правила удаления','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
  function addFilter(value={pattern:'',flags:'gm'}){
   if(filterRows.length>=8){message.textContent='Можно добавить до 8 фильтров очистки.';return;}
   const box=ui.section(filters,'Убирать вставки · '+(filterRows.length+1),false),body=el('div',undefined,box,'ness-rule-fields'),pattern=field(body,'Правило поиска ненужной вставки',area(value.pattern),'Шаблон удаляемого текста (regex)'),flags=field(body,'Как искать (флаги)',input(value.flags),'Флаги');pattern.parentNode.className+=' ness-wide';
@@ -630,7 +650,7 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  initial.cleanup.customPatterns.forEach(addFilter);
  const cleanupActions=el('div',undefined,customCleanup,'ness-settings-actions');
  ui.button('+ Ввести правило вручную',cleanupActions,()=>{if(addFilter())onDirty();});
- const exceptionScope=section(cleanup,'Сохранить важное из удаляемых блоков','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
+ const exceptionScope=section(advanced,'Сохранить нужное из скрытых блоков','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
  function addException(value={pattern:'',flags:'gm',group:'',label:''}){
   if(exceptionRows.length>=8)throw Error('Можно добавить до 8 исключений.');
   const box=ui.section(exceptionRules,value.label||'Сохранять фрагмент · '+(exceptionRows.length+1),false),label=field(box,'Как назвать извлечённые данные?',input(value.label||''),'Название извлечённых данных'),manual=ui.section(box,'Дополнительно · точный способ поиска'),body=el('div',undefined,manual,'ness-rule-fields');
@@ -643,15 +663,23 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  function launchCoder(exceptions,initialGoal='auto'){
   if(closeCoder)return;
   closeCoder=openNessCoder(D,D.querySelector('#sp-imagen-review-panel'),{exceptions,initialGoal,onClose:()=>{closeCoder=null;},onAdd:result=>{
-   if(result.kind==='wardrobe'){if(sourceRows.length>=8)throw Error('Можно добавить до 8 источников одежды.');addSource(result.rule);wardrobe.open=true;customSources.open=false;sourceRows.at(-1).row.open=false;}
-   else if(result.kind==='preserve'){addException(result.rule);cleanup.open=exceptionScope.open=true;}
-   else{if(filterRows.length>=8)throw Error('Можно добавить до 8 правил удаления.');addFilter(result.rule);cleanup.open=true;customCleanup.open=false;}
+   if(result.kind==='wardrobe'){if(sourceRows.length>=8)throw Error('Можно добавить до 8 источников одежды.');addSource(result.rule);advanced.open=customSources.open=true;sourceRows.at(-1).row.open=false;}
+   else if(result.kind==='preserve'){addException(result.rule);advanced.open=exceptionScope.open=true;}
+   else{if(filterRows.length>=8)throw Error('Можно добавить до 8 правил удаления.');addFilter(result.rule);advanced.open=customCleanup.open=true;}
    onDirty();message.textContent='Правило добавлено в это окно. Осталось нажать «Сохранить настройки».';
   }});
  }
- const dialogue=section(left,'❞ Текст на картинке','Текст на картинке'),dialogueFields={};
- for(const [mode,title]of [['comic','Comic'],['story','Story Page']]){const row=el('div',undefined,dialogue,'ness-dialogue-row');el('span',title,row);for(const [suffix,label,max]of [['Lines','Максимум реплик на странице',8],['Words','Максимум слов в реплике',40]]){const key=mode+suffix,control=input(initial.dialogue[key],'number');control.min=suffix==='Lines'?'0':'1';control.max=String(max);control.setAttribute('data-setting','dialogue.'+key);dialogueFields[key]=field(row,label,control);}}
- const previewSection=section(left,'✧ Перед отправкой','Предварительный просмотр промпта'),previewToggle=checkbox(previewSection,'Показывать итоговый промпт перед генерацией',skipPreview===undefined?initial.previewEnabled:!skipPreview);previewToggle.setAttribute('data-setting','previewEnabled');
+ const dialogue=section(left,'💬 Реплики на картинке','Текст на картинке'),dialogueFields={};
+ for(const [mode,title]of [['comic','Комикс'],['story','Страница истории']]){
+  const row=el('div',undefined,dialogue,'ness-dialogue-row');el('strong',title,row,'ness-dialogue-title');
+  for(const [suffix,label,help,max]of [['Lines','Сколько реплик','Реплик',8],['Words','Слов в реплике','Слов',40]]){
+   const key=mode+suffix,control=input(initial.dialogue[key],'number');control.min=suffix==='Lines'?'0':'1';control.max=String(max);control.inputMode='numeric';control.setAttribute('data-setting','dialogue.'+key);dialogueFields[key]=field(row,label,control,help);
+  }
+ }
+ const previewSection=section(left,'👁 Просмотр задания','Предварительный просмотр промпта'),previewToggle=checkbox(previewSection,'Показывать промпт перед отправкой',skipPreview===undefined?initial.previewEnabled:!skipPreview);previewToggle.setAttribute('data-setting','previewEnabled');
+ // The cards follow the same learning order on phone and desktop.
+ grid.replaceChildren(posts,wardrobe,dialogue,previewSection,cleanup);
+ root.appendChild(advanced);
  const number=e=>e.value.trim()?Number(e.value):NaN;
  function getValue(){return {version:1,wardrobe:{version:1,keepDefault:keepSaved.checked,sources:sourceRows.map(r=>({type:r.type.value,enabled:r.enabled.checked,...Object.fromEntries(Object.entries(r.fields).map(([k,e])=>[k,e.value]))})),card:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.card[k].checked:cardControls.card[k].value])),persona:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.persona[k].checked:cardControls.persona[k].value]))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value})),exceptions:exceptionRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value,group:r.group.value,label:r.label.value.trim()}))},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),previewEnabled:previewToggle.checked};}
  return {element:root,getValue,scope,dispose:()=>closeCoder?.()};
@@ -795,7 +823,7 @@ async function openSettings(){
  const st=SillyTavern.getContext();
  if(!st?.chatMetadata)throw Error('Открой чат, чтобы настроить генерацию.');
  const startChat=st.chat,startId=st.chatId,ui=createUiKit(document),{overlay,panel}=createDialogShell('settings');
- createNessHeader(document,panel,'Настройки','Правила подготовки иллюстраций','SP Imagen');
+ createNessHeader(document,panel,'Настройки генерации','Как SP Imagen собирает описание картинки','SP Imagen');
  const scroll=ui.el('div',undefined,panel);scroll.setAttribute('data-review-scroll','');
  const transferBar=ui.el('div',undefined,scroll,'ness-settings-transferbar');
  const importSettings=ui.button('↥ Импорт настроек',transferBar),exportSettings=ui.button('↧ Экспорт настроек',transferBar);

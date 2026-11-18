@@ -943,7 +943,22 @@ async function openLibraryEditor(){
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
-  const body=tabs.add('Отметины и тело'),bodyGrid=el('div',undefined,body,'ness-grid');for(const key of ['thighMarks','kneeMarks','shinMarks','shoulderMarks','forearmMarks','nudeUpper','nudeLower'])fields[key]=field(bodyGrid,labels[key],area(entry[key]||''));
+  const body=tabs.add('Отметины и тело');
+  const marks=el('section',undefined,body,'ness-body-section');marks.setAttribute('data-library-body-marks','');
+  el('h4','Отметины на коже',marks);
+  el('p','Шрамы, татуировки, родинки и другие постоянные отметины. Выбери часть тела и впиши короткие английские теги через запятую. Укажи сторону, если это важно.',marks,'ness-note');
+  el('p','Например: small scar on left thigh, flower tattoo on right forearm.',marks,'ness-body-example');
+  const marksGrid=el('div',undefined,marks,'ness-grid');
+  for(const key of ['thighMarks','kneeMarks','shinMarks','shoulderMarks','forearmMarks'])fields[key]=field(marksGrid,labels[key],area(entry[key]||''));
+  const details=el('section',undefined,body,'ness-body-section');details.setAttribute('data-library-body-details','');
+  el('h4','Особенности открытого тела',details);
+  el('p','«Верх» — грудь, живот и торс. «Низ» — бёдра, таз и интимная анатомия. Записывай особенности короткими английскими тегами. Обе графы можно оставить пустыми.',details,'ness-note');
+  const bodyGrid=el('div',undefined,details,'ness-grid');
+  for(const key of ['nudeUpper','nudeLower'])fields[key]=field(bodyGrid,labels[key],area(entry[key]||''));
+  const important=el('aside',undefined,body,'ness-body-important');important.setAttribute('data-library-body-important','');important.setAttribute('role','note');
+  el('strong','ВАЖНО!',important);
+  el('p','Эти детали нужны только тогда, когда соответствующая часть тела открыта, видна в кадре и не закрыта одеждой. Если описать скрытую анатомию слишком подробно, NovelAI может попытаться показать её, оголив персонажа вопреки сцене. Для повседневной внешности используй вкладку «Внешность», а одежду описывай в ролевой или её отдельном источнике.',important);
+
   const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&key!=='aliases'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry)};
