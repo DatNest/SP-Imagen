@@ -1,3 +1,4 @@
+import { mountViewportOverlay } from './viewport-overlay.js';
 import { eventSource, event_types } from '../../../../script.js';
 import { createPromptJson, parsePromptJson, SP_IMAGEN_PROMPT_JSON_KEYS } from './prompt-json.js';
 import { saveBase64AsFile } from '../../../utils.js';
@@ -148,7 +149,7 @@ function shell(title, className = '', options = {}) {
     head.append(backButton, heading, minimizeButton);
     dialog.append(head);
     overlay.append(dialog);
-    document.body.append(overlay);
+    const stopViewport = mountViewportOverlay(overlay);
     const background = [...document.body.children].filter(node => node !== overlay).map(node => [node, node.inert]);
     for (const [node] of background) node.inert = true;
     const previous = document.activeElement;
@@ -174,6 +175,7 @@ function shell(title, className = '', options = {}) {
         closed = true;
         document.removeEventListener('keydown', onKey, true);
         for (const [node, inert] of background) node.inert = inert;
+        stopViewport();
         overlay.remove();
         previous?.focus?.();
         options.onClose?.();
@@ -809,7 +811,7 @@ async function initialize() {
 
 const extensionApi = {
     installed: true,
-    version: '2.4.0',
+    version: '2.4.1',
     get hasNew() { return hasNew(); },
     get hubChildOpen() { return hubChildOpen; },
     run,

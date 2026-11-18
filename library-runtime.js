@@ -1,3 +1,4 @@
+import { mountViewportOverlay } from './viewport-overlay.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_DEFAULTS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { NESS_UI_CSS } from './shared-ui-css.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
@@ -395,28 +396,9 @@ function createDialogShell(kind='review'){
  if(style.textContent!==NESS_UI_CSS)style.textContent=NESS_UI_CSS;
  overlay.appendChild(panel);return {overlay,panel};
 }
-function mountDialog(overlay){(document.documentElement||document.body).appendChild(overlay);const stop=trackDialogViewport(overlay);return ()=>{stop();closeNessTooltip();closeNessTheme();};}
-function trackDialogViewport(overlay){
-const viewport=window.visualViewport;let frame=null,last='',stopped=false;
-  const queueFit=()=>{if(stopped)return;if(typeof window.requestAnimationFrame!=='function'){fitViewport();return;}if(frame===null)frame=window.requestAnimationFrame(()=>{frame=null;if(!stopped)fitViewport();});};
-  const fitViewport=()=>{
-    const width=viewport?.width||window.innerWidth||document.documentElement.clientWidth;
-    const height=viewport?.height||window.innerHeight||document.documentElement.clientHeight;
-    const top=viewport?.offsetTop||0,left=viewport?.offsetLeft||0;
-    if(!(width>0&&height>0))return;const signature=[width,height,top,left].join(',');if(signature===last)return;last=signature;
-    for(const [key,value] of Object.entries({top:top+'px',left:left+'px',width:width+'px',height:height+'px',right:'auto',bottom:'auto'}))overlay.style.setProperty(key,value,'important');
-  };
-  const stopViewportTracking=()=>{
-    stopped=true;if(frame!==null)window.cancelAnimationFrame?.(frame);
-    window.removeEventListener('resize',queueFit);
-    viewport?.removeEventListener('resize',queueFit);
-    viewport?.removeEventListener('scroll',queueFit);
-  };
-  fitViewport();
-  window.addEventListener('resize',queueFit);
-  viewport?.addEventListener('resize',queueFit);
-  viewport?.addEventListener('scroll',queueFit);
-return stopViewportTracking;
+function mountDialog(overlay){
+ const stop = mountViewportOverlay(overlay);
+ return () => { stop(); closeNessTooltip(); closeNessTheme(); };
 }
 async function previewFinalPrompt(config, origin) {
  const {overlay,panel}=createDialogShell('prompt');

@@ -7,11 +7,11 @@
 .spi-actions .menu_button, .spi-dialog .menu_button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 38px; margin: 0; padding: 7px 11px; border-radius: 9px; white-space: nowrap; line-height: 1.2; }
 .spi-actions .menu_button { width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .spi-new { display: inline-flex; align-items: center; justify-content: center; min-height: 18px; padding: 1px 7px; border-radius: 999px; background: var(--SmartThemeQuoteColor, #8b5cf6); color: var(--SmartThemeBodyColor, #fff); font-size: 10px; font-weight: 800; letter-spacing: .04em; }
-.spi-overlay { position: fixed; inset: 0; z-index: 2147482500; display: grid; place-items: center; padding: 12px; background: color-mix(in srgb, #000 56%, transparent); }
+.spi-overlay { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: 100vw; height: 100dvh; box-sizing: border-box; min-height: 0; overflow: hidden; z-index: 2147482500; display: grid; place-items: center; padding: 12px; background: color-mix(in srgb, #000 56%, transparent); }
 .spi-dialog [hidden] { display: none !important; }
-.spi-dialog { width: min(760px, 100%); max-height: min(88dvh, 860px); overflow: auto; padding: 16px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 14px; background: var(--SmartThemeBlurTintColor, #222); color: var(--SmartThemeBodyColor, #eee); box-shadow: 0 12px 36px rgba(0,0,0,.34); box-sizing: border-box; }
+.spi-dialog { width: min(760px, 100%); max-height: min(100%, 860px); overflow: auto; padding: 16px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 14px; background: var(--SmartThemeBlurTintColor, #222); color: var(--SmartThemeBodyColor, #eee); box-shadow: 0 12px 36px rgba(0,0,0,.34); box-sizing: border-box; }
 
-.spi-dialog-head { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; }
+.spi-dialog-head { position:sticky; top:0; z-index:1; display: flex; align-items: center; gap: 9px; margin: 0 0 14px; }
 .spi-dialog-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 20px; line-height: 1.25; }
 .spi-dialog-head .spi-back { flex: none; width: 38px; min-width: 38px; padding: 0; font-size: 20px; }
 .spi-dialog h3 { margin: 0 0 9px; font-size: 15px; }
@@ -53,14 +53,14 @@
 .spi-dialog :is(button,input,select,textarea):focus-visible, .spi-settings :is(button,.inline-drawer-toggle):focus-visible { outline: 2px solid var(--SmartThemeQuoteColor, #8b5cf6); outline-offset: 2px; }
 
 .spi-dialog-head .spi-minimize { flex:none; width:38px; min-width:38px; padding:0; font-size:21px; }
-.spi-dialog.spi-prompt-center { display:flex; flex-direction:column; height:min(640px,88dvh); min-height:0; overflow:hidden; }
+.spi-dialog.spi-prompt-center { display:flex; flex-direction:column; height:min(640px,100%); min-height:0; overflow:hidden; }
 .spi-prompt-center > .spi-prompt-list { flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; padding-right:4px; align-content:start; }
 .spi-prompt-center > .spi-prompt-transfer { flex:none; margin:0 0 10px; justify-content:flex-start; }
 .spi-prompt-center > .spi-dialog-actions:last-child { flex:none; }
-.spi-dialog.spi-prompt-window { display:flex; flex-direction:column; width:min(920px,100%); height:min(720px,88dvh); min-height:0; overflow:hidden; }
+.spi-dialog.spi-prompt-window { display:flex; flex-direction:column; width:min(920px,100%); height:min(720px,100%); min-height:0; overflow:hidden; }
 .spi-prompt-window > textarea { flex:1 1 auto; height:100%; min-height:0; resize:none; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
 .spi-prompt-window > .spi-dialog-actions, .spi-prompt-window > .spi-status { flex:none; }
-.spi-dialog.spi-prompt-json { display:flex; flex-direction:column; height:min(680px,88dvh); min-height:0; overflow:hidden; }
+.spi-dialog.spi-prompt-json { display:flex; flex-direction:column; height:min(680px,100%); min-height:0; overflow:hidden; }
 .spi-prompt-json > .spi-json-label { display:flex; flex-direction:column; gap:7px; min-height:0; flex:1 1 auto; font-weight:600; }
 .spi-prompt-json .spi-json-text { flex:1 1 auto; min-height:0; height:100%; resize:none; overflow:auto; scrollbar-width:thin; }
 .spi-prompt-json > .spi-dialog-actions, .spi-prompt-json > p { flex:none; }
@@ -71,8 +71,8 @@
 .spi-overlay.spi-collapsed .spi-dialog-head { margin:0; }
 .spi-overlay.spi-collapsed .spi-dialog-head h2 { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media (max-width:620px) {
-  .spi-overlay { align-items:end; padding:0; }
-  .spi-dialog { width:100%; max-height:94dvh; padding:13px; border-radius:14px 14px 0 0; }
+  .spi-overlay { align-items:end; padding:env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+  .spi-dialog { width:100%; max-height:100%; padding:13px; border-radius:14px 14px 0 0; }
   .spi-dialog h2 { font-size:18px; }
   .spi-prompt-row { grid-template-columns:1fr; }
   .spi-prompt-row .spi-dialog-actions { justify-content:flex-start; }
@@ -81,7 +81,7 @@
   .spi-style-library { max-height:37dvh; }
   .spi-style-editor textarea { min-height:210px; }
   .spi-dialog .menu_button { min-height:42px; }
-  .spi-dialog.spi-prompt-center, .spi-dialog.spi-prompt-window, .spi-dialog.spi-prompt-json { height:94dvh; }
+  .spi-dialog.spi-prompt-center, .spi-dialog.spi-prompt-window, .spi-dialog.spi-prompt-json { height:100%; }
   .spi-overlay.spi-collapsed { padding:8px; }
   .spi-overlay.spi-collapsed > .spi-dialog { width:min(350px,calc(100vw - 16px))!important; border-radius:12px; }
 }
