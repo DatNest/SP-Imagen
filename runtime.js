@@ -1092,7 +1092,7 @@ function normalizeImagePrompt(value) {
   if(c==='\\'){description+=c;escaped=true;continue;}
   if(c==='"'){quoted=!quoted;description+=c;continue;}
   if(!quoted&&text.startsWith('Text:',i)&&(i===0||/[\s;.]/.test(text[i-1]))){textAt=i;break;}
-  if(c==='|'&&(quoted||!/^\s*(?:girl|boy|cat|other)\b/.test(text.slice(i+1))))description+='—';
+  if(c==='|'&&(quoted||!/^[ \t]*(?:girl|boy|cat|other)\b/.test(text.slice(i+1))))description+='—';
   else description+=c;
  }
  if(textAt<0)return description;
@@ -1105,6 +1105,53 @@ function normalizeImagePrompt(value) {
   return s.replace(/\|/g,'—');
  }).join('\n\n');
  return description.trimEnd()+'\n\nText: '+annotation;
+}
+function splitPromptVisualAndText(prompt){
+ const boundary=String(prompt||'').indexOf('\n\nText:');
+ return boundary<0 ? {visual:String(prompt||''), text:''} : {visual:String(prompt||'').slice(0,boundary), text:String(prompt||'').slice(boundary+8).trim()};
+}
+function clipPromptWords(text,maxWords){
+ const src=String(text||'').trim();
+ if(!src||!Number.isInteger(maxWords)||maxWords<1)return '';
+ const tokens=[...src.matchAll(/\S+/g)];
+ if(tokens.length<=maxWords)return src;
+ return src.slice(0,tokens[maxWords-1].index+tokens[maxWords-1][0].length).trim().replace(/[,:;\-–—]+$/,'').trim();
+}
+function splitTextFragments(text){
+ return String(text||'').split(/\r?\n[ \t]*\r?\n/).map(x=>x.trim()).filter(Boolean);
+}
+function rewriteSpeechBubbles(base,fragments){
+ const source=String(base||'');
+ const marker=/(?:^|;\s*)Speech bubble\s+\d+\s*:/i;
+ const start=source.search(marker);
+ if(start<0)return source;
+ const prefix=source.slice(0,start).replace(/[;\s]+$/,'');
+ const suffix=source.slice(start);
+ const entries=[...suffix.matchAll(/Speech bubble\s+\d+\s*:[\s\S]*?(?=(?:;\s*Speech bubble\s+\d+\s*:)|$)/gi)].map(m=>m[0].trim().replace(/^;\s*/,''));
+ if(!entries.length)return source;
+ const next=entries.slice(0,fragments.length).map((entry,index)=>{
+  let result=entry.replace(/Speech bubble\s+\d+/i,'Speech bubble '+(index+1));
+  const phrase=fragments[index]||'';
+  if(/saying\s+"[\s\S]*"\s*$/i.test(result))result=result.replace(/saying\s+"([\s\S]*)"\s*$/i,'saying "'+phrase.replace(/"/g,'\\"')+'"');
+  return result;
+ }).filter(Boolean);
+ return next.length ? prefix+'; '+next.join('; ') : prefix;
+}
+function applyDialogueLimitsToPrompt(prompt,kind,settings){
+ if(!['comic','story_page'].includes(kind))return prompt;
+ const lines=kind==='comic'?settings?.dialogue?.comicLines:settings?.dialogue?.storyLines;
+ const words=kind==='comic'?settings?.dialogue?.comicWords:settings?.dialogue?.storyWords;
+ if(!Number.isInteger(lines)||!Number.isInteger(words))return prompt;
+ const {visual,text}=splitPromptVisualAndText(prompt);
+ const charStart=visual.indexOf('|');
+ const base=(charStart<0?visual:visual.slice(0,charStart)).trim();
+ const characters=charStart<0?'':visual.slice(charStart).trim();
+ const bubbleEntries=[...base.matchAll(/Speech bubble\s+\d+\s*:[\s\S]*?saying\s+"([\s\S]*?)"(?=(?:;\s*Speech bubble\s+\d+\s*:)|$)/gi)].map(m=>m[1].trim()).filter(Boolean);
+ const sourceFragments=bubbleEntries.length?bubbleEntries:splitTextFragments(text);
+ const limited=(lines<=0?[]:sourceFragments.slice(0,lines).map(fragment=>clipPromptWords(fragment,words)).filter(Boolean));
+ const nextBase=bubbleEntries.length?rewriteSpeechBubbles(base,limited):base;
+ const nextVisual=[nextBase,characters].filter(Boolean).join(characters?' ':'');
+ return limited.length ? nextVisual+'\n\nText: '+limited.join('\n\n') : nextVisual;
 }
 
 async function repairNpcPromptLanguage(kind,prompt){
@@ -1962,7 +2009,11 @@ if(npcLanguage){
  config.prompt=await repairNpcPromptLanguage(kind,config.prompt);
  requireOrigin();
 }
-if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
+if(profile?.options?.includeCharacters!==false){
+ const fallbackLibrary=prepared?.ticket===ticket ? prepared.library : visibility;
+ config.prompt=insertVisibleAppearance(config.prompt,visibility,fallbackLibrary);
+}
+config.prompt=applyDialogueLimitsToPrompt(config.prompt,kind,runtimeSettings);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});

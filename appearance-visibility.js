@@ -62,7 +62,7 @@ export function appearanceVisibilityInstruction(records,rules={},customTemplate)
  return template.includes('{{rules}}') ? template.replaceAll('{{rules}}',descriptions) : template+'\n'+descriptions;
 }
 
-export function insertVisibleAppearance(prompt,records){
+export function insertVisibleAppearance(prompt,records,directory=records){
  const seen=new Set();
  const marker=/([ \t]*,[ \t]*)?\[\[(?:NESS_VIS:([a-z][a-z0-9_]*)|([a-z][a-z0-9_]*):id):([^\]\r\n]+)\]\]([ \t]*[,;])?/g;
  const result=prompt.replace(marker,(_,before,nessId,legacyId,spec,after)=>{
@@ -82,7 +82,7 @@ export function insertVisibleAppearance(prompt,records){
  // A director can accidentally omit a visibility marker. If a known library character
  // is explicitly named at the start of its own section, use the base as a safe fallback
  // rather than silently generating a generic look-alike. Never create a new character.
- const ids=[...records].filter(([id,record])=>!seen.has(id)&&String(record.base||'').trim());
+ const ids=[...(directory?.entries?.() || records?.entries?.() || [])].filter(([id,record])=>!seen.has(id)&&String(record?.base||'').trim());
  if(!ids.length)return result;
  const escapeRegex=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
  const identityMatch=(body,record)=>{

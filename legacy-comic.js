@@ -24,10 +24,23 @@ function readOutfits(wardrobe) {
 function personRecord(person, library) {
     const id = clean(person.id).toLowerCase();
     const exact = library?.get?.(id);
-    if (exact) return {id, record: exact};
-    const named = [...(library?.entries?.() || [])].filter(([,record]) =>
+    if (exact) return { id, record: exact };
+    const named = [...(library?.entries?.() || [])].filter(([, record]) =>
         [record.name, record.promptName, ...(record.aliases || [])].some(name => normalizeName(name) && normalizeName(name) === normalizeName(person.name)));
-    return named.length === 1 ? {id: named[0][0], record: named[0][1]} : null;
+    return named.length === 1 ? { id: named[0][0], record: named[0][1] } : null;
+}
+function stripLeadingDuplicate(details, name, base) {
+    let text = clean(details);
+    if (!text || !base) return text;
+    const escapedName = clean(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (escapedName) text = text.replace(new RegExp('^' + escapedName + '\\s*,\\s*', 'iu'), '');
+    const normalizedText = normalizeName(text).replace(/[,;]+$/g, '');
+    const normalizedBase = normalizeName(base).replace(/[,;]+$/g, '');
+    if (normalizedText === normalizedBase) return '';
+    if (normalizedText.startsWith(normalizedBase + ',') || normalizedText.startsWith(normalizedBase + ';')) {
+        return text.slice(base.length).replace(/^[,;\s]+/, '');
+    }
+    return text;
 }
 function findOutfit(person, match, outfits) {
     const choices = [person.name, person.id, match?.id, match?.record.name,
@@ -53,8 +66,8 @@ export function isLegacyComicData(data) {
         && Object.keys(data).sort().join(',') === 'bubbles,people,scene,text';
 }
 
-export function assembleLegacyComic(data, {kind='comic', wardrobe='', library=new Map()}={}) {
-    if (!isLegacyComicData(data) || !['comic','story_page'].includes(kind)) {
+export function assembleLegacyComic(data, { kind = 'comic', wardrobe = '', library = new Map() } = {}) {
+    if (!isLegacyComicData(data) || !['comic', 'story_page'].includes(kind)) {
         throw Error('Неподдерживаемый JSON-формат режиссёра.');
     }
     const scene = data.scene;
@@ -69,19 +82,19 @@ export function assembleLegacyComic(data, {kind='comic', wardrobe='', library=ne
     const people = assertRows(data.people, 'people', 22);
     const bubbles = assertRows(data.bubbles, 'bubbles', 30);
     const text = assertText(data.text, 'text', 20000);
-    const counts = {girl:0,boy:0,cat:0,other:0};
+    const counts = { girl: 0, boy: 0, cat: 0, other: 0 };
     for (const person of people) {
         if (!person || typeof person !== 'object') throw Error('JSON Comic: неверная запись персонажа.');
         counts[category(person.gender)]++;
     }
-    const tags = ['girl','boy','cat','other'].map(type=>countLabel(counts[type],type)).filter(Boolean);
+    const tags = ['girl', 'boy', 'cat', 'other'].map(type => countLabel(counts[type], type)).filter(Boolean);
     const base = [
-        [...tags,`${panels.length} panels comic page`, ...(bubbles.length?['text']:[])].join(', '),
+        [...tags, `${panels.length} panels comic page`, ...(bubbles.length ? ['text'] : [])].join(', '),
         sentence(setting), sentence(layout),
         ...panels.map((panel, index) => {
             if (!panel || typeof panel !== 'object' || panel.number !== index + 1) throw Error('JSON Comic: нарушен порядок панелей.');
-            const type = assertText(panel.type,'panel.type');
-            const content = assertText(panel.content,'panel.content');
+            const type = assertText(panel.type, 'panel.type');
+            const content = assertText(panel.content, 'panel.content');
             return `Panel ${index + 1}: ${sentence(type)}, ${sentence(content)}`;
         }),
         sentence(borders),
@@ -89,36 +102,34 @@ export function assembleLegacyComic(data, {kind='comic', wardrobe='', library=ne
     const outfits = readOutfits(wardrobe);
     const actorText = people.map(person => {
         const type = category(person.gender);
-        const name = assertText(person.name,'people.name',160);
-        const details = assertText(person.details,'people.details',12000);
-        const actions = assertText(person.actions,'people.actions',3500);
-        const match = personRecord(person,library);
-        const outfit = findOutfit(person,match,outfits);
+        const name = assertText(person.name, 'people.name', 160);
+        const details = assertText(person.details, 'people.details', 12000);
+        const actions = assertText(person.actions, 'people.actions', 3500);
+        const match = personRecord(person, library);
+        const baseAppearance = clean(match?.record?.base || '');
+        const outfit = findOutfit(person, match, outfits);
+        const detailBody = stripLeadingDuplicate(details, name, baseAppearance);
         const pieces = [name];
-        // The legacy director promises *not* to include fixed appearance or wardrobe.
-        // Add a fixed base only for library entries without framing selections.
-        if (match && !match.record.views && clean(match.record.base)) pieces.push(sentence(match.record.base));
+        if (baseAppearance) pieces.push(sentence(baseAppearance));
         if (outfit) pieces.push('current outfit: ' + outfit);
-        if (details) pieces.push(sentence(details));
+        if (detailBody) pieces.push(sentence(detailBody));
         const body = pieces.join(', ') + (actions ? '; ' + sentence(actions) : '');
         return type + ', ' + body;
     });
     const lettering = bubbles.map((bubble, index) => {
         if (!bubble || typeof bubble !== 'object') throw Error('JSON Comic: неверная реплика.');
-        const phrase = assertText(bubble.text,'bubbles.text',6000);
-        const position = assertText(bubble.position,'bubbles.position');
-        const shape = assertText(bubble.shape,'bubbles.shape');
-        const border = assertText(bubble.border,'bubbles.border');
-        const tail = assertText(bubble.tail,'bubbles.tail');
-        return `Speech bubble ${index+1}: ${sentence(shape)}, ${sentence(border)}, ${sentence(position)}, tail ${sentence(tail)}, saying "${phrase.replace(/"/g,'\\"')}"`;
+        const phrase = assertText(bubble.text, 'bubbles.text', 6000);
+        const position = assertText(bubble.position, 'bubbles.position');
+        const shape = assertText(bubble.shape, 'bubbles.shape');
+        const border = assertText(bubble.border, 'bubbles.border');
+        const tail = assertText(bubble.tail, 'bubbles.tail');
+        return `Speech bubble ${index + 1}: ${sentence(shape)}, ${sentence(border)}, ${sentence(position)}, tail ${sentence(tail)}, saying "${phrase.replace(/"/g, '\\"')}"`;
     });
-    // Put comic balloon layout in shared scene, not one person's caption.
     const speech = lettering.length ? '; ' + lettering.join('; ') : '';
     const visual = base + speech + (actorText.length ? ' | ' + actorText.join(' | ') : '');
     const annotation = text.replace(/^Text:\s*/iu, '').trim();
-    // Bubble entries are the ground truth if an inaccurate duplicate text field was returned.
-    const dialog = bubbles.length ? bubbles.map(b=>b.text).join('\n\n') : annotation;
+    const dialog = bubbles.length ? bubbles.map(b => b.text).join('\n\n') : annotation;
     const prompt = visual + (dialog ? '\n\nText: ' + dialog : '');
     if (prompt.length > 45000) throw Error('JSON Comic: итоговый промпт длиннее 45 000 символов.');
-    return {prompt, aspect_ratio:'2:3', image_size:'1K'};
+    return { prompt, aspect_ratio: '2:3', image_size: '1K' };
 }
