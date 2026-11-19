@@ -62,52 +62,80 @@ export function appearanceVisibilityInstruction(records,rules={},customTemplate)
  return template.includes('{{rules}}') ? template.replaceAll('{{rules}}',descriptions) : template+'\n'+descriptions;
 }
 
+/**
+ * Resolve all appearance markers once, then supply full base appearances for
+ * named active characters whose director entry did not contain a marker.
+ *
+ * records   — characters that have configured, selectable views
+ * directory — ALL selected library characters (including those with no views)
+ *
+ * An unavailable view NEVER invalidates the prompt. It uses the complete
+ * permanent appearance instead. Unknown IDs do not introduce extra actors.
+ */
 export function insertVisibleAppearance(prompt,records,directory=records){
+ const selected=records instanceof Map?records:new Map();
+ const active=directory instanceof Map?directory:selected;
  const seen=new Set();
  const marker=/([ \t]*,[ \t]*)?\[\[(?:NESS_VIS:([a-z][a-z0-9_]*)|([a-z][a-z0-9_]*):id):([^\]\r\n]+)\]\]([ \t]*[,;])?/g;
- const result=prompt.replace(marker,(_,before,nessId,legacyId,spec,after)=>{
+ const cleanBase=record=>String(record?.base||'').trim().replace(/[;,\s]+$/,'');
+ const resolveAppearance=(id,spec)=>{
+  const configured=selected.get(id);
+  const source=active.get(id)||configured;
+  if(!source)return null;
+  const base=cleanBase(source);
+  // "none" means an intentionally invisible part ONLY for a character that
+  // actually has configured view data. A no-view character always gets base.
+  const hasViews=Boolean(configured&&(configured.ranges?.length||Object.values(configured.selections||{}).some(x=>Array.isArray(x)&&x.length)));
+  if(spec==='none'&&hasViews)return '';
+  if(configured&&spec!=='none'&&Object.hasOwn(NESS_APPEARANCE_PRESETS,spec)){
+   const {ranges=[],selections={}}=configured;
+   const matching=visibleAppearanceRanges(ranges,spec,selections,false);
+   if(matching.length){
+    const text=visibleAppearanceRanges(ranges,spec,selections,true)
+     .map(x=>x.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean).join(', ');
+    if(text)return text;
+   }
+  }
+  // No view metadata, missing preset, or an empty/unfilled selected view.
+  return base;
+ };
+ let result=String(prompt||'').replace(marker,(_,before,nessId,legacyId,spec,after)=>{
   const id=nessId||legacyId;
-  if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
+  if(seen.has(id))return after||before||'';
+  const value=resolveAppearance(id,spec);
+  if(value===null)return after||before||'';
   seen.add(id);
-  if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
-  const {base,ranges=[],selections={}}=records.get(id);
-  if(spec==='none')return after||'';
-  const view=visibleAppearanceRanges(ranges,spec,selections,false);
-  const text=view.length
-   ?visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean).join(', ')
-   :String(base||'').trim().replace(/[;,\s]+$/,'');
-  return text?(before||'')+text+';':after||'';
+  return value?(before||'')+value+';':after||before||'';
  });
- if(/\[\[(?:NESS_VIS:[^\]\r\n]+|[a-z][a-z0-9_]*:id:[^\]\r\n]+)\]\]/i.test(result))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
- // A director can accidentally omit a visibility marker. If a known library character
- // is explicitly named at the start of its own section, use the base as a safe fallback
- // rather than silently generating a generic look-alike. Never create a new character.
- const ids=[...(directory?.entries?.() || records?.entries?.() || [])].filter(([id,record])=>!seen.has(id)&&String(record?.base||'').trim());
+ if(/\[\[(?:NESS_VIS:[^\]\r\n]+|[a-z][a-z0-9_]*:id:[^\]\r\n]+)\]\]/i.test(result)){
+  throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
+ }
+ // The model can also omit NESS_VIS entirely. Restore the identity from the
+ // same active directory, but only when exactly one character matches.
+ const ids=[...active].filter(([id,record])=>!seen.has(id)&&cleanBase(record));
  if(!ids.length)return result;
  const escapeRegex=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
  const identityMatch=(body,record)=>{
   const names=[record.promptName,record.name,...(record.aliases||[])]
    .map(name=>String(name||'').trim()).filter(name=>name.length>=2).sort((a,b)=>b.length-a.length);
   for(const name of names){
-   const matched=body.match(new RegExp('^[ \t]*'+escapeRegex(name)+'(?=[ \t]*[,;]|$)','iu'));
-   if(matched)return matched[0];
+   const match=body.match(new RegExp('^[ \\t]*'+escapeRegex(name)+'(?=[ \\t]*[,;]|$)','iu'));
+   if(match)return match[0];
   }
   return '';
  };
- return result.replace(/(\|[ \t]*(?:girl|boy|cat|other)[ \t]*,)([^|\n]*)/gi,(whole,prefix,body)=>{
-  const candidates=ids.filter(([id,r])=>!seen.has(id)&&identityMatch(body,r));
+ result=result.replace(/(\|[ \t]*(?:girl|boy|cat|other)[ \t]*,)([^|\n]*)/gi,(whole,prefix,body)=>{
+  const candidates=ids.filter(([id,record])=>!seen.has(id)&&identityMatch(body,record));
   if(candidates.length!==1)return whole;
-  const [id,record]=candidates[0];
-  const base=String(record.base).trim().replace(/[;,\s]+$/,'');
+  const [id,record]=candidates[0],base=cleanBase(record);
   if(!base||body.includes(base))return whole;
   const matched=identityMatch(body,record);
   if(!matched)return whole;
   seen.add(id);
-  // Keep the identity immediately after subject; appearance follows once.
   return prefix+body.slice(0,matched.length)+', '+base+'; '+body.slice(matched.length).replace(/^[ \t]*[,;]?[ \t]*/,'');
  });
+ return result;
 }
-
 
 // Empty selections are metadata, not usable appearance tags.
 export function hasConfiguredAppearanceViews(entry){
