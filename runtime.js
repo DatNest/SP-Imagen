@@ -577,32 +577,32 @@ async function verifyNessCoderExample(result,options){
 }
 function openNessCoder(D,panel,{exceptions=false,initialGoal='auto',onAdd,onClose=()=>{}}={}){
  let closed=false;
- const dialog=createNessChildDialog(D,panel,{title:exceptions?'Сохранить нужные данные':'Настроить по примеру',marker:'data-ness-coder',onClose:()=>{closed=true;onClose();}});
+ const dialog=createNessChildDialog(D,panel,{title:exceptions?'Помогатор 3000 · сохранить нужное':'Помогатор 3000 · настройка по примеру',marker:'data-ness-coder',onClose:()=>{closed=true;onClose();}});
  const {el,field,input,area,button,choice,body:scroll,actions,finish}=dialog,ui=dialog;
- ui.note(scroll,exceptions?'Сохранит нужное значение из технической вставки, даже когда сама вставка скрывается.':'Покажи один фрагмент из сообщения. SP Imagen подготовит правило, которое будет искать похожие фрагменты в чате.');
- const goal=exceptions?{value:'preserve'}:field(scroll,'1. Выбери результат',choice([['cleanup','Убрать такую вставку из задания для картинки'],['wardrobe','Найти имя и одежду персонажа']],initialGoal==='wardrobe'?'wardrobe':'cleanup'),'Задача помогатора');
+ ui.note(scroll,exceptions?'Сохраним важное из скрываемой записи. Например, число отношений 12, но не её технические скобки.':'Здесь не нужно писать код. Покажи одну запись из чата: помощник составит правило, проверит его и добавит в настройки.');
+ const goal=exceptions?{value:'preserve'}:field(scroll,'1. Что сделать с такой записью?',choice([['cleanup','Не показывать её режиссёру'],['wardrobe','Прочитать одежду персонажа']],initialGoal==='wardrobe'?'wardrobe':'cleanup'),'Задача помогатора');
  if(exceptions)ui.note(scroll,'1. Цель: сохранить значение из технической вставки, даже если её оформление будет скрыто.');
- const source=field(scroll,'2. Скопируй ОДНУ вставку из сообщения',area(''),'Пример для помогатора');
+ const source=field(scroll,'2. Вставь одну настоящую запись из ролевой',area(''),'Пример для помогатора');
  source.placeholder=exceptions?'Например: ⟦SCORE:12⟧':goal.value==='wardrobe'?'Например: [OUTFIT:Джи]blue shirt[/OUTFIT]':'Например: [PRIVATE]служебная заметка[/PRIVATE]';
  source.setAttribute('data-coder-source','');
- ui.note(scroll,'Вставляй фрагмент вместе со скобками и подписями — как он записан в исходном тексте сообщения. Весь пост копировать не нужно.');
- const samples=el('div',undefined,scroll,'ness-settings-actions'),sampleButton=button('Подставить учебный пример',samples);
+ ui.note(scroll,'Копируй запись целиком, включая метки. Например, [OUTFIT:Джи]blue shirt[/OUTFIT], а не только blue shirt.');
+ const samples=el('div',undefined,scroll,'ness-settings-actions'),sampleButton=button('✨ Вставить готовый пример',samples);
  const label=exceptions?field(scroll,'Необязательно: название перед сохранённым значением',input(''),'Название извлечённых данных'):{value:''};if(exceptions)label.placeholder='Например: Шкала отношений';
- const advanced=ui.section(scroll,'Дополнительно: если обычный пример не подошёл',false);advanced.setAttribute('data-coder-advanced','');
+ const advanced=ui.section(scroll,'⚙ Для опытных: точные границы и код поиска',false);advanced.setAttribute('data-coder-advanced','');
  const format=field(advanced,'Как искать нужный фрагмент',choice([['auto','Определить по вставленному примеру'],['regex','У меня готовое правило поиска (regex)'],['sample','По скобкам или тегам из примера'],['literal','Искать точно такой же текст'],['block','Искать текст между началом и концом']],'auto'),'Способ поиска');
  const boundaries=el('div',undefined,advanced,'ness-grid'),start=field(boundaries,'Текст перед нужным содержимым',input(''),'Начальная метка'),end=field(boundaries,'Текст после нужного содержимого',input(''),'Конечная метка');boundaries.hidden=true;
  const groupSection=ui.section(advanced,'Указать, какую часть готового правила использовать'),groups=el('div',undefined,groupSection,'ness-grid');
  const nameGroup=field(groups,'Часть правила с именем',input(''),'Группа имени'),outfitGroup=field(groups,'Часть правила с одеждой',input(''),'Группа одежды'),group=field(groups,'Часть правила с нужным значением',input(''),'Группа извлечения');
  function refresh(){boundaries.hidden=format.value!=='block';groupSection.hidden=goal.value==='cleanup';nameGroup.parentNode.hidden=outfitGroup.parentNode.hidden=!['auto','wardrobe'].includes(goal.value);group.parentNode.hidden=goal.value!=='preserve';invalidate();}
- const fallback=ui.checkbox(advanced,'Если пример сложный, попросить текстовую модель помочь',true);
- const process=button('3. Проверить пример',scroll,undefined,'primary'),message=el('p','',scroll,'ness-status');message.setAttribute('role','status');process.setAttribute('data-coder-process','');
+ const fallback=ui.checkbox(advanced,'Если простой способ не справится, попросить модель разобраться',true);
+ const process=button('3. Найти правило и показать результат',scroll,undefined,'primary'),message=el('p','',scroll,'ness-status');message.setAttribute('role','status');process.setAttribute('data-coder-process','');
  const problem=ui.section(scroll,'Технические подробности ошибки');problem.hidden=true;const problemText=el('div','',problem,'ness-coder-faq');
  const resultBox=el('div',undefined,scroll,'ness-coder-result');resultBox.hidden=true;
- el('h4','4. Проверь результат',resultBox);const outcome=el('p','',resultBox,'ness-note'),preview=el('div','',resultBox,'ness-coder-preview'),where=el('p','',resultBox,'ness-note');
+ el('h4','4. Проверь: правильно ли понял?',resultBox);const outcome=el('p','',resultBox,'ness-note'),preview=el('div','',resultBox,'ness-coder-preview'),where=el('p','',resultBox,'ness-note');
  const technical=ui.section(resultBox,'Код правила — только для ручного переноса');technical.setAttribute('data-coder-code','');const output=field(technical,'Готовое правило',area(''),'Готовое правило');output.readOnly=true;const copy=button('Скопировать код',technical);copy.disabled=true;
- ui.note(resultBox,'Если результат подходит, добавь правило. Оно начнёт работать после сохранения настроек.');
+ ui.note(resultBox,'Если правильно — нажми «Добавить». Потом обязательно сохрани настройки генерации.');
  const faq=ui.section(scroll,'? Что такое метка, HTML и правило поиска?',false);el('div',nessFieldHelp('Помогатор: справка'),faq,'ness-coder-faq');
- const add=button('Добавить это правило',actions,undefined,'primary');add.disabled=true;add.setAttribute('data-coder-add','');
+ const add=button('Добавить правило в настройки',actions,undefined,'primary');add.disabled=true;add.setAttribute('data-coder-add','');
  let compiled=null,revision=0;
  function invalidate(){revision++;compiled=null;resultBox.hidden=true;copy.disabled=add.disabled=true;message.textContent='';problem.hidden=true;}
  function showProblem(error){const text=String(error.message||error);problemText.textContent=text;problem.hidden=false;
@@ -619,7 +619,7 @@ function openNessCoder(D,panel,{exceptions=false,initialGoal='auto',onAdd,onClos
   try{let result;try{result=compileNessRule(options);await verifyNessCoderExample(result,options);}catch(e){if(closed||ownRevision!==revision)return;if(!fallback.checked||!options.text.trim()||options.text.length>20000)throw e;message.textContent='Подключённая модель разбирает твой пример…';result=await proposeNessRule(options);if(closed||ownRevision!==revision)return;await verifyNessCoderExample(result,options);}
    if(closed||ownRevision!==revision)return;compiled=result;output.value=compiled.code;
    outcome.textContent=compiled.kind==='wardrobe'?'Будут найдены имя персонажа и его одежда. Одежда попадёт в данные для картинки.':compiled.kind==='preserve'?'Нужное содержимое останется, а его служебное оформление будет убрано.':'Такие вставки больше не будут передаваться режиссёру. Сообщения чата останутся прежними.';
-   where.textContent='После добавления правило попадёт в нужный раздел настроек.';preview.textContent=compiled.preview?'Результат на твоём примере: '+compiled.preview:'Правило подготовлено. Для проверки вставь пример из поста.';resultBox.hidden=false;copy.disabled=add.disabled=false;message.textContent='Проверь результат ниже. Если он подходит, нажми «Добавить это правило».';resultBox.scrollIntoView?.({block:'nearest',behavior:'auto'});
+   where.textContent='После добавления правило попадёт в нужный раздел настроек.';preview.textContent=compiled.preview?'Результат на твоём примере: '+compiled.preview:'Правило подготовлено. Для проверки вставь пример из поста.';resultBox.hidden=false;copy.disabled=add.disabled=false;message.textContent='Если пример обработался правильно, добавь правило в настройки.';resultBox.scrollIntoView?.({block:'nearest',behavior:'auto'});
   }catch(e){if(!closed&&ownRevision===revision)showProblem(e);}finally{if(!closed)process.disabled=false;}
  };
  copy.onclick=async()=>{if(closed||!compiled)return;try{if(!window.navigator?.clipboard?.writeText)throw Error('Выдели и скопируй код из поля вручную.');await window.navigator.clipboard.writeText(output.value);if(!closed)message.textContent='Код скопирован.';}catch(e){if(!closed){output.focus();output.select?.();message.textContent=String(e.message||e);}}};
@@ -633,6 +633,11 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  const intro=el('div',undefined,root,'ness-settings-intro');
  el('h4','Основные настройки',intro);
  el('p','Открывай только то, что хочешь изменить.',intro);
+ const helperShortcut=el('div',undefined,root,'ness-helper-shortcut');
+ const helperCopy=el('div',undefined,helperShortcut);
+ el('strong','✨ Помогатор 3000',helperCopy,'ness-step-title');
+ el('p','Не знаешь, как устроена запись одежды или что убрать из поста? Вставь пример — помощник настроит правило.',helperCopy,'ness-step-desc');
+ ui.button('Настроить по примеру',helperShortcut,()=>launchCoder(false,'auto'),'primary');
  const grid=el('div',undefined,root,'ness-settings-grid'),left=el('div',undefined,grid,'ness-settings-column'),right=el('div',undefined,grid,'ness-settings-column');
  // Sections start collapsed. Concise descriptions live in their headers; detailed help is on demand.
  const summaries={
@@ -650,7 +655,11 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  },message=ui.note(root,'');
  let closeCoder=null;
  const advanced=section(root,'⚙ Дополнительно','Точные правила поиска',false);
- el('p','Здесь можно настроить нестандартные метки и исключения.',advanced,'ness-settings-mini-note');
+ el('p','Для нестандартных записей начни с помощника — он сам заполнит сложные поля. Твои сохранённые правила ниже останутся как есть.',advanced,'ness-settings-mini-note');
+ const helperHome=el('div',undefined,advanced,'ness-helper-home');
+ el('strong','✨ Помогатор 3000',helperHome,'ness-step-title');
+ el('p','1. Выбери, что найти или убрать.  2. Вставь один пример.  3. Проверь результат и добавь правило. Никакой код писать не нужно.',helperHome,'ness-step-desc');
+ ui.button('Открыть Помогатор 3000',helperHome,()=>launchCoder(false,'auto'),'primary');
  const wardrobe=section(right,'👕 Откуда брать одежду','Источники одежды');
  el('p','Сначала выбери источник. Затем посмотри пример записи — SP Imagen найдёт одежду сам. Если для одного героя указано несколько вариантов, свежая запись из чата важнее карточки.',wardrobe,'ness-settings-lead');
  const wardrobeStep=(title,description)=>{const wrap=el('div',undefined,wardrobe,'ness-source-step');el('strong',title,wrap,'ness-step-title');el('p',description,wrap,'ness-step-desc');return wrap;};
@@ -695,24 +704,126 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
   const refresh=()=>{entry.hidden=!cardControls[key].enabled.checked;};cardControls[key].enabled.addEventListener('change',refresh);refresh();
  }
  const wardrobeActions=el('div',undefined,wardrobe,'ness-settings-actions');
- ui.button('Не получилось найти одежду? Настроить по примеру',wardrobeActions,()=>launchCoder(false,'wardrobe'),'quiet');
- const customSources=section(advanced,'Свои форматы одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
+ ui.button('✨ Помогатор 3000 · найти одежду по примеру',wardrobeActions,()=>launchCoder(false,'wardrobe'),'quiet');
+ const customSources=section(advanced,'👕 Свои способы записи одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
+ el('p','Нужны только если одежда записана НЕ стандартными метками. Можно просто дать пример Помогатору 3000: он заполнит правило сам. Здесь можно изменить уже созданные правила.',customSources,'ness-settings-lead');
  const shapes=WARDROBE_RULE_DEFAULTS;
- const formats={markers:'Запись между метками',regex:'Готовое правило поиска (regex)',html:'HTML — запись в тегах <…>'};
- const labels={namePrefix:'Текст перед именем',nameSuffix:'Текст сразу после имени',outfitEnd:'Текст после описания одежды',blockStart:'Общий блок: начало (если есть)',blockEnd:'Общий блок: конец (если есть)',pattern:'Готовое правило поиска',flags:'Как искать (флаги)',nameGroup:'Часть правила с именем',outfitGroup:'Часть правила с одеждой',rowSelector:'Как найти запись персонажа',nameSelector:'Как найти имя внутри записи',nameAttribute:'Имя хранится в атрибуте',outfitSelector:'Как найти одежду внутри записи',outfitAttribute:'Одежда хранится в атрибуте',stripSelector:'Как найти общий блок для удаления'};
- function addSource(value={type:'markers',enabled:true,...shapes.markers}){
-  if(sourceRows.length>=8){message.textContent='Можно добавить до 8 правил гардероба.';return;}
-  const row=ui.section(sources,formats[value.type]+' · '+(sourceRows.length+1),false),heading=row.children[0],remove=ui.button('×',heading,undefined,'icon quiet');remove.setAttribute('aria-label','Удалить правило гардероба');
-  const controls=el('div',undefined,row,'ness-grid'),enabled=checkbox(controls,'Использовать этот источник',value.enabled!==false),type=field(controls,'Формат',choice(Object.entries(formats),value.type)),body=el('div',undefined,row,'ness-rule-fields');
-  const entry={row,type,enabled,fields:{},cache:{[value.type]:{...shapes[value.type],...value}},previous:value.type};
-  function render(data){clear(body);entry.fields={};for(const key of Object.keys(shapes[type.value])){const control=key==='pattern'?area(data[key]):input(data[key]);entry.fields[key]=field(body,labels[key],control);if(['pattern','rowSelector','stripSelector'].includes(key))control.parentNode.className+=' ness-wide';}}
-  type.onchange=()=>{entry.cache[entry.previous]=Object.fromEntries(Object.entries(entry.fields).map(([k,e])=>[k,e.value]));render(entry.cache[type.value]||shapes[type.value]);entry.previous=type.value;heading.textContent=formats[type.value]+' · '+(sourceRows.indexOf(entry)+1);heading.appendChild(remove);onDirty();};render(entry.cache[value.type]);
-  remove.onclick=e=>{e?.preventDefault?.();e?.stopPropagation?.();sourceRows.splice(sourceRows.indexOf(entry),1);row.remove();onDirty();};sourceRows.push(entry);return entry;
+ const formats={markers:'Метка с именем',regex:'Правило поиска (regex)',html:'Одежда в HTML'};
+ const labels={namePrefix:'Начало записи — перед именем',nameSuffix:'После имени — перед одеждой',outfitEnd:'Чем заканчивается запись',blockStart:'Начало общего блока',blockEnd:'Конец общего блока',pattern:'Правило поиска',flags:'Дополнительные параметры поиска',nameGroup:'Где в правиле имя',outfitGroup:'Где в правиле одежда',rowSelector:'Как найти одну запись',nameSelector:'Где искать имя внутри записи',nameAttribute:'Атрибут с именем',outfitSelector:'Где искать одежду внутри записи',outfitAttribute:'Атрибут с одеждой',stripSelector:'Что полностью удалить из текста'};
+ const samples={
+  markers:{type:'markers',enabled:true,namePrefix:'[LOOK:',nameSuffix:']',outfitEnd:'[/LOOK]',blockStart:'',blockEnd:''},
+  regex:{type:'regex',enabled:true,pattern:'^(?<name>[^\\n:]+?)_outfit:[ \\t]*(?<outfit>[^\\n]+)$',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},
+  html:{type:'html',enabled:true,rowSelector:'.wardrobe-entry',nameSelector:'',nameAttribute:'data-name',outfitSelector:'.outfit',outfitAttribute:'',stripSelector:''},
+ };
+ const sourceExamples={
+  markers:'[LOOK:Джи]blue sweater, jeans[/LOOK]',
+  regex:'Джи_outfit: blue sweater, jeans',
+  html:'<div class="wardrobe-entry" data-name="Джи"><span class="outfit">blue sweater, jeans</span></div>',
+ };
+ function addSource(value={...samples.markers}){
+  if(sourceRows.length>=8){message.textContent='Можно добавить до 8 способов поиска одежды.';return;}
+  const initialType=Object.hasOwn(shapes,value.type)?value.type:'markers';
+  const row=ui.section(sources,formats[initialType]+' · '+(sourceRows.length+1),false);
+  row.classList.add('ness-friendly-rule');
+  const heading=row.firstElementChild;
+  const remove=ui.button('×',heading,undefined,'icon quiet');remove.setAttribute('aria-label','Удалить это правило одежды');remove.title='Удалить правило';
+  const head=el('div',undefined,row,'ness-rule-head');
+  const enabled=checkbox(head,'Читать одежду по этой записи',value.enabled!==false);
+  const type=field(head,'Как записана одежда?',choice(Object.entries(formats),initialType),'Формат');
+  const exampleWrap=el('div',undefined,row,'ness-rule-explain');
+  el('strong','Готовая запись для примера',exampleWrap);
+  const example=el('pre','',exampleWrap,'ness-wardrobe-example');
+  const explanation=el('p','',exampleWrap,'ness-step-desc');
+  const buttonRow=el('div',undefined,exampleWrap,'ness-settings-actions');
+  ui.button('Скопировать пример записи',buttonRow,()=>copySample(example.textContent));
+  const testRule=ui.button('✓ Проверить на примере',buttonRow);
+  const feedback=el('p','',exampleWrap,'ness-rule-feedback');feedback.setAttribute('role','status');
+  const reset=ui.button('Заполнить поля готовым примером',buttonRow);
+  const body=el('div',undefined,row,'ness-rule-fields');
+  const entry={row,type,enabled,fields:{},cache:{[initialType]:{...shapes[initialType],...value}},previous:initialType};
+  function describe(){
+   const val=k=>entry.fields[k]?.value??'';
+   if(type.value==='markers'){
+    const prefix=val('namePrefix'),suffix=val('nameSuffix'),ending=val('outfitEnd');
+    example.textContent=prefix+'Джи'+suffix+'blue sweater, jeans'+(ending||'')+(val('blockStart')?'\n\nВнутри блока:\n'+val('blockStart')+'\n'+prefix+'Джи'+suffix+'blue sweater, jeans'+(ending||'')+'\n'+val('blockEnd'):'');
+    explanation.textContent='Поменяй «Джи» на имя персонажа, а «blue sweater, jeans» — на его одежду. В три поля ниже вставляй только неподвижные части записи: до имени, после имени и после одежды.';
+   }else if(type.value==='regex'){
+    example.textContent=sourceExamples.regex;
+    explanation.textContent='Правило находит в примере два значения: имя «Джи» и одежду «blue sweater, jeans». Если пример отличается, лучше открой Помогатор 3000.';
+   }else{
+    example.textContent=sourceExamples.html;
+    explanation.textContent='Имя «Джи» хранится в data-name, одежда — внутри элемента с классом outfit. Если разметка у тебя другая, передай один полный пример Помогатору 3000.';
+   }
+  }
+  function render(data){
+   clear(body);entry.fields={};
+   const t=type.value;
+   const make=(keys,parent)=>{
+    for(const key of keys){const control=key==='pattern'?area(data[key]):input(data[key]);entry.fields[key]=field(parent,labels[key],control,labels[key]);
+     control.addEventListener('input',()=>{feedback.textContent='';describe();onDirty();});
+     if(key==='pattern'||key==='rowSelector'||key==='stripSelector')control.parentNode.classList.add('ness-wide');}
+   };
+   if(t==='markers'){
+    el('p','Заполни только три части метки. Имя и одежду каждый раз записывай между ними, как в примере выше.',body,'ness-step-desc ness-wide');
+    make(['namePrefix','nameSuffix','outfitEnd'],body);
+    const extra=ui.section(row,'Необязательно: если все записи находятся внутри одного блока',false);
+    extra.classList.add('ness-rule-extra');
+    el('p','Если в сообщении есть общий блок ⟦ГАРДЕРОБ⟧ … ⟦/ГАРДЕРОБ⟧, укажи две границы. Если общего блока нет — оставь оба поля пустыми.',extra,'ness-step-desc');
+    make(['blockStart','blockEnd'],extra);
+    row.appendChild(extra);
+   }else if(t==='regex'){
+    el('p','Вставь готовое правило, если оно у тебя уже есть. Создать такое с нуля поможет Помогатор 3000.',body,'ness-step-desc ness-wide');
+    make(['pattern'],body);
+    const extra=ui.section(row,'Дополнительно: какие части правила читать',false);extra.classList.add('ness-rule-extra');
+    el('p','Обычно «name» означает имя, «outfit» — одежду, а «gm» — параметры поиска. Менять это не нужно, если правило уже работает.',extra,'ness-step-desc');
+    make(['flags','nameGroup','outfitGroup'],extra);row.appendChild(extra);
+   }else{
+    el('p','Эти поля нужны для одежды, записанной как HTML-разметка. Обычно её удобнее настроить Помогатором 3000.',body,'ness-step-desc ness-wide');
+    make(['rowSelector','nameAttribute','outfitSelector'],body);
+    const extra=ui.section(row,'Дополнительно: если HTML записан необычно',false);extra.classList.add('ness-rule-extra');
+    el('p','Если имя и одежда находятся внутри других элементов или атрибутов, укажи их здесь.',extra,'ness-step-desc');
+    make(['nameSelector','outfitAttribute','stripSelector'],extra);row.appendChild(extra);
+   }
+   describe();
+  }
+  function detachExtra(){row.querySelectorAll(':scope > .ness-rule-extra').forEach(node=>node.remove());}
+  function readCurrent(){return Object.fromEntries(Object.entries(entry.fields).map(([key,node])=>[key,node.value]));}
+  type.onchange=()=>{
+   entry.cache[entry.previous]={...shapes[entry.previous],...readCurrent()};
+   entry.previous=type.value;
+   detachExtra();render(entry.cache[type.value]||{...samples[type.value]});
+   feedback.textContent='';const number=sourceRows.indexOf(entry)+1;heading.firstChild.textContent=formats[type.value]+' · '+number;
+   onDirty();
+  };
+  testRule.onclick=async()=>{
+   feedback.textContent='Проверяю пример…';testRule.disabled=true;
+   try{
+    const raw={type:type.value,enabled:true,...readCurrent()};
+    const ready=validateWardrobeSettings({version:1,keepDefault:false,sources:[raw]});
+    const result=await readConfiguredWardrobe(example.textContent,ready);
+    if(!result.pairs.length){feedback.textContent='Запись не найдена. Проверь начало и конец метки или выбери Помогатор 3000.';return;}
+    feedback.textContent='✓ Найдено: '+result.pairs.map(([name,wear])=>name+' → '+wear).join(' · ');
+   }catch(error){feedback.textContent='Не получилось: '+String(error?.message||error);}
+   finally{testRule.disabled=false;}
+  };
+  reset.onclick=()=>{
+   const current=readCurrent();const sample={...shapes[type.value],...samples[type.value]};
+   if(Object.values(current).some(v=>String(v).trim())&&!window.confirm('Заменить поля этого правила готовым примером?'))return;
+   detachExtra();render(sample);feedback.textContent='';onDirty();
+  };
+  remove.onclick=e=>{e?.preventDefault?.();e?.stopPropagation?.();
+   if(Object.values(readCurrent()).some(v=>String(v).trim())&&!window.confirm('Удалить это правило из настроек?'))return;
+   sourceRows.splice(sourceRows.indexOf(entry),1);row.remove();onDirty();
+  };
+  render({...shapes[initialType],...value});
+  sourceRows.push(entry);return entry;
  }
- initial.wardrobe.sources.forEach(addSource);ui.button('+ Подключить свой формат',customSources,()=>{const added=addSource();if(added){added.row.open=true;onDirty();}});
- const examples=section(customSources,'Добавить готовый пример','Примеры форматов',false),exampleRow=ui.row(examples);
- const samples={markers:{type:'markers',enabled:true,namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧'},regex:{type:'regex',enabled:true,pattern:'(?<name>[^:\\n]+)_outfit:\\s*(?<outfit>[^\\n]+)',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},html:{type:'html',enabled:true,rowSelector:'.wardrobe-entry',nameSelector:'',nameAttribute:'data-name',outfitSelector:'.outfit',outfitAttribute:'',stripSelector:''}};
- for(const [key,title]of Object.entries(formats))ui.button(title,exampleRow,()=>{const added=addSource(samples[key]);if(added){added.row.open=true;onDirty();}});
+ initial.wardrobe.sources.forEach(addSource);
+ const addRow=el('div',undefined,customSources,'ness-settings-actions');
+ ui.button('+ Запись со своими метками',addRow,()=>{const added=addSource(samples.markers);if(added){added.row.open=true;onDirty();}});
+ ui.button('+ Готовое правило regex',addRow,()=>{const added=addSource(samples.regex);if(added){added.row.open=true;onDirty();}},'quiet');
+ ui.button('+ HTML-разметка',addRow,()=>{const added=addSource(samples.html);if(added){added.row.open=true;onDirty();}},'quiet');
+ el('p','Если не знаешь, какой вариант нужен, не создавай правило вручную: открой Помогатор 3000, вставь запись и проверь, как он её понял.',customSources,'ness-step-desc');
  const posts=section(left,'📖 История чата','Количество постов'),numbers=el('div',undefined,posts,'ness-numbers'),postFields={};
  for(const [key,title,help]of [['snapshot','Кадр','Snapshot'],['comic','Комикс','Comic'],['story_page','Страница','Story Page']]){
   const control=input(initial.posts[key],'number');control.min='1';control.max='20';control.inputMode='numeric';control.setAttribute('data-setting','posts.'+key);postFields[key]=field(numbers,title,control,help);
@@ -734,27 +845,76 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
   const second=el('div',undefined,example);el('strong','После',second);el('pre',after,second);
  }
  const cleanupHelperActions=el('div',undefined,cleanup,'ness-settings-actions');
- ui.button('Скрыть свою вставку по примеру',cleanupHelperActions,()=>launchCoder(false,'cleanup'),'quiet');
- ui.button('Оставить значение из скрытой вставки',cleanupHelperActions,()=>launchCoder(true,'preserve'),'quiet');
- const customCleanup=section(advanced,'Свои правила удаления','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
- function addFilter(value={pattern:'',flags:'gm'}){
+ ui.button('✨ Помогатор 3000 · убрать лишнее',cleanupHelperActions,()=>launchCoder(false,'cleanup'),'quiet');
+ ui.button('✨ Помогатор 3000 · оставить важное',cleanupHelperActions,()=>launchCoder(true,'preserve'),'quiet');
+ const customCleanup=section(advanced,'🧹 Свои правила очистки','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
+ el('p','Если ненужная запись не исчезает от галочек выше, дай один пример Помогатору 3000. Он составит правило. Вручную редактируй только если уже знаешь нужный формат.',customCleanup,'ness-settings-lead');
+ const cleanupExample={pattern:'\\[PRIVATE\\][\\s\\S]*?\\[/PRIVATE\\]',flags:'g'};
+ function addFilter(value={...cleanupExample}){
   if(filterRows.length>=8){message.textContent='Можно добавить до 8 фильтров очистки.';return;}
-  const box=ui.section(filters,'Убирать вставки · '+(filterRows.length+1),false),body=el('div',undefined,box,'ness-rule-fields'),pattern=field(body,'Правило поиска ненужной вставки',area(value.pattern),'Шаблон удаляемого текста (regex)'),flags=field(body,'Как искать (флаги)',input(value.flags),'Флаги');pattern.parentNode.className+=' ness-wide';
-  ui.button('Убрать правило',box,()=>{filterRows.splice(filterRows.indexOf(entry),1);box.remove();onDirty();},'quiet');const entry={pattern,flags,box};filterRows.push(entry);return entry;
+  const box=ui.section(filters,'Скрывать свою служебную вставку · '+(filterRows.length+1),false);
+  box.classList.add('ness-friendly-rule');
+  const example=el('div',undefined,box,'ness-rule-explain');
+  el('strong','Пример: что исчезнет из задания',example);
+  const samples=el('div',undefined,example,'ness-before-after');
+  const before=el('div',undefined,samples);el('strong','До',before);el('pre','Джи улыбнулась. [PRIVATE]техническая заметка[/PRIVATE]',before);
+  const after=el('div',undefined,samples);el('strong','После',after);el('pre','Джи улыбнулась.',after);
+  el('p','Это пример для записи [PRIVATE]…[/PRIVATE]. Если у тебя другие границы, вставь свою запись в Помогатор 3000.',example,'ness-step-desc');
+  const manual=ui.section(box,'Для опытных: отредактировать правило поиска',false);manual.classList.add('ness-rule-extra');
+  const body=el('div',undefined,manual,'ness-rule-fields');
+  const pattern=field(body,'Что искать (regex)',area(value.pattern),'Шаблон удаляемого текста (regex)');
+  const flags=field(body,'Параметры поиска',input(value.flags),'Флаги');
+  pattern.parentNode.classList.add('ness-wide');
+  const feedback=el('p','',box,'ness-rule-feedback');feedback.setAttribute('role','status');
+  const actions=el('div',undefined,box,'ness-settings-actions');
+  ui.button('Заполнить готовым примером',actions,()=>{
+   if((pattern.value.trim()||flags.value.trim())&&!window.confirm('Заменить это правило примером [PRIVATE]…[/PRIVATE]?'))return;
+   pattern.value=cleanupExample.pattern;flags.value=cleanupExample.flags;feedback.textContent='Готовый пример вставлен. Сохрани настройки.';onDirty();
+  },'quiet');
+  const remove=ui.button('Удалить правило',actions,()=>{
+   if(pattern.value.trim()&&!window.confirm('Удалить это правило очистки?'))return;
+   filterRows.splice(filterRows.indexOf(entry),1);box.remove();onDirty();
+  },'quiet');
+  const entry={pattern,flags,box};filterRows.push(entry);return entry;
  }
  initial.cleanup.customPatterns.forEach(addFilter);
  const cleanupActions=el('div',undefined,customCleanup,'ness-settings-actions');
- ui.button('+ Ввести правило вручную',cleanupActions,()=>{if(addFilter())onDirty();});
- const exceptionScope=section(advanced,'Сохранить нужное из скрытых блоков','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
- function addException(value={pattern:'',flags:'gm',group:'',label:''}){
+ ui.button('✨ Помогатор 3000 · скрыть по примеру',cleanupActions,()=>launchCoder(false,'cleanup'),'primary');
+ ui.button('+ Готовый пример [PRIVATE]',cleanupActions,()=>{const entry=addFilter();if(entry){entry.box.open=true;onDirty();}},'quiet');
+ const exceptionScope=section(advanced,'💾 Сохранить важное из скрытых записей','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
+ el('p','Если служебный блок мешает картинке, но внутри есть важное число или слово, его можно оставить без скобок. Пример: ⟦SCORE:12⟧ → «Шкала отношений: 12».',exceptionScope,'ness-settings-lead');
+ const exceptionExample={pattern:'⟦SCORE:(?<value>[^⟧]+)⟧',flags:'g',group:'value',label:'Шкала отношений'};
+ function addException(value={...exceptionExample}){
   if(exceptionRows.length>=8)throw Error('Можно добавить до 8 исключений.');
-  const box=ui.section(exceptionRules,value.label||'Сохранять фрагмент · '+(exceptionRows.length+1),false),label=field(box,'Как назвать извлечённые данные?',input(value.label||''),'Название извлечённых данных'),manual=ui.section(box,'Дополнительно · точный способ поиска'),body=el('div',undefined,manual,'ness-rule-fields');
-  const group=field(body,'Часть правила с нужным значением',input(value.group||''),'Группа извлечения'),pattern=field(body,'Правило поиска нужного фрагмента',area(value.pattern),'Шаблон сохраняемого текста (regex)'),flags=field(body,'Как искать (флаги)',input(value.flags),'Флаги');pattern.parentNode.className+=' ness-wide';
-  const entry={box,label,group,pattern,flags};ui.button('Убрать исключение',box,()=>{exceptionRows.splice(exceptionRows.indexOf(entry),1);box.remove();onDirty();},'quiet');exceptionRows.push(entry);
+  const box=ui.section(exceptionRules,value.label||'Сохранить важное · '+(exceptionRows.length+1),false);
+  box.classList.add('ness-friendly-rule');
+  const example=el('div',undefined,box,'ness-rule-explain');
+  el('strong','Пример того, что останется',example);
+  const sampleText=el('pre','⟦SCORE:12⟧ → Шкала отношений: 12',example,'ness-wardrobe-example');
+  el('p','Если у тебя другой служебный блок, открой Помогатор 3000 и вставь свою запись. Здесь можно изменить готовое правило.',example,'ness-step-desc');
+  const label=field(box,'Как подписать найденное значение?',input(value.label||''),'Название извлечённых данных');
+  label.addEventListener('input',()=>{sampleText.textContent='⟦SCORE:12⟧ → '+(label.value.trim()?label.value.trim()+': ':'')+'12';});
+  const manual=ui.section(box,'Для опытных: точный способ извлечения',false);manual.classList.add('ness-rule-extra');
+  const body=el('div',undefined,manual,'ness-rule-fields');
+  const group=field(body,'Какую часть сохранить?',input(value.group||''),'Группа извлечения');
+  const pattern=field(body,'Как найти исходную запись (regex)',area(value.pattern),'Шаблон сохраняемого текста (regex)');
+  const flags=field(body,'Параметры поиска',input(value.flags),'Флаги');pattern.parentNode.classList.add('ness-wide');
+  const actions=el('div',undefined,box,'ness-settings-actions');
+  const entry={box,label,group,pattern,flags};
+  ui.button('Заполнить готовым примером',actions,()=>{
+   if(pattern.value.trim()&&!window.confirm('Заменить это правило примером ⟦SCORE:12⟧?'))return;
+   pattern.value=exceptionExample.pattern;flags.value='g';group.value='value';label.value='Шкала отношений';sampleText.textContent='⟦SCORE:12⟧ → Шкала отношений: 12';onDirty();
+  },'quiet');
+  ui.button('Удалить правило',actions,()=>{
+   if(pattern.value.trim()&&!window.confirm('Удалить это правило сохранения?'))return;
+   exceptionRows.splice(exceptionRows.indexOf(entry),1);box.remove();onDirty();
+  },'quiet');
+  exceptionRows.push(entry);return entry;
  }
  (initial.cleanup.exceptions||[]).forEach(addException);
- const exceptionActions=el('div',undefined,exceptionScope,'ness-settings-actions');ui.button('+ Ввести правило вручную',exceptionActions,()=>{try{addException();onDirty();}catch(e){message.textContent=e.message;}});
- ui.button('⌘ Сохранить нужное по примеру',exceptionActions,()=>launchCoder(true),'quiet');
+ const exceptionActions=el('div',undefined,exceptionScope,'ness-settings-actions');
+ ui.button('✨ Помогатор 3000 · оставить нужное',exceptionActions,()=>launchCoder(true,'preserve'),'primary');
+ ui.button('+ Готовый пример ⟦SCORE:12⟧',exceptionActions,()=>{try{const entry=addException();entry.box.open=true;onDirty();}catch(e){message.textContent=e.message;}},'quiet');
  function launchCoder(exceptions,initialGoal='auto'){
   if(closeCoder)return;
   closeCoder=openNessCoder(D,D.querySelector('#sp-imagen-review-panel'),{exceptions,initialGoal,onClose:()=>{closeCoder=null;},onAdd:result=>{
