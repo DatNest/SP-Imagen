@@ -1124,7 +1124,7 @@ async function initialize() {
 
 const extensionApi = {
     installed: true,
-    version: '2.8.7',
+    version: '2.8.9',
     get hasNew() { return hasNew(); },
     get hubChildOpen() { return hubChildOpen; },
     run,

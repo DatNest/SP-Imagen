@@ -382,7 +382,31 @@ function directorDialogueInstruction(kind,settings,template){
  if(kind!=='comic'&&kind!=='story_page')return '';
  const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines;
  const words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
- return String(template||'').replaceAll('{{lines}}',String(lines)).replaceAll('{{words}}',String(words)).replaceAll('{{format}}',kind);
+ const source=String(template||'');
+ const safeTemplate=/in legacy scene\/people\/bubbles\/text JSON/i.test(source)?CODE_PROMPT_DEFAULTS.dialogue_limits:source;
+ return safeTemplate.replaceAll('{{lines}}',String(lines)).replaceAll('{{words}}',String(words)).replaceAll('{{format}}',kind);
+}
+
+// Place the dialogue limits before the original HTML output contract, not after it.
+// The director's transport/JSON shape is owned by the working v2.8.7 prompts.
+function directorPromptWithDialogueLimits(prompt,kind,settings,useDialogueSettings,template){
+ const base=configuredDirectorPrompt(prompt,kind,settings,useDialogueSettings);
+ const instruction=useDialogueSettings?directorDialogueInstruction(kind,settings,template):'';
+ if(!instruction)return base;
+ const contract=base.lastIndexOf('\nOUTPUT CONTRACT\n');
+ return contract===-1?base+'\n\n'+instruction:base.slice(0,contract)+'\n\n'+instruction+'\n'+base.slice(contract);
+}
+
+// Retry only a rejected director response, without modifying the image API path.
+function directorFormatRetry(kind,reason){
+ const envelope=kind==='snapshot'?'image_lite':'naicom';
+ return '\n\nRETRY — CORRECT THE OUTPUT FORMAT ONLY. The previous response was rejected: '+String(reason||'invalid image instruction').slice(0,260)+'. '+
+  'Return ONLY one <'+envelope+'> HTML envelope with exactly one <img> tag. '+
+  'The img MUST have src="[IMG:GEN]" and a single-quoted data-iig-instruction attribute containing valid JSON with EXACTLY these three keys: '+
+  '{"prompt":"complete visual prompt","aspect_ratio":"2:3","image_size":"1K"}. '+
+  'Replace prompt with the complete original illustration prompt; select aspect_ratio ONLY from 1:1, 2:3, 9:16. '+
+  'Escape JSON string quotes and HTML entities inside the attribute. '+
+  'Do NOT output standalone JSON, scene/people/bubbles/text objects, Markdown, comments, or explanations.';
 }
 
 // Module: field_help
@@ -2046,12 +2070,16 @@ const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
 const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
 const settingsForPrompt=runtimeSettings;
-const dialogueInstruction=useDialogueSettings?directorDialogueInstruction(kind,settingsForPrompt,codePrompt('dialogue_limits')):'';
-const systemPrompt=configuredDirectorPrompt(director.prompt,kind,settingsForPrompt,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile)+dialogueInstruction;
+const preparedDirectorPrompt=directorPromptWithDialogueLimits(director.prompt,kind,settingsForPrompt,useDialogueSettings,codePrompt('dialogue_limits'));
+const systemPrompt=preparedDirectorPrompt+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile);
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 let parsedTransport;
 for(let attempt=0;attempt<2;attempt++){
- const raw=await requestNessText(kind,directorMessages);
+ const messages=attempt===0?directorMessages:[
+  {...directorMessages[0],content:systemPrompt+directorFormatRetry(kind,v.sp_imagen_last_director_error)},
+  directorMessages[1],
+ ];
+ const raw=await requestNessText(kind,messages);
  requireOrigin();
  v.sp_imagen_last_director_raw=raw;
  await saveNessGenerationMetadata(st,'получен ответ режиссёра');
@@ -2144,6 +2172,6 @@ async function generateAt(request=null){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,directorDialogueInstruction,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,directorDialogueInstruction,directorPromptWithDialogueLimits,directorFormatRetry,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }
