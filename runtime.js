@@ -8,6 +8,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { parseImageHtml } from './image-transport.js';
+import { normalizeImagePrompt, limitComicDialogue } from './image-prompt.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
 export function createSpImagenRuntime({ getExtension, getMediaSlots } = {}){
@@ -335,14 +336,22 @@ function formatConfiguredPosts(recent){
  const st=SillyTavern.getContext();
  return recent.map((x,i)=>'ПОСТ '+(i+1)+', '+(x.m.is_user?st.name1:x.m.name||st.name2)+':\n'+x.text).join('\n\n-----\n\n');
 }
-function configuredDirectorPrompt(prompt,kind,settings){
+function configuredDirectorPrompt(prompt,kind,settings,useDialogueSettings=true){
  let p=String(prompt),count=settings.posts[kind];
  p=p.replace(/last (?:TWO|FIVE|\d+) (?:real )?RP posts/gi,'last '+count+' RP posts');
- if(kind==='comic'||kind==='story_page'){
+ if(useDialogueSettings&&(kind==='comic'||kind==='story_page')){
   const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines,words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
   p=p.replace(/Select zero to (?:two|three|\d+) genuinely relevant Russian lines, each at most (?:seven|ten|\d+) words/i,'Select zero to '+lines+' genuinely relevant Russian lines, each at most '+words+' words');
  }
  return p;
+}
+
+
+function directorDialogueInstruction(kind,settings,template){
+ if(kind!=='comic'&&kind!=='story_page')return '';
+ const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines;
+ const words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
+ return String(template||'').replaceAll('{{lines}}',String(lines)).replaceAll('{{words}}',String(words)).replaceAll('{{format}}',kind);
 }
 
 // Module: field_help
@@ -1083,77 +1092,6 @@ function cleanRpVisualText(value,preferences={serviceTags:true,comments:true,htm
 }
 
 // Module: image_prompt
-function normalizeImagePrompt(value) {
- const text=String(value||'');let description='',quoted=false,escaped=false,textAt=-1;
- // One pass: preserve valid character sections and locate the unquoted Text: marker.
- for(let i=0;i<text.length;i++){
-  const c=text[i];
-  if(escaped){description+=c;escaped=false;continue;}
-  if(c==='\\'){description+=c;escaped=true;continue;}
-  if(c==='"'){quoted=!quoted;description+=c;continue;}
-  if(!quoted&&text.startsWith('Text:',i)&&(i===0||/[\s;.]/.test(text[i-1]))){textAt=i;break;}
-  if(c==='|'&&(quoted||!/^[ \t]*(?:girl|boy|cat|other)\b/.test(text.slice(i+1))))description+='—';
-  else description+=c;
- }
- if(textAt<0)return description;
- const unwrap=s=>s.replace(/^\(\s*("[\s\S]*")\s*\)$/,'$1');
- const fragments=s=>s.split(/\r?\n[ \t]*\r?\n/).map(x=>unwrap(x.trim()));
- let annotation=unwrap(fragments(text.slice(textAt+5).trim()).join('\n\n'));
- annotation=fragments(annotation).map(part=>{
-  let s=part;
-  for(const [left,right] of [['"','"'],['«','»'],['“','”']])if(s.startsWith(left)&&s.endsWith(right)&&s.length>=2){s=s.slice(left.length,-right.length);break;}
-  return s.replace(/\|/g,'—');
- }).join('\n\n');
- return description.trimEnd()+'\n\nText: '+annotation;
-}
-function splitPromptVisualAndText(prompt){
- const boundary=String(prompt||'').indexOf('\n\nText:');
- return boundary<0 ? {visual:String(prompt||''), text:''} : {visual:String(prompt||'').slice(0,boundary), text:String(prompt||'').slice(boundary+8).trim()};
-}
-function clipPromptWords(text,maxWords){
- const src=String(text||'').trim();
- if(!src||!Number.isInteger(maxWords)||maxWords<1)return '';
- const tokens=[...src.matchAll(/\S+/g)];
- if(tokens.length<=maxWords)return src;
- return src.slice(0,tokens[maxWords-1].index+tokens[maxWords-1][0].length).trim().replace(/[,:;\-–—]+$/,'').trim();
-}
-function splitTextFragments(text){
- return String(text||'').split(/\r?\n[ \t]*\r?\n/).map(x=>x.trim()).filter(Boolean);
-}
-function rewriteSpeechBubbles(base,fragments){
- const source=String(base||'');
- const marker=/(?:^|;\s*)Speech bubble\s+\d+\s*:/i;
- const start=source.search(marker);
- if(start<0)return source;
- const prefix=source.slice(0,start).replace(/[;\s]+$/,'');
- const suffix=source.slice(start);
- const entries=[...suffix.matchAll(/Speech bubble\s+\d+\s*:[\s\S]*?(?=(?:;\s*Speech bubble\s+\d+\s*:)|$)/gi)].map(m=>m[0].trim().replace(/^;\s*/,''));
- if(!entries.length)return source;
- const next=entries.slice(0,fragments.length).map((entry,index)=>{
-  let result=entry.replace(/Speech bubble\s+\d+/i,'Speech bubble '+(index+1));
-  const phrase=fragments[index]||'';
-  if(/saying\s+"[\s\S]*"\s*$/i.test(result))result=result.replace(/saying\s+"([\s\S]*)"\s*$/i,'saying "'+phrase.replace(/"/g,'\\"')+'"');
-  return result;
- }).filter(Boolean);
- return next.length ? prefix+'; '+next.join('; ') : prefix;
-}
-function applyDialogueLimitsToPrompt(prompt,kind,settings){
- if(!['comic','story_page'].includes(kind))return prompt;
- const lines=kind==='comic'?settings?.dialogue?.comicLines:settings?.dialogue?.storyLines;
- const words=kind==='comic'?settings?.dialogue?.comicWords:settings?.dialogue?.storyWords;
- if(!Number.isInteger(lines)||!Number.isInteger(words))return prompt;
- const {visual,text}=splitPromptVisualAndText(prompt);
- const charStart=visual.indexOf('|');
- const base=(charStart<0?visual:visual.slice(0,charStart)).trim();
- const characters=charStart<0?'':visual.slice(charStart).trim();
- const bubbleEntries=[...base.matchAll(/Speech bubble\s+\d+\s*:[\s\S]*?saying\s+"([\s\S]*?)"(?=(?:;\s*Speech bubble\s+\d+\s*:)|$)/gi)].map(m=>m[1].trim()).filter(Boolean);
- const sourceFragments=bubbleEntries.length?bubbleEntries:splitTextFragments(text);
- const limited=(lines<=0?[]:sourceFragments.slice(0,lines).map(fragment=>clipPromptWords(fragment,words)).filter(Boolean));
- const nextBase=bubbleEntries.length?rewriteSpeechBubbles(base,limited):base;
- const nextVisual=[nextBase,characters].filter(Boolean).join(characters?' ':'');
- return limited.length ? nextVisual+'\n\nText: '+limited.join('\n\n') : nextVisual;
-}
-
 async function repairNpcPromptLanguage(kind,prompt){
  const boundary=prompt.indexOf('\n\nText:');
  const description=boundary<0?prompt:prompt.slice(0,boundary);
@@ -1980,9 +1918,10 @@ const filteredSource=filterProfileSources(source,profile);
 const identityInstruction=/^(?:Prompt name|Subject):/m.test(filteredSource['FIXED CHARACTER APPEARANCE']) ? codePrompt('identity_fields') : '';
 const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
-const settingsForPrompt=profile?.options?.useDialogueSettings===false
- ? {...runtimeSettings,dialogue:{...GEN2_SETTINGS_DEFAULTS.dialogue}} : runtimeSettings;
-const systemPrompt=configuredDirectorPrompt(director.prompt,kind,settingsForPrompt)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile);
+const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
+const settingsForPrompt=runtimeSettings;
+const dialogueInstruction=useDialogueSettings?directorDialogueInstruction(kind,settingsForPrompt,codePrompt('dialogue_limits')):'';
+const systemPrompt=configuredDirectorPrompt(director.prompt,kind,settingsForPrompt,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile)+dialogueInstruction;
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 let parsedTransport;
 for(let attempt=0;attempt<2;attempt++){
@@ -2013,8 +1952,8 @@ if(profile?.options?.includeCharacters!==false){
  const fallbackLibrary=prepared?.ticket===ticket ? prepared.library : visibility;
  config.prompt=insertVisibleAppearance(config.prompt,visibility,fallbackLibrary);
 }
-config.prompt=applyDialogueLimitsToPrompt(config.prompt,kind,runtimeSettings);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
+if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,settingsForPrompt);
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
  if(!accepted){finished=true;return 'Отправка в NAI5 отменена';}
@@ -2084,6 +2023,6 @@ async function generateAt(request=null){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,directorDialogueInstruction,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }

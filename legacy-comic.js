@@ -31,16 +31,34 @@ function personRecord(person, library) {
 }
 function stripLeadingDuplicate(details, name, base) {
     let text = clean(details);
-    if (!text || !base) return text;
+    // Existing director responses occasionally repeat the gender, name, and fixed
+    // appearance before the actual scene-specific pose. They are not extra actors.
+    text = text.replace(/^(?:girl|boy|cat|other)\s*,\s*/iu, '');
     const escapedName = clean(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (escapedName) text = text.replace(new RegExp('^' + escapedName + '\\s*,\\s*', 'iu'), '');
-    const normalizedText = normalizeName(text).replace(/[,;]+$/g, '');
-    const normalizedBase = normalizeName(base).replace(/[,;]+$/g, '');
-    if (normalizedText === normalizedBase) return '';
-    if (normalizedText.startsWith(normalizedBase + ',') || normalizedText.startsWith(normalizedBase + ';')) {
-        return text.slice(base.length).replace(/^[,;\s]+/, '');
+    if (!text || !base) return text;
+    const canonical = value => normalizeName(value).replace(/\s*[,;]+\s*/g, ', ').trim();
+    if (canonical(text) === canonical(base)) return '';
+    if (canonical(text).startsWith(canonical(base) + ',') || canonical(text).startsWith(canonical(base) + ';')) {
+        return text.slice(base.length).replace(/^[,;\s]+/g, '');
     }
-    return text;
+    const separator = text.indexOf(';');
+    if (separator < 0) return text;
+    const first = text.slice(0, separator);
+    const rest = text.slice(separator + 1).trim();
+    const tokens = value => (normalizeName(value).match(/[\p{L}\p{N}]+/gu) || []);
+    const expected = tokens(base), repeated = tokens(first);
+    if (expected.length < 25 || repeated.length < expected.length * 0.45) return text;
+    const available = new Map();
+    for (const word of expected) available.set(word, (available.get(word) || 0) + 1);
+    let overlap = 0;
+    for (const word of repeated) {
+        const left = available.get(word) || 0;
+        if (left) { overlap++; available.set(word, left - 1); }
+    }
+    // The first clause is nearly the library identity (possibly with one changed
+    // tag). Keep only the actual scene-specific description after the semicolon.
+    return overlap / expected.length >= 0.62 ? rest : text;
 }
 function findOutfit(person, match, outfits) {
     const choices = [person.name, person.id, match?.id, match?.record.name,
@@ -108,9 +126,14 @@ export function assembleLegacyComic(data, { kind = 'comic', wardrobe = '', libra
         const match = personRecord(person, library);
         const baseAppearance = clean(match?.record?.base || '');
         const outfit = findOutfit(person, match, outfits);
-        const detailBody = stripLeadingDuplicate(details, name, baseAppearance);
+        // A selected view marker owns the appearance slot; only the marker
+        // renderer may insert that appearance. Never insert full base as well.
+        const marker = details.match(/\[\[(?:NESS_VIS:[a-z][a-z0-9_]*|[a-z][a-z0-9_]*:id):[^\]\r\n]+\]\]/iu)?.[0] || '';
+        const unmarked = marker ? details.replace(marker, '').replace(/^[\s,;]+/, '') : details;
+        const detailBody = stripLeadingDuplicate(unmarked, name, baseAppearance);
         const pieces = [name];
-        if (baseAppearance) pieces.push(sentence(baseAppearance));
+        if (marker) pieces.push(marker);
+        else if (baseAppearance) pieces.push(sentence(baseAppearance));
         if (outfit) pieces.push('current outfit: ' + outfit);
         if (detailBody) pieces.push(sentence(detailBody));
         const body = pieces.join(', ') + (actions ? '; ' + sentence(actions) : '');
