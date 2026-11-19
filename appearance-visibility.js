@@ -1,4 +1,3 @@
-import { findCharacter, normalizeCharacterName } from './character-identity.js';
 import { NESS_APPEARANCE_REGIONS, NESS_APPEARANCE_VIEWS, NESS_APPEARANCE_ALWAYS, NESS_UPPER_REGIONS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES } from './shared-data.js';
 // One appearance implementation for both the library editor and image generation.
 // The director's existing instruction text is carried over unchanged.
@@ -59,86 +58,54 @@ export function visibleAppearanceRanges(ranges,id,selections={},includeAlways=fa
 export function appearanceVisibilityInstruction(records,rules={},customTemplate){
  if(!records.size)return '';
  const descriptions=Object.entries(NESS_APPEARANCE_RULES).map(([id,[,text]])=>id+': '+(rules[id]||text)).join('\n');
- const template=typeof customTemplate==='string' && customTemplate.trim() ? customTemplate : `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:sorabella:upper_back]]. Replace sorabella with the actual supplied character ID. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:sorabella:none]] with that same character ID. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n{{rules}}`;
+ const template=typeof customTemplate==='string' && customTemplate.trim() ? customTemplate : `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:id:upper_back]]. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:id:none]]. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n{{rules}}`;
  return template.includes('{{rules}}') ? template.replaceAll('{{rules}}',descriptions) : template+'\n'+descriptions;
 }
 
-/**
- * Insert permanent appearance ONCE for an actor actually named in the image.
- * If a selected preset has nonempty content, use it. Otherwise use the
- * full original base description from the library. No other fallback modes.
- */
-export function insertVisibleAppearance(prompt, records = new Map(), directory = records) {
-  const all = directory instanceof Map ? directory : new Map();
-  const views = records instanceof Map ? records : new Map();
-  const source = String(prompt ?? '');
-  const textMarker = /\r?\n\s*\r?\nText:\s*/g;
-  const finalText = [...source.matchAll(textMarker)].at(-1);
-  const visual = finalText ? source.slice(0, finalText.index) : source;
-  const tail = finalText ? source.slice(finalText.index) : '';
-  const actorMarker = /\s\|\s*(?:girl|boy|cat|other)\s*,/giu;
-  const positions = [...visual.matchAll(actorMarker)];
-  if (!positions.length) return source;
-  const scene = visual.slice(0, positions[0].index);
-  const appearanceMarker = /\[\[(?:NESS_VIS:([a-z][a-z0-9_]*)|([a-z][a-z0-9_]*):id):([^\]\r\n]+)\]\]/giu;
-  const trimDescription = value => String(value || '').trim().replace(/^[,;\s]+|[,;\s]+$/g, '');
-  const appearances = [];
-  const used = new Set();
-
-  function appearanceFor(record, configured, spec) {
-    const base = trimDescription(record?.base || configured?.base);
-    if (spec && configured && Object.hasOwn(NESS_APPEARANCE_PRESETS, spec)) {
-      const ranges = configured.ranges || [];
-      const selections = configured.selections || {};
-      const visible = visibleAppearanceRanges(ranges, spec, selections, false);
-      if (visible.length) {
-        const composed = visibleAppearanceRanges(ranges, spec, selections, true)
-          .map(r => trimDescription(r.text)).filter(Boolean).join(', ');
-        if (composed) return composed;
-      }
-    }
-    return base; // empty or unavailable preset: use the entire original appearance
+export function insertVisibleAppearance(prompt,records){
+ const seen=new Set();
+ const result=prompt.replace(/([ \t]*,[ \t]*)?\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]([ \t]*[,;])?/g,(_,before,id,spec,after)=>{
+  if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
+  seen.add(id);
+  if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
+  const {base,ranges=[],selections={}}=records.get(id);
+  if(spec==='none')return after||'';
+  const view=visibleAppearanceRanges(ranges,spec,selections,false);
+  const text=view.length
+   ?visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean).join(', ')
+   :String(base||'').trim().replace(/[;,\s]+$/,'');
+  return text?(before||'')+text+';':after||'';
+ });
+ if(result.includes('[[NESS_VIS:'))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
+ // A director can accidentally omit a visibility marker. If a known library character
+ // is explicitly named at the start of its own section, use the base as a safe fallback
+ // rather than silently generating a generic look-alike. Never create a new character.
+ const ids=[...records].filter(([id,record])=>!seen.has(id)&&String(record.base||'').trim());
+ if(!ids.length)return result;
+ const escapeRegex=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+ const identityMatch=(body,record)=>{
+  const names=[record.promptName,record.name,...(record.aliases||[])]
+   .map(name=>String(name||'').trim()).filter(name=>name.length>=2).sort((a,b)=>b.length-a.length);
+  for(const name of names){
+   const matched=body.match(new RegExp('^[ \t]*'+escapeRegex(name)+'(?=[ \t]*[,;]|$)','iu'));
+   if(matched)return matched[0];
   }
-
-  for (let i = 0; i < positions.length; i++) {
-    const start = positions[i].index;
-    const end = i + 1 < positions.length ? positions[i + 1].index : visual.length;
-    const original = visual.slice(start, end);
-    const prefix = positions[i][0].trimEnd() + ' ';
-    const body = original.slice(prefix.length);
-    const nameMatch = body.match(/^\s*([^,;\r\n]{1,160})([,;]?\s*)/u);
-    if (!nameMatch) { appearances.push(original); continue; }
-    const name = nameMatch[1].trim();
-    const matchedByName = findCharacter(all, { name });
-    const foundMarkers = [...body.matchAll(appearanceMarker)];
-    // A marker is permitted to identify an unaliased character, but must NOT
-    // override a different name already recognized at this section's start.
-    const matchedByMarker = foundMarkers.map(m => findCharacter(all, { id: m[1] || m[2] })).find(Boolean) || null;
-    const actor = matchedByName || matchedByMarker;
-    // Unknown markers are inert. Never borrow traits from a different actor.
-    const withoutMarkers = body.replace(appearanceMarker, '').replace(/\s+,/g, ',');
-    const remainder = withoutMarkers.slice(0, withoutMarkers.length).replace(/^\s*([^,;\r\n]{1,160})[,;]?\s*/u, '').replace(/^[,;\s]+/, '');
-    if (!actor || used.has(actor.id)) {
-      appearances.push(prefix + name + (remainder ? ', ' + remainder : ''));
-      continue;
-    }
-    used.add(actor.id);
-    const ownedMarker = foundMarkers.find(m => {
-      const match = findCharacter(all, { id: m[1] || m[2] });
-      return match?.id === actor.id;
-    });
-    const spec = ownedMarker?.[3] || '';
-    const selected = views.get(actor.id) || actor.record;
-    const appearance = appearanceFor(actor.record, selected, spec);
-    // Never insert permanent appearance twice (e.g. a legacy model echoed it).
-    const bodyNormalized = normalizeCharacterName(remainder);
-    const appearanceNormalized = normalizeCharacterName(appearance);
-    const needsInsertion = appearance && (!appearanceNormalized || !bodyNormalized.includes(appearanceNormalized));
-    const description = [needsInsertion ? appearance : '', remainder].filter(Boolean).join(needsInsertion && remainder ? '; ' : '');
-    appearances.push(prefix + name + (description ? ', ' + description : ''));
-  }
-  return scene + appearances.join('') + tail;
+  return '';
+ };
+ return result.replace(/(\|[ \t]*(?:girl|boy|cat|other)[ \t]*,)([^|\n]*)/gi,(whole,prefix,body)=>{
+  const candidates=ids.filter(([id,r])=>!seen.has(id)&&identityMatch(body,r));
+  if(candidates.length!==1)return whole;
+  const [id,record]=candidates[0];
+  const base=String(record.base).trim().replace(/[;,\s]+$/,'');
+  if(!base||body.includes(base))return whole;
+  const matched=identityMatch(body,record);
+  if(!matched)return whole;
+  seen.add(id);
+  // Keep the identity immediately after subject; appearance follows once.
+  return prefix+body.slice(0,matched.length)+', '+base+'; '+body.slice(matched.length).replace(/^[ \t]*[,;]?[ \t]*/,'');
+ });
 }
+
 
 // Empty selections are metadata, not usable appearance tags.
 export function hasConfiguredAppearanceViews(entry){

@@ -83,11 +83,9 @@ function resolveRequestSettings(input) {
     return settings;
 }
 
-export function splitCharacterPrompts(prompt) {
-    // One complete prompt is the proven SP Imagen → NovelAI transfer contract.
-    // Splitting it into separate char_captions with identical (0.5, 0.5)
-    // positions caused wardrobe mixing and detached lettering.
-    return { base: String(prompt || '').trim(), characters: [] };
+function splitCharacterPrompts(prompt) {
+    const [base = '', ...characters] = String(prompt || '').split(/\\?\|/u).map(part => part.trim());
+    return { base, characters };
 }
 
 function validate(settings, aspectRatio) {

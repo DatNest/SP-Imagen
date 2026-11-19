@@ -266,16 +266,7 @@ export async function installSpImagenMediaSlots(options) {
       background: color-mix(in srgb, var(--ms-panel) 35%, transparent);
       font-size: .9em;
     }
-    .heading {
-      display: flex; align-items: center; justify-content: space-between; gap: .75em;
-      inline-size: 100%; min-block-size: 36px; padding: .35em .45em;
-      font-weight: 600; text-align: start; border-radius: .4em;
-    }
-    .heading:hover, .heading:focus-visible { background: color-mix(in srgb, currentColor 8%, transparent); }
-    .heading-arrow { flex: none; font-size: 1.1em; line-height: 1; opacity: .85; }
-    .card-content { min-inline-size: 0; }
-    .card-content[hidden] { display: none !important; }
-    @media (pointer: coarse) { .heading { min-block-size: 44px; } }
+    .heading { padding: .15em .3em .45em; font-weight: 600; }
     .frame {
       display: grid;
       inline-size: 100%;
@@ -656,21 +647,7 @@ export async function installSpImagenMediaSlots(options) {
     const selected = slot.selected;
     const item = slot.versions[selected];
     const section = element('section', 'card');
-    const collapsed = slot.collapsed === true;
-    const heading = element('button', 'heading');
-    const title = element('span', 'heading-title', LABEL[kind]);
-    const arrow = element('span', 'heading-arrow', collapsed ? '▸' : '▾');
-    arrow.setAttribute('aria-hidden', 'true');
-    heading.append(title, arrow);
-    heading.setAttribute('aria-expanded', String(!collapsed));
-    heading.setAttribute('aria-label', `${LABEL[kind]} — ${collapsed ? 'развернуть' : 'свернуть'}`);
-    heading.title = collapsed ? 'Развернуть изображения' : 'Свернуть до заголовка';
-    heading.addEventListener('click', () => void runAction(() => toggleCard(index, kind)));
-    const sectionBody = element('div', 'card-content');
-    sectionBody.hidden = collapsed;
-    section.append(heading, sectionBody);
-    // A collapsed profile does not mount the image; large galleries stay lightweight.
-    if (collapsed) return section;
+    const heading = element('div', 'heading', LABEL[kind]);
     const frame = element('button', 'frame');
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
     const image = element('img');
@@ -700,7 +677,7 @@ export async function installSpImagenMediaSlots(options) {
       galleryButton('🗑', 'Удалить из галереи', () => deleteSelected(index, kind), locked),
     );
     bar.append(navigation, actions);
-    sectionBody.append(frame, bar);
+    section.append(heading, frame, bar);
     return section;
   }
 
@@ -750,15 +727,14 @@ export async function installSpImagenMediaSlots(options) {
       }
       const locked = busy.has(`${chatId}|${view.index}|${kind}`);
       const count = slot.versions.length;
-      const collapsed = slot.collapsed === true;
-      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked && previous.collapsed === collapsed) continue;
+      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked) continue;
       const node = card(view.index, kind, slot, locked);
       if (previous) previous.node.replaceWith(node);
       else {
         const nextKind = KINDS.slice(KINDS.indexOf(kind) + 1).find(key => view.cards.has(key));
         view.gallery.insertBefore(node, view.cards.get(nextKind)?.node ?? null);
       }
-      view.cards.set(kind, { node, item, selected: slot.selected, count, locked, collapsed });
+      view.cards.set(kind, { node, item, selected: slot.selected, count, locked });
     }
     view.gallery.hidden = !view.cards.size;
     view.node.hidden = view.tools.hidden && view.gallery.hidden;
@@ -1005,37 +981,6 @@ export async function installSpImagenMediaSlots(options) {
     paint();
     const view = mounted.get(index);
     return view ? view.cards.has(kind) : !doc.querySelector(`#chat .mes[mesid="${index}"]`);
-  }
-
-  const pendingCollapseSaves = new WeakMap();
-  async function toggleCard(index, kind) {
-    const current = context();
-    const originalChat = current.chat;
-    const originalId = current.chatId;
-    const message = originalChat?.[index];
-    const slot = slotsOf(message, false)?.[kind];
-    if (!slot?.versions?.length) return;
-    const before = slot.collapsed === true;
-    slot.collapsed = !before;
-    paint();
-
-    // Serialize rapid taps within the same chat so the latest collapsed state is saved last.
-    const preceding = pendingCollapseSaves.get(originalChat) || Promise.resolve();
-    const saving = preceding.catch(() => {}).then(() => current.saveChat());
-    pendingCollapseSaves.set(originalChat, saving);
-    try {
-      await saving;
-    } catch (error) {
-      if (context().chat === originalChat && context().chatId === originalId
-          && originalChat[index] === message && slot.collapsed === !before
-          && pendingCollapseSaves.get(originalChat) === saving) {
-        slot.collapsed = before;
-        paint();
-      }
-      throw error;
-    } finally {
-      if (pendingCollapseSaves.get(originalChat) === saving) pendingCollapseSaves.delete(originalChat);
-    }
   }
 
   async function choose(index, kind, delta) {
