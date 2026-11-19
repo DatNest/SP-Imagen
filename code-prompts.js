@@ -1,4 +1,5 @@
-// Single catalogue of model-facing built-in instructions. Their original text is preserved.
+// Single catalogue of model-facing built-in instructions. The old dialogue_limits default is
+// kept for compatibility with exported data but no longer duplicated into directors.
 // User changes are stored separately in extensionSettings.spImagen.codePrompts.
 export const CODE_PROMPT_LABELS = Object.freeze({
   "regex_helper": "Помогатор: создание правила поиска",
@@ -7,7 +8,7 @@ export const CODE_PROMPT_LABELS = Object.freeze({
   "mood_choice": "Выбор настроения сцены",
   "identity_fields": "Идентичность персонажа из библиотеки",
   "appearance_punctuation": "Пунктуация постоянной внешности",
-  "dialogue_limits": "Парсер Comic / Story Page — лимиты текста",
+  "dialogue_limits": "Архив: лимиты Comic / Story теперь в настройках Генерации",
   "npc_language": "Язык описания NPC",
   "visibility_markers": "Выбор ракурсов внешности",
   "nai_medium_negative": "Негативный промпт NovelAI V5 Medium",

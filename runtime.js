@@ -3,6 +3,7 @@ import { withOperationDeadline } from './operation-timeout.js';
 import { DEFAULT_CARD_WARDROBE, DEFAULT_PERSONA_WARDROBE, normalizeCardWardrobeSource, getCardPersonaWardrobe } from './wardrobe-card.js';
 import { boundedWardrobe, parseLabeledWardrobeRows, mayMatchWardrobeBoundary, WARDROBE_NAME_PLACEHOLDER } from './wardrobe-literal.js';
 import { CODE_PROMPT_DEFAULTS } from './code-prompts.js';
+import { normalizeDirectorSections, resolveVisibilityAliases, normalizeSubjectCounts, synchronizeBubbleText } from './director-output.js';
 import { filterProfileSources, directorProfileGuidance, applyProfileToPrompt } from './profiles.js';
 import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
@@ -371,33 +372,36 @@ function configuredDirectorPrompt(prompt,kind,settings,useDialogueSettings=true)
  let p=String(prompt),count=settings.posts[kind];
  p=p.replace(/last (?:TWO|FIVE|\d+) (?:real )?RP posts/gi,'last '+count+' RP posts');
  if(useDialogueSettings&&(kind==='comic'||kind==='story_page')){
-  const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines,words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
-  p=p.replace(/Select zero to (?:two|three|\d+) genuinely relevant Russian lines, each at most (?:seven|ten|\d+) words/i,'Select zero to '+lines+' genuinely relevant Russian lines, each at most '+words+' words');
+  const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines;
+  const words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
+  // The working v2.8.7 profiles already spell out the exact speech rule.
+  // Modify its numbers in place; do not append a second, competing instruction.
+  const rule=/Select zero to (?:two|three|\d+) genuinely relevant Russian lines, each at most (?:seven|ten|\d+) words/i;
+  if(rule.test(p))p=p.replace(rule,'Select zero to '+lines+' genuinely relevant Russian lines, each at most '+words+' words');
+  else{
+   // Custom director without that sentence still receives numerical settings.
+   const short='\nSpeech limit: up to '+lines+' bubbles per page, up to '+words+' words each; preserve the original output format.\n';
+   const contract=p.lastIndexOf('\nOUTPUT CONTRACT\n');
+   p=contract<0?p+short:p.slice(0,contract)+short+p.slice(contract);
+  }
  }
  return p;
 }
 
-
+// Kept as a compatibility utility for settings/export tests. It is NOT sent
+// as a duplicate prompt by the image-generation workflow.
 function directorDialogueInstruction(kind,settings,template){
  if(kind!=='comic'&&kind!=='story_page')return '';
  const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines;
  const words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
  const source=String(template||'');
- const safeTemplate=/in legacy scene\/people\/bubbles\/text JSON/i.test(source)?CODE_PROMPT_DEFAULTS.dialogue_limits:source;
- return safeTemplate.replaceAll('{{lines}}',String(lines)).replaceAll('{{words}}',String(words)).replaceAll('{{format}}',kind);
+ const safe=/in legacy scene\/people\/bubbles\/text JSON/i.test(source)?CODE_PROMPT_DEFAULTS.dialogue_limits:source;
+ return safe.replaceAll('{{lines}}',String(lines)).replaceAll('{{words}}',String(words)).replaceAll('{{format}}',kind);
 }
-
-// Place the dialogue limits before the original HTML output contract, not after it.
-// The director's transport/JSON shape is owned by the working v2.8.7 prompts.
 function directorPromptWithDialogueLimits(prompt,kind,settings,useDialogueSettings,template){
- const base=configuredDirectorPrompt(prompt,kind,settings,useDialogueSettings);
- const instruction=useDialogueSettings?directorDialogueInstruction(kind,settings,template):'';
- if(!instruction)return base;
- const contract=base.lastIndexOf('\nOUTPUT CONTRACT\n');
- return contract===-1?base+'\n\n'+instruction:base.slice(0,contract)+'\n\n'+instruction+'\n'+base.slice(contract);
+ return configuredDirectorPrompt(prompt,kind,settings,useDialogueSettings);
 }
-
-// Retry only a rejected director response, without modifying the image API path.
+// Retain the original format recovery only when a response is malformed.
 function directorFormatRetry(kind,reason){
  const envelope=kind==='snapshot'?'image_lite':'naicom';
  return '\n\nRETRY — CORRECT THE OUTPUT FORMAT ONLY. The previous response was rejected: '+String(reason||'invalid image instruction').slice(0,260)+'. '+
@@ -1497,10 +1501,12 @@ validateKind(kind);
   v.sp_imagen_rp_outfits=[...collected.wardrobe].map(([name,wear])=>name+'_outfit: '+wear).join('\n');
   v.sp_imagen_parsed_scene=formatConfiguredPosts(recent);
   v.sp_imagen_active_kind=kind;
-  // NPC-only helper: independent of the unchanged RP/wardrobe preparation.
+  // Do not run a separate LLM just to guess NPCs on every generation.
+  // The existing explicit “Предложить NPC по постам” button still invokes prepareNpc().
   v.sp_imagen_npc_request_scene=v.sp_imagen_parsed_scene;
   v.sp_imagen_tracker_npcs='';
-  await prepareNpc();
+  v.sp_imagen_npc_draft='';
+  v.sp_imagen_npc_status='NPC можно добавить вручную или предложить по кнопке.';
 
   if(SillyTavern.getContext().chat!==chat||SillyTavern.getContext().chatId!==id)throw Error('Чат изменился во время подготовки.');
   v.sp_imagen_rp_source_count=String(recent.length);
@@ -1629,11 +1635,10 @@ async function reviewSceneDialog(){
       compositionExtra=[settings.common||'',settings[kind]||''].map(x=>x.trim()).filter(Boolean).join('\n\n');
       compositionCatalog=settings.catalogs?.[kind]||{};
       if(!compositionCatalog||typeof compositionCatalog!=='object'||Array.isArray(compositionCatalog)||Object.values(compositionCatalog).some(x=>typeof x!=='string'))throw Error('Неверный каталог композиций '+kind);
-      if(Object.keys(compositionCatalog).length){
-        const result=await selectComposition(compositionCatalog,kind,scene);
-        if(result&&Object.hasOwn(compositionCatalog,result.mood))compositionMood=result.mood;
-        compositionWarning=String(result?.warning||'');
-      }
+      // Keep the complete composition catalogue, but do not delay each image
+      // with a separate automatic model request. Users may choose a category
+      // or request AI selection explicitly from the review dialog.
+      compositionWarning='Выбери категорию вручную или нажми «Подобрать по сцене». Без выбора режиссёр построит композицию по RP.';
       if(SillyTavern.getContext().chat!==startChat||SillyTavern.getContext().chatId!==startId)throw Error('Чат изменился во время подбора композиции');
       defaultComposition=[compositionMood?'Mood: '+compositionMood+'\n'+compositionCatalog[compositionMood]:'',compositionExtra].filter(Boolean).join('\n\n');
   }
@@ -1780,6 +1785,25 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
     const compositionInfo=document.createElement('p');compositionInfo.className='ness-note';compositionInfo.textContent=compositionWarning||'Приёмы из исходной библиотеки. Выбор категории заменит текст ниже; его можно отредактировать.';
     view.compControls.appendChild(compositionInfo);
     compositionSelect.onchange=()=>{const mood=compositionSelect.value;compEl.value=[mood?'Mood: '+mood+'\n'+compositionCatalog[mood]:'',compositionExtra].filter(Boolean).join('\n\n');};
+    const moodButton=ui.button('Подобрать по сцене',view.compControls);
+    moodButton.onclick=async()=>{
+      if(done||committing)return;
+      const now=SillyTavern.getContext();
+      if(now.chat!==startChat||now.chatId!==startId){compositionInfo.textContent='Чат изменился. Открой подготовку заново.';return;}
+      const previous=compEl.value;
+      moodButton.disabled=true;next.disabled=true;compositionInfo.textContent='Подбираю композицию по сцене…';
+      try{
+        const result=await selectComposition(compositionCatalog,kind,sceneEl.value.trim());
+        if(done)return;
+        if(compEl.value!==previous){compositionInfo.textContent='Композиция была изменена вручную: оставлена без замены.';return;}
+        if(result?.mood&&Object.hasOwn(compositionCatalog,result.mood)){
+          compositionSelect.value=result.mood;
+          compositionSelect.onchange();
+          compositionInfo.textContent='Категория подобрана. Её можно изменить.';
+        }else compositionInfo.textContent=result?.warning||'Не удалось выбрать категорию. Выбери вручную.';
+      }catch(error){if(!done)compositionInfo.textContent='Подбор композиции: '+String(error?.message||error);}
+      finally{moodButton.disabled=false;if(!done)next.disabled=false;}
+    };
   }
 
 
@@ -2070,7 +2094,7 @@ const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
 const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
 const settingsForPrompt=runtimeSettings;
-const preparedDirectorPrompt=directorPromptWithDialogueLimits(director.prompt,kind,settingsForPrompt,useDialogueSettings,codePrompt('dialogue_limits'));
+const preparedDirectorPrompt=configuredDirectorPrompt(director.prompt,kind,settingsForPrompt,useDialogueSettings);
 const systemPrompt=preparedDirectorPrompt+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile);
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 let parsedTransport;
@@ -2096,13 +2120,18 @@ for(let attempt=0;attempt<2;attempt++){
 }
 const config=parsedTransport.config;
 v.sp_imagen_last_transport_repaired=parsedTransport.repaired;
+config.prompt=normalizeDirectorSections(config.prompt);
 config.prompt=normalizeImagePrompt(config.prompt);
+// Resolve a single obvious misspelled visibility marker locally; no LLM retry.
+if(visibility.size && profile?.options?.includeCharacters!==false)
+ config.prompt=resolveVisibilityAliases(config.prompt,visibility);
 if(npcLanguage){
  config.prompt=await repairNpcPromptLanguage(kind,config.prompt);
  requireOrigin();
 }
 if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
+config.prompt=synchronizeBubbleText(normalizeSubjectCounts(config.prompt));
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
  if(!accepted){finished=true;return 'Отправка в NAI5 отменена';}
@@ -2172,6 +2201,6 @@ async function generateAt(request=null){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,directorDialogueInstruction,directorPromptWithDialogueLimits,directorFormatRetry,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{normalizeDirectorSections,resolveVisibilityAliases,normalizeSubjectCounts,synchronizeBubbleText,inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,directorDialogueInstruction,directorPromptWithDialogueLimits,directorFormatRetry,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }
