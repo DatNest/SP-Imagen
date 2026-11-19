@@ -83,9 +83,17 @@ function resolveRequestSettings(input) {
     return settings;
 }
 
-function splitCharacterPrompts(prompt) {
-    const [base = '', ...characters] = String(prompt || '').split(/\\?\|/u).map(part => part.trim());
-    return { base, characters };
+export function splitCharacterPrompts(prompt) {
+    const full = String(prompt || '');
+    // Keep Text: at the end of the saved prompt, but place its content in
+    // NovelAI's shared base_caption rather than the last character caption.
+    const pattern = /\r?\n[ \t]*\r?\nText:[ \t]*/g;
+    let boundary = -1;
+    for (const match of full.matchAll(pattern)) boundary = match.index;
+    const visual = boundary < 0 ? full : full.slice(0, boundary);
+    const annotation = boundary < 0 ? '' : full.slice(boundary).trim();
+    const [base = '', ...characters] = visual.split(/\\?\|/u).map(part => part.trim());
+    return { base: [base, annotation].filter(Boolean).join('\n\n'), characters };
 }
 
 function validate(settings, aspectRatio) {

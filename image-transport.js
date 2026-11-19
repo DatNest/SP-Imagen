@@ -1,3 +1,4 @@
+import {isLegacyComicData, assembleLegacyComic} from './legacy-comic.js';
 /** SP Imagen: parse model output as data only. Never insert model HTML into the DOM. */
 const CONTRACT_ERROR = 'Ответ режиссёра не содержит полноценный HTML-блок с одним img и JSON-инструкцией. Исходный ответ сохранён в sp_imagen_last_director_raw.';
 
@@ -49,11 +50,18 @@ function validateImageConfig(result) {
     return result;
 }
 
-export function parseImageHtml(raw) {
+export function parseImageHtml(raw, options = {}) {
     let text = String(raw ?? '').trim();
     if (/^```/.test(text)) text = text.replace(/^```(?:html|xml|json)?[^\S\r\n]*\r?\n?/i, '').replace(/\s*```\s*$/, '').trim();
     // Some models return only the JSON payload. The same schema is validated below.
-    if (text.startsWith('{') && text.endsWith('}')) return validateImageConfig(parseJsonInstruction(text));
+    if (text.startsWith('{') && text.endsWith('}')) {
+        let data;
+        try { data = JSON.parse(text); } catch { /* Retain the existing safe JSON repair below. */ }
+        if (isLegacyComicData(data)) {
+            return validateImageConfig({config:assembleLegacyComic(data, options), repaired:false, transport:'legacy-comic-json'});
+        }
+        return validateImageConfig(parseJsonInstruction(text));
+    }
     const envelopes = [...text.matchAll(/<(naicom|image_lite)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi)];
     // A few text models omit the optional outer wrapper but still provide a complete img instruction.
     // Accept that case only when the entire answer is the single image tag.
