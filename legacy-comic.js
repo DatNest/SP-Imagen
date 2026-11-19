@@ -1,8 +1,8 @@
+import {findCharacter, characterNameKeys, normalizeCharacterName} from './character-identity.js';
 // Compatibility with the original ExtBlocks-style Comic director response.
 // Pure local conversion: no model request, no HTML execution, no changes to user prompts.
 const SPACE = /\s+/g;
 const clean = value => String(value ?? '').trim().replace(SPACE, ' ');
-const normalizeName = value => clean(value).normalize('NFKC').toLocaleLowerCase().replace(/ё/g, 'е');
 
 function assertText(value, label, max = 12000) {
     if (typeof value !== 'string' || value.length > max) throw Error('JSON Comic: неверное поле «' + label + '».');
@@ -17,17 +17,9 @@ function readOutfits(wardrobe) {
     const outfits = new Map();
     for (const line of String(wardrobe || '').split(/\r?\n/)) {
         const match = line.trim().match(pattern);
-        if (match) outfits.set(normalizeName(match[1]), clean(match[2]));
+        if (match) for (const key of characterNameKeys(match[1])) outfits.set(key, clean(match[2]));
     }
     return outfits;
-}
-function personRecord(person, library) {
-    const id = clean(person.id).toLowerCase();
-    const exact = library?.get?.(id);
-    if (exact) return { id, record: exact };
-    const named = [...(library?.entries?.() || [])].filter(([, record]) =>
-        [record.name, record.promptName, ...(record.aliases || [])].some(name => normalizeName(name) && normalizeName(name) === normalizeName(person.name)));
-    return named.length === 1 ? { id: named[0][0], record: named[0][1] } : null;
 }
 function stripLeadingDuplicate(details, name, base) {
     let text = clean(details);
@@ -37,7 +29,7 @@ function stripLeadingDuplicate(details, name, base) {
     const escapedName = clean(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (escapedName) text = text.replace(new RegExp('^' + escapedName + '\\s*,\\s*', 'iu'), '');
     if (!text || !base) return text;
-    const canonical = value => normalizeName(value).replace(/\s*[,;]+\s*/g, ', ').trim();
+    const canonical = value => normalizeCharacterName(value).replace(/\s*[,;]+\s*/g, ', ').trim();
     if (canonical(text) === canonical(base)) return '';
     if (canonical(text).startsWith(canonical(base) + ',') || canonical(text).startsWith(canonical(base) + ';')) {
         return text.slice(base.length).replace(/^[,;\s]+/g, '');
@@ -46,7 +38,7 @@ function stripLeadingDuplicate(details, name, base) {
     if (separator < 0) return text;
     const first = text.slice(0, separator);
     const rest = text.slice(separator + 1).trim();
-    const tokens = value => (normalizeName(value).match(/[\p{L}\p{N}]+/gu) || []);
+    const tokens = value => (normalizeCharacterName(value).match(/[\p{L}\p{N}]+/gu) || []);
     const expected = tokens(base), repeated = tokens(first);
     if (expected.length < 25 || repeated.length < expected.length * 0.45) return text;
     const available = new Map();
@@ -61,11 +53,11 @@ function stripLeadingDuplicate(details, name, base) {
     return overlap / expected.length >= 0.62 ? rest : text;
 }
 function findOutfit(person, match, outfits) {
-    const choices = [person.name, person.id, match?.id, match?.record.name,
-        match?.record.promptName, ...(match?.record.aliases || [])];
-    for (const name of choices) {
-        const candidate = outfits.get(normalizeName(name));
-        if (candidate) return candidate;
+    const choices = [person.name, person.id, match?.id, match?.record?.name,
+        match?.record?.promptName, ...(match?.record?.aliases || [])];
+    for (const name of choices) for (const key of characterNameKeys(name)) {
+        const value = outfits.get(key);
+        if (value) return value;
     }
     return '';
 }
@@ -123,17 +115,18 @@ export function assembleLegacyComic(data, { kind = 'comic', wardrobe = '', libra
         const name = assertText(person.name, 'people.name', 160);
         const details = assertText(person.details, 'people.details', 12000);
         const actions = assertText(person.actions, 'people.actions', 3500);
-        const match = personRecord(person, library);
+        const match = findCharacter(library, {id:person.id, name});
         const baseAppearance = clean(match?.record?.base || '');
         const outfit = findOutfit(person, match, outfits);
-        // A selected view marker owns the appearance slot; only the marker
-        // renderer may insert that appearance. Never insert full base as well.
+        // One final-pass renderer owns all permanent appearance insertion.
+        // A canonical ID marker is inserted for legacy people with unusual aliases;
+        // the adapter itself never writes a permanent appearance string.
         const marker = details.match(/\[\[(?:NESS_VIS:[a-z][a-z0-9_]*|[a-z][a-z0-9_]*:id):[^\]\r\n]+\]\]/iu)?.[0] || '';
         const unmarked = marker ? details.replace(marker, '').replace(/^[\s,;]+/, '') : details;
         const detailBody = stripLeadingDuplicate(unmarked, name, baseAppearance);
         const pieces = [name];
         if (marker) pieces.push(marker);
-        else if (baseAppearance) pieces.push(sentence(baseAppearance));
+        else if (match && /^[a-z][a-z0-9_]*$/.test(match.id)) pieces.push(`[[NESS_VIS:${match.id}:base]]`);
         if (outfit) pieces.push('current outfit: ' + outfit);
         if (detailBody) pieces.push(sentence(detailBody));
         const body = pieces.join(', ') + (actions ? '; ' + sentence(actions) : '');

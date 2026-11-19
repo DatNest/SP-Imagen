@@ -1,3 +1,4 @@
+import { findCharacter, normalizeCharacterName } from './character-identity.js';
 import { NESS_APPEARANCE_REGIONS, NESS_APPEARANCE_VIEWS, NESS_APPEARANCE_ALWAYS, NESS_UPPER_REGIONS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES } from './shared-data.js';
 // One appearance implementation for both the library editor and image generation.
 // The director's existing instruction text is carried over unchanged.
@@ -63,78 +64,80 @@ export function appearanceVisibilityInstruction(records,rules={},customTemplate)
 }
 
 /**
- * Resolve all appearance markers once, then supply full base appearances for
- * named active characters whose director entry did not contain a marker.
- *
- * records   — characters that have configured, selectable views
- * directory — ALL selected library characters (including those with no views)
- *
- * An unavailable view NEVER invalidates the prompt. It uses the complete
- * permanent appearance instead. Unknown IDs do not introduce extra actors.
+ * Insert permanent appearance ONCE for an actor actually named in the image.
+ * If a selected preset has nonempty content, use it. Otherwise use the
+ * full original base description from the library. No other fallback modes.
  */
-export function insertVisibleAppearance(prompt,records,directory=records){
- const selected=records instanceof Map?records:new Map();
- const active=directory instanceof Map?directory:selected;
- const seen=new Set();
- const marker=/([ \t]*,[ \t]*)?\[\[(?:NESS_VIS:([a-z][a-z0-9_]*)|([a-z][a-z0-9_]*):id):([^\]\r\n]+)\]\]([ \t]*[,;])?/g;
- const cleanBase=record=>String(record?.base||'').trim().replace(/[;,\s]+$/,'');
- const resolveAppearance=(id,spec)=>{
-  const configured=selected.get(id);
-  const source=active.get(id)||configured;
-  if(!source)return null;
-  const base=cleanBase(source);
-  // "none" means an intentionally invisible part ONLY for a character that
-  // actually has configured view data. A no-view character always gets base.
-  const hasViews=Boolean(configured&&(configured.ranges?.length||Object.values(configured.selections||{}).some(x=>Array.isArray(x)&&x.length)));
-  if(spec==='none'&&hasViews)return '';
-  if(configured&&spec!=='none'&&Object.hasOwn(NESS_APPEARANCE_PRESETS,spec)){
-   const {ranges=[],selections={}}=configured;
-   const matching=visibleAppearanceRanges(ranges,spec,selections,false);
-   if(matching.length){
-    const text=visibleAppearanceRanges(ranges,spec,selections,true)
-     .map(x=>x.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean).join(', ');
-    if(text)return text;
-   }
+export function insertVisibleAppearance(prompt, records = new Map(), directory = records) {
+  const all = directory instanceof Map ? directory : new Map();
+  const views = records instanceof Map ? records : new Map();
+  const source = String(prompt ?? '');
+  const textMarker = /\r?\n\s*\r?\nText:\s*/g;
+  const finalText = [...source.matchAll(textMarker)].at(-1);
+  const visual = finalText ? source.slice(0, finalText.index) : source;
+  const tail = finalText ? source.slice(finalText.index) : '';
+  const actorMarker = /\s\|\s*(?:girl|boy|cat|other)\s*,/giu;
+  const positions = [...visual.matchAll(actorMarker)];
+  if (!positions.length) return source;
+  const scene = visual.slice(0, positions[0].index);
+  const appearanceMarker = /\[\[(?:NESS_VIS:([a-z][a-z0-9_]*)|([a-z][a-z0-9_]*):id):([^\]\r\n]+)\]\]/giu;
+  const trimDescription = value => String(value || '').trim().replace(/^[,;\s]+|[,;\s]+$/g, '');
+  const appearances = [];
+  const used = new Set();
+
+  function appearanceFor(record, configured, spec) {
+    const base = trimDescription(record?.base || configured?.base);
+    if (spec && configured && Object.hasOwn(NESS_APPEARANCE_PRESETS, spec)) {
+      const ranges = configured.ranges || [];
+      const selections = configured.selections || {};
+      const visible = visibleAppearanceRanges(ranges, spec, selections, false);
+      if (visible.length) {
+        const composed = visibleAppearanceRanges(ranges, spec, selections, true)
+          .map(r => trimDescription(r.text)).filter(Boolean).join(', ');
+        if (composed) return composed;
+      }
+    }
+    return base; // empty or unavailable preset: use the entire original appearance
   }
-  // No view metadata, missing preset, or an empty/unfilled selected view.
-  return base;
- };
- let result=String(prompt||'').replace(marker,(_,before,nessId,legacyId,spec,after)=>{
-  const id=nessId||legacyId;
-  if(seen.has(id))return after||before||'';
-  const value=resolveAppearance(id,spec);
-  if(value===null)return after||before||'';
-  seen.add(id);
-  return value?(before||'')+value+';':after||before||'';
- });
- if(/\[\[(?:NESS_VIS:[^\]\r\n]+|[a-z][a-z0-9_]*:id:[^\]\r\n]+)\]\]/i.test(result)){
-  throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
- }
- // The model can also omit NESS_VIS entirely. Restore the identity from the
- // same active directory, but only when exactly one character matches.
- const ids=[...active].filter(([id,record])=>!seen.has(id)&&cleanBase(record));
- if(!ids.length)return result;
- const escapeRegex=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- const identityMatch=(body,record)=>{
-  const names=[record.promptName,record.name,...(record.aliases||[])]
-   .map(name=>String(name||'').trim()).filter(name=>name.length>=2).sort((a,b)=>b.length-a.length);
-  for(const name of names){
-   const match=body.match(new RegExp('^[ \\t]*'+escapeRegex(name)+'(?=[ \\t]*[,;]|$)','iu'));
-   if(match)return match[0];
+
+  for (let i = 0; i < positions.length; i++) {
+    const start = positions[i].index;
+    const end = i + 1 < positions.length ? positions[i + 1].index : visual.length;
+    const original = visual.slice(start, end);
+    const prefix = positions[i][0].trimEnd() + ' ';
+    const body = original.slice(prefix.length);
+    const nameMatch = body.match(/^\s*([^,;\r\n]{1,160})([,;]?\s*)/u);
+    if (!nameMatch) { appearances.push(original); continue; }
+    const name = nameMatch[1].trim();
+    const matchedByName = findCharacter(all, { name });
+    const foundMarkers = [...body.matchAll(appearanceMarker)];
+    // A marker is permitted to identify an unaliased character, but must NOT
+    // override a different name already recognized at this section's start.
+    const matchedByMarker = foundMarkers.map(m => findCharacter(all, { id: m[1] || m[2] })).find(Boolean) || null;
+    const actor = matchedByName || matchedByMarker;
+    // Unknown markers are inert. Never borrow traits from a different actor.
+    const withoutMarkers = body.replace(appearanceMarker, '').replace(/\s+,/g, ',');
+    const remainder = withoutMarkers.slice(0, withoutMarkers.length).replace(/^\s*([^,;\r\n]{1,160})[,;]?\s*/u, '').replace(/^[,;\s]+/, '');
+    if (!actor || used.has(actor.id)) {
+      appearances.push(prefix + name + (remainder ? ', ' + remainder : ''));
+      continue;
+    }
+    used.add(actor.id);
+    const ownedMarker = foundMarkers.find(m => {
+      const match = findCharacter(all, { id: m[1] || m[2] });
+      return match?.id === actor.id;
+    });
+    const spec = ownedMarker?.[3] || '';
+    const selected = views.get(actor.id) || actor.record;
+    const appearance = appearanceFor(actor.record, selected, spec);
+    // Never insert permanent appearance twice (e.g. a legacy model echoed it).
+    const bodyNormalized = normalizeCharacterName(remainder);
+    const appearanceNormalized = normalizeCharacterName(appearance);
+    const needsInsertion = appearance && (!appearanceNormalized || !bodyNormalized.includes(appearanceNormalized));
+    const description = [needsInsertion ? appearance : '', remainder].filter(Boolean).join(needsInsertion && remainder ? '; ' : '');
+    appearances.push(prefix + name + (description ? ', ' + description : ''));
   }
-  return '';
- };
- result=result.replace(/(\|[ \t]*(?:girl|boy|cat|other)[ \t]*,)([^|\n]*)/gi,(whole,prefix,body)=>{
-  const candidates=ids.filter(([id,record])=>!seen.has(id)&&identityMatch(body,record));
-  if(candidates.length!==1)return whole;
-  const [id,record]=candidates[0],base=cleanBase(record);
-  if(!base||body.includes(base))return whole;
-  const matched=identityMatch(body,record);
-  if(!matched)return whole;
-  seen.add(id);
-  return prefix+body.slice(0,matched.length)+', '+base+'; '+body.slice(matched.length).replace(/^[ \t]*[,;]?[ \t]*/,'');
- });
- return result;
+  return scene + appearances.join('') + tail;
 }
 
 // Empty selections are metadata, not usable appearance tags.

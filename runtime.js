@@ -1,3 +1,4 @@
+import {buildCharacterDirectory} from './character-identity.js';
 import { loadNessTheme, applyNessTheme, normalizeNessTheme, activeNessThemeForEditor, themeSettingsLocation, NESS_THEME_MODE_KEY, NESS_CUSTOM_THEME_KEY } from './theme-runtime.js';
 import { withOperationDeadline } from './operation-timeout.js';
 import { DEFAULT_CARD_WARDROBE, DEFAULT_PERSONA_WARDROBE, normalizeCardWardrobeSource, getCardPersonaWardrobe } from './wardrobe-card.js';
@@ -1700,10 +1701,11 @@ if(v.sp_imagen_preview_status!=='approved'||!v.sp_imagen_run_ticket)throw Error(
 if(!masterLibraryRaw())throw Error('Открой «Библиотека» и сохрани записи персонажей.');
 const data=loadMasterLibrary();
 const chosen=new Set(v.sp_imagen_present_ids||[]);
-const lines=[],visibility=new Map(),legacyDirectory=new Map();
+const lines=[],visibility=new Map(),legacyDirectory=buildCharacterDirectory(data);
+// Only selected actors are sent as scene inputs. The resolver can nevertheless
+// read a fixed appearance for any actor explicitly named by the director.
 for(const [id,e] of Object.entries({...data.personas,...data.characters})){
  if(!chosen.has(id))continue;
- legacyDirectory.set(id,{base:e.base,name:e.name,promptName:e.promptName,aliases:e.aliases||[],views:hasConfiguredAppearanceViews(e)});
  lines.push('CHARACTER: '+e.name);
  if(e.aliases?.length)lines.push('Aliases: '+e.aliases.join(', '));
  if(typeof e.promptName==='string'&&e.promptName.trim())lines.push('Prompt name: '+e.promptName.trim());
