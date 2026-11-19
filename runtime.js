@@ -1,9 +1,7 @@
 import { loadNessTheme, applyNessTheme, normalizeNessTheme, activeNessThemeForEditor, themeSettingsLocation, NESS_THEME_MODE_KEY, NESS_CUSTOM_THEME_KEY } from './theme-runtime.js';
 import { withOperationDeadline } from './operation-timeout.js';
 import { DEFAULT_CARD_WARDROBE, DEFAULT_PERSONA_WARDROBE, normalizeCardWardrobeSource, getCardPersonaWardrobe } from './wardrobe-card.js';
-import { boundedWardrobe, parseLabeledWardrobeRows, mayMatchWardrobeBoundary, WARDROBE_NAME_PLACEHOLDER } from './wardrobe-literal.js';
 import { CODE_PROMPT_DEFAULTS } from './code-prompts.js';
-import { normalizeDirectorSections, resolveVisibilityAliases, normalizeSubjectCounts, synchronizeBubbleText } from './director-output.js';
 import { filterProfileSources, directorProfileGuidance, applyProfileToPrompt } from './profiles.js';
 import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
@@ -16,7 +14,7 @@ const codePrompt = key => getExtension?.()?.getCodePrompt?.(key) || CODE_PROMPT_
 async function openLibrary(){return await spImagenExtension().openLibrary();}
 // Module: wardrobe
 const DEFAULT_CHAT_TAGS=Object.freeze({mode:'default',namePrefix:'[OUTFIT:',nameSuffix:']',outfitEnd:'[/OUTFIT]'});
-const WARDROBE_RULE_DEFAULTS={markers:{namePrefix:'',nameSuffix:'',outfitEnd:'',blockStart:'',blockEnd:''},regex:{pattern:'',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},scopedRegex:{blockStart:'',blockEnd:'',pattern:'',flags:'gmiu',nameGroup:'name',outfitGroup:'outfit',outfitLabel:''},html:{rowSelector:'',nameSelector:'',nameAttribute:'',outfitSelector:'',outfitAttribute:'',stripSelector:''}};
+const WARDROBE_RULE_DEFAULTS={markers:{namePrefix:'',nameSuffix:'',outfitEnd:'',blockStart:'',blockEnd:''},regex:{pattern:'',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},html:{rowSelector:'',nameSelector:'',nameAttribute:'',outfitSelector:'',outfitAttribute:'',stripSelector:''}};
 function normalizeNessRegexRule(rule){
  let pattern=rule?.pattern,flags=rule?.flags??'';
  if(typeof pattern!=='string'||!pattern||pattern.length>4000)throw Error('Нужно правило поиска длиной от 1 до 4000 символов.');
@@ -39,25 +37,16 @@ function validateWardrobeSettings(value){
  settings.chatTags=tag;
  settings.keepDefault=tag.mode==='default'||tag.mode==='both';
  for(const r of settings.sources){
-  if(!r||!['markers','regex','scopedRegex','html','bounded'].includes(r.type))throw Error('Неизвестный тип правила гардероба');
+  if(!r||!['markers','regex','html'].includes(r.type))throw Error('Неизвестный тип правила гардероба');
   for(const [key,v] of Object.entries(r))if(typeof v!=='string'&&key!=='enabled')throw Error('Параметр '+key+' должен быть текстом');
   if(r.enabled!==undefined&&typeof r.enabled!=='boolean')throw Error('Переключатель источника одежды должен быть true или false.');
   if(r.enabled===false)continue;
-  if(r.type==='bounded'){
-   if(!r.start||typeof r.end!=='string'||r.start.length>240||r.end.length>240||r.start===r.end)throw Error('Укажи начало записи; конец можно оставить пустым, если есть {{имя}}.');
-   const slots=r.start.split(WARDROBE_NAME_PLACEHOLDER).length-1;
-   if(slots>1)throw Error('Используй {{имя}} ровно один раз в начале метки.');
-   if(!r.end&&!slots)throw Error('Без закрывающей метки укажи в начале {{имя}} — так расширение найдёт нужного персонажа.');
-   if(slots&&r.start.replace(WARDROBE_NAME_PLACEHOLDER,'').trim().length<2)throw Error('Кроме {{имя}} укажи узнаваемый текст метки.');
-   if(r.where && !['chat','card','persona'].includes(r.where))throw Error('Выбери источник одежды: сообщения, карточка или персона.');
-  }
   if(r.type==='markers'){
    if(!r.namePrefix||!r.nameSuffix)throw Error('Укажи начало маркера имени и его окончание');
    if(Boolean(r.blockStart)!==Boolean(r.blockEnd))throw Error('У блока должны быть оба маркера: начало и конец');
   }
-  if(r.type==='regex'||r.type==='scopedRegex'){
+  if(r.type==='regex'){
    Object.assign(r,normalizeNessRegexRule(r));
-   if(r.type==='scopedRegex'&&(!r.blockStart||!r.blockEnd))throw Error('Для поиска внутри блока укажи начало и конец блока.');
    if(!r.nameGroup||!r.outfitGroup)throw Error('Укажи группы имени и одежды: например name/outfit или 1/2');
   }
   if(r.type==='html'&&!r.rowSelector)throw Error('Нужен CSS-селектор записи персонажа');
@@ -149,154 +138,33 @@ function htmlWardrobe(text,r){
  else for(const row of rows)row.remove();
  return {text:doc.body.innerHTML,pairs};
 }
-// Generated label-based rules are safely parsed as fields, without a blob Worker.
-// Arbitrary user-written regex still runs in the bounded Worker.
-function labeledRecordPattern(label){
- const escaped=String(label).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- return '^[^\\S\\r\\n]*[^\\p{L}\\p{N}\\r\\n]*(?<name>[^|\\r\\n()]+?)(?:\\s*\\([^()\\r\\n]*\\))?\\s*\\|\\s*(?:[^|\\r\\n]*\\|\\s*)*'+escaped+'\\s*[:：]\\s*(?<outfit>[^|\\r\\n]+)';
-}
-// Apply exactly the same named-field extractor during tests and real generation.
-// Block delimiters are user data, never hard-coded to an individual RP extension.
-async function scopedRegexWardrobe(text,rule){
- const pairs=[];
- let pos=0;
- let nextText='';
- const left=String(rule.blockStart),right=String(rule.blockEnd);
- if(!left||!right)throw Error('Укажи обе границы общего блока.');
- // Non-HTML delimiters are also supported: [STATE]...[/STATE], etc.
- while(pos<text.length){
-  const start=text.indexOf(left,pos);
-  if(start<0)break;
-  const contentStart=start+left.length;
-  const end=text.indexOf(right,contentStart);
-  if(end<0)break;
-  const inside=text.slice(contentStart,end);
-  const pairList=rule.outfitLabel&&rule.pattern===labeledRecordPattern(rule.outfitLabel)
-   ?parseLabeledWardrobeRows(inside,rule.outfitLabel)
-   :(await regexWardrobe(inside,{rules:[rule]})).pairs;
-  if(pairList.length){
-   pairs.push(...pairList);
-   nextText+=text.slice(pos,start)+' ';
-  }else{
-   nextText+=text.slice(pos,end+right.length);
-  }
-  pos=end+right.length;
-  if(pairs.length>1000)throw Error('Слишком много записей одежды.');
- }
- return {text:nextText+text.slice(pos),pairs};
-}
-// A literal start/end rule. The user copies delimiters as they appear in RP;
-// no handwritten regex or knowledge of HTML is required.
-async function readConfiguredWardrobe(raw,settings,{origin='chat',fallbackName='',requireNames=false}={}){
+async function readConfiguredWardrobe(raw,settings){
  let text=String(raw||'');const pairs=[];
  const tag=settings.chatTags||DEFAULT_CHAT_TAGS;
- // Keep both the current and older built-in tags readable. The closed wardrobe
- // container is processed first, then individual tags outside that container.
- // A legacy [OUTFIT:Name] entry must not require a user to rebuild their RP.
- const builtIn = origin==='chat' && settings.keepDefault ? [
-  {type:'markers',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧',namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',nativeFallback:true},
-  {type:'markers',namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',nativeFallback:true},
-  {type:'markers',namePrefix:'[OUTFIT:',nameSuffix:']',outfitEnd:'[/OUTFIT]'},
- ] : [];
- const sources=[...builtIn,...(origin==='chat'&&['custom','both'].includes(tag.mode)?[{type:'markers',namePrefix:tag.namePrefix,nameSuffix:tag.nameSuffix,outfitEnd:tag.outfitEnd,blockStart:'',blockEnd:''}]:[]),...settings.sources.filter(r=>r.enabled!==false && (r.type==='bounded' ? (r.where||'chat')===origin : origin==='chat'))];
+ const sources=[...(settings.keepDefault?[{type:'markers',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧',namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',nativeFallback:true}]:[]),...(['custom','both'].includes(tag.mode)?[{type:'markers',namePrefix:tag.namePrefix,nameSuffix:tag.nameSuffix,outfitEnd:tag.outfitEnd,blockStart:'',blockEnd:''}]:[]),...settings.sources.filter(r=>r.enabled!==false)];
  for(let i=0;i<sources.length;){
   const r=sources[i++];let found;
   if(r.type==='regex'){const rules=[r];while(i<sources.length&&sources[i].type==='regex')rules.push(sources[i++]);found=await regexWardrobe(text,{rules});}
-  else found=r.type==='markers'?markerWardrobe(text,r):r.type==='bounded'?boundedWardrobe(text,r,{fallbackName,requireNames}):r.type==='scopedRegex'?await scopedRegexWardrobe(text,r):htmlWardrobe(text,r);
+  else found=r.type==='markers'?markerWardrobe(text,r):htmlWardrobe(text,r);
   for(const [name,outfit] of found.pairs){const who=cleanRpVisualText(name).replace(/\s+/g,' ').trim(),wear=cleanRpVisualText(outfit).replace(/\s+/g,' ').trim();if(who&&wear)pairs.push([who,wear]);}
   text=found.text;
  }
  return {text,pairs};
 }
-// RP scene length and wardrobe history are independent: a current outfit can
-// be established long before the two or five posts used to describe a picture.
-function mayContainWardrobe(raw,settings){
- const tag=settings.chatTags||DEFAULT_CHAT_TAGS;
- if(settings.keepDefault && /⟦(?:ОДЕЖДА:|ГАРДЕРОБ⟧)|\[OUTFIT:/i.test(raw))return true;
- if(['custom','both'].includes(tag.mode)&&tag.namePrefix&&raw.includes(tag.namePrefix))return true;
- return settings.sources.some(rule=>rule.enabled!==false&&(
-   rule.type==='regex'||rule.type==='html'||rule.type==='bounded'&&mayMatchWardrobeBoundary(raw,rule)||rule.type==='scopedRegex'&&Boolean(rule.blockStart&&raw.includes(rule.blockStart))||
-   rule.type==='markers'&&Boolean(rule.namePrefix&&raw.includes(rule.namePrefix)||rule.blockStart&&raw.includes(rule.blockStart))
- ));
-}
 async function collectConfiguredRp(kind,settings,options=loadGen2Settings(),endIndex=null){
  const st=SillyTavern.getContext(),history=st.chat||[],recent=[],wardrobe=new Map();
  const count=options.posts[kind];let warning='';
- const last=endIndex===null?history.length-1:Math.min(endIndex,history.length-1);
- // Canonical names (including aliases) are resolved before merging the wardrobe history.
- // This prevents an older entry under a different alias from overriding the latest outfit.
- let libraryNames=[];
- try {
-  const master=loadMasterLibrary();
-  libraryNames=Object.values({...master.personas,...master.characters}).map(e=>({
-   canonical:String(e.name||'').trim(),
-   variants:[e.name,e.promptName,...(Array.isArray(e.aliases)?e.aliases:[])].map(x=>String(x||'').normalize('NFKC').toLocaleLowerCase().replace(/ё/g,'е').trim()).filter(Boolean)
-  })).filter(e=>e.canonical);
- }catch{}
- const canonicalWardrobeName=name=>{
-  const raw=String(name||'').replace(/\s+/g,' ').trim();
-  const key=raw.normalize('NFKC').toLocaleLowerCase().replace(/ё/g,'е');
-  const exact=libraryNames.filter(e=>e.variants.includes(key));
-  if(exact.length===1)return exact[0].canonical;
-  // Partial matches are accepted only if they identify exactly one library character.
-  const partial=libraryNames.filter(e=>e.variants.some(v=>key.length>=3&&(v.startsWith(key+' ')||key.startsWith(v+' '))));
-  return partial.length===1?partial[0].canonical:raw;
- };
- const insertOutfits=pairs=>{
-  // Most recent RP entry wins, including when the same person uses two aliases.
-  // Inside one post, its last complete wardrobe record takes priority.
-  const byCharacter=new Map();
-  for(const [name,wear] of pairs){
-   const canonical=canonicalWardrobeName(name);
-   if(canonical)byCharacter.set(canonical,wear);
-  }
-  for(const [canonical,wear] of byCharacter)if(!wardrobe.has(canonical))wardrobe.set(canonical,wear);
- };
- let i=last;
- for(;i>=0&&recent.length<count;i--){
+ for(let i=endIndex===null?history.length-1:endIndex;i>=0&&recent.length<count;i--){
   const m=history[i],raw=getCarrierRpText(m,Boolean(options.cleanup.exceptions?.length));if(!raw)continue;
   let read;
   try{read=await readConfiguredWardrobe(raw,settings);}
   catch(e){warning='Гардероб: '+String(e?.message||e);read={text:stripWardrobeTags(raw),pairs:[]};}
-  insertOutfits(read.pairs);
+  const local=new Map(read.pairs);for(const [name,wear] of local)if(!wardrobe.has(name))wardrobe.set(name,wear);
   let text;try{text=await cleanConfiguredRp(read.text,options);}catch(e){warning='Очистка: '+String(e?.message||e);text=cleanRpVisualText(read.text);}
   if(text)recent.unshift({m,raw,text,index:i});
  }
- // Continue scanning backwards exclusively for wardrobe markers. Never append
- // old posts to the scene or send the older narrative to the director.
- const hasHeavyRules=settings.sources.some(r=>r.enabled!==false&&['regex','html'].includes(r.type));
- // With regex/HTML rules, bound the expensive per-post parsing work.
- const budget=hasHeavyRules?120:1000;
- let searched=0;
- for(;i>=0&&searched<budget;i--){
-  const raw=getCarrierRpText(history[i]);if(!raw)continue;
-  searched++;
-  if(!mayContainWardrobe(raw,settings))continue;
-  try{insertOutfits((await readConfiguredWardrobe(raw,settings)).pairs);}
-  catch(e){warning='Гардероб: '+String(e?.message||e);}
- }
  // Facts written in the RP take precedence; card/persona outfit is a fallback.
- insertOutfits(getCardPersonaWardrobe(st,settings));
- // Custom literal boundaries can independently target the current card or persona.
- // Use the exact same wardrobe parser as the chat message rules.
- const hasCardRules=settings.sources.some(r=>r.type==='bounded'&&r.enabled!==false&&['card','persona'].includes(r.where));
- if(hasCardRules){
-  const character=st.characters?.[st.characterId],name=String(character?.name||st.name2||'');
-  const charText=String(character?.description||character?.data?.description||'');
-  let personaText='';
-  try{personaText=String(st.substituteParams?.('{{persona}}')||st.personaDescription||'');}catch{}
-  if(personaText==='{{persona}}')personaText='';
-  const narrator=/^(?:narrator|нарратор|рассказчик)$/iu.test(name);
-  for(const [origin,text,fallbackName,requireNames] of [
-   ['card',charText,name,narrator],['persona',personaText,String(st.name1||''),false]]){
-   if(!text)continue;
-   try{
-    const parsed=await readConfiguredWardrobe(text,settings,{origin,fallbackName,requireNames});
-    insertOutfits(parsed.pairs);
-   }catch(e){warning='Гардероб из '+(origin==='card'?'карточки':'персоны')+': '+String(e?.message||e);}
-  }
- }
-
+ for(const [name,wear] of getCardPersonaWardrobe(st,settings)) if(name && wear && !wardrobe.has(name))wardrobe.set(name,wear);
  return {recent,wardrobe,warning};
 }
 
@@ -368,49 +236,14 @@ function formatConfiguredPosts(recent){
  const st=SillyTavern.getContext();
  return recent.map((x,i)=>'ПОСТ '+(i+1)+', '+(x.m.is_user?st.name1:x.m.name||st.name2)+':\n'+x.text).join('\n\n-----\n\n');
 }
-function configuredDirectorPrompt(prompt,kind,settings,useDialogueSettings=true){
+function configuredDirectorPrompt(prompt,kind,settings){
  let p=String(prompt),count=settings.posts[kind];
  p=p.replace(/last (?:TWO|FIVE|\d+) (?:real )?RP posts/gi,'last '+count+' RP posts');
- if(useDialogueSettings&&(kind==='comic'||kind==='story_page')){
-  const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines;
-  const words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
-  // The working v2.8.7 profiles already spell out the exact speech rule.
-  // Modify its numbers in place; do not append a second, competing instruction.
-  const rule=/Select zero to (?:two|three|\d+) genuinely relevant Russian lines, each at most (?:seven|ten|\d+) words/i;
-  if(rule.test(p))p=p.replace(rule,'Select zero to '+lines+' genuinely relevant Russian lines, each at most '+words+' words');
-  else{
-   // Custom director without that sentence still receives numerical settings.
-   const short='\nSpeech limit: up to '+lines+' bubbles per page, up to '+words+' words each; preserve the original output format.\n';
-   const contract=p.lastIndexOf('\nOUTPUT CONTRACT\n');
-   p=contract<0?p+short:p.slice(0,contract)+short+p.slice(contract);
-  }
+ if(kind==='comic'||kind==='story_page'){
+  const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines,words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
+  p=p.replace(/Select zero to (?:two|three|\d+) genuinely relevant Russian lines, each at most (?:seven|ten|\d+) words/i,'Select zero to '+lines+' genuinely relevant Russian lines, each at most '+words+' words');
  }
  return p;
-}
-
-// Kept as a compatibility utility for settings/export tests. It is NOT sent
-// as a duplicate prompt by the image-generation workflow.
-function directorDialogueInstruction(kind,settings,template){
- if(kind!=='comic'&&kind!=='story_page')return '';
- const lines=kind==='comic'?settings.dialogue.comicLines:settings.dialogue.storyLines;
- const words=kind==='comic'?settings.dialogue.comicWords:settings.dialogue.storyWords;
- const source=String(template||'');
- const safe=/in legacy scene\/people\/bubbles\/text JSON/i.test(source)?CODE_PROMPT_DEFAULTS.dialogue_limits:source;
- return safe.replaceAll('{{lines}}',String(lines)).replaceAll('{{words}}',String(words)).replaceAll('{{format}}',kind);
-}
-function directorPromptWithDialogueLimits(prompt,kind,settings,useDialogueSettings,template){
- return configuredDirectorPrompt(prompt,kind,settings,useDialogueSettings);
-}
-// Retain the original format recovery only when a response is malformed.
-function directorFormatRetry(kind,reason){
- const envelope=kind==='snapshot'?'image_lite':'naicom';
- return '\n\nRETRY — CORRECT THE OUTPUT FORMAT ONLY. The previous response was rejected: '+String(reason||'invalid image instruction').slice(0,260)+'. '+
-  'Return ONLY one <'+envelope+'> HTML envelope with exactly one <img> tag. '+
-  'The img MUST have src="[IMG:GEN]" and a single-quoted data-iig-instruction attribute containing valid JSON with EXACTLY these three keys: '+
-  '{"prompt":"complete visual prompt","aspect_ratio":"2:3","image_size":"1K"}. '+
-  'Replace prompt with the complete original illustration prompt; select aspect_ratio ONLY from 1:1, 2:3, 9:16. '+
-  'Escape JSON string quotes and HTML entities inside the attribute. '+
-  'Do NOT output standalone JSON, scene/people/bubbles/text objects, Markdown, comments, or explanations.';
 }
 
 // Module: field_help
@@ -567,9 +400,9 @@ function readNessSettingsProfile(text){
  if(Object.hasOwn(value,'format')){if(value.format!==NESS_SETTINGS_PROFILE_FORMAT||value.version!==1)throw Error('Это другой тип или версия профиля. Выбери JSON, выгруженный кнопкой «Экспорт настроек».');keys(value,['format','version','settings'],'профиль');settings=value.settings;}
  keys(settings,['version','wardrobe','posts','cleanup','dialogue','previewEnabled'],'настройки');
  keys(settings.wardrobe,['version','keepDefault','chatTags','sources','card','persona'],'одежда');if(settings.wardrobe.chatTags)keys(settings.wardrobe.chatTags,['mode','namePrefix','nameSuffix','outfitEnd'],'метки одежды в чате');keys(settings.posts,['snapshot','comic','story_page'],'последние посты');keys(settings.cleanup,['serviceTags','comments','html','mawsFooter','customPatterns','exceptions'],'очистка');keys(settings.dialogue,['comicLines','comicWords','storyLines','storyWords'],'текст на картинке');
- if(Array.isArray(settings.wardrobe.sources))for(const r of settings.wardrobe.sources){object(r,'источник одежды');keys(r,['type','enabled',...(r.type==='bounded'?['start','end','syntax','where']:Object.keys(WARDROBE_RULE_DEFAULTS[r.type]||{}))],'источник одежды');}
- if(Array.isArray(settings.cleanup.customPatterns))for(const r of settings.cleanup.customPatterns)keys(r,['pattern','flags','uiBounds'],'правило удаления');
- if(Array.isArray(settings.cleanup.exceptions))for(const r of settings.cleanup.exceptions)keys(r,['pattern','flags','group','label','uiBounds'],'исключение');
+ if(Array.isArray(settings.wardrobe.sources))for(const r of settings.wardrobe.sources){object(r,'источник одежды');keys(r,['type','enabled',...Object.keys(WARDROBE_RULE_DEFAULTS[r.type]||{})],'источник одежды');}
+ if(Array.isArray(settings.cleanup.customPatterns))for(const r of settings.cleanup.customPatterns)keys(r,['pattern','flags'],'правило удаления');
+ if(Array.isArray(settings.cleanup.exceptions))for(const r of settings.cleanup.exceptions)keys(r,['pattern','flags','group','label'],'исключение');
  return validateGen2Settings(settings);
 }
 function nessSettingsSummary(settings){
@@ -605,53 +438,12 @@ function openNessSettingsTransfer(D,panel,{mode,profile,onApply,isCurrent=()=>tr
 }
 
 // Module: rule_coder
-// Detect a repeatable record schema from a complete sample, regardless of the
-// name of its surrounding tag. An empty <tag></tag> alone is not enough data.
-function inferWardrobeRecordRule(sample,{outfitLabel=''}={}){
- const source=String(sample||'').trim();
- const esc=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- let start='',end='',inner=source;
- const wrapped=source.match(/^<([A-Za-z][\w:-]*)\b[^>]*>/);
- if(wrapped){
-  const close=new RegExp('<\\/'+esc(wrapped[1])+'\\s*>\\s*$','i');
-  const finish=source.match(close);
-  if(finish){start=wrapped[0];end=finish[0].trim();inner=source.slice(start.length,finish.index);}
- }
- if(!start){
-  const opener=source.match(/^(\[([^\]\r\n]+)\]|⟦([^⟧\r\n]+)⟧)/);
-  if(opener){
-   const symbol=opener[2]!==undefined?'[':'⟦';
-   const name=opener[2]||opener[3];
-   const closing=symbol==='['?'[/'+name+']':'⟦/'+name+'⟧';
-   if(source.endsWith(closing)){start=opener[0];end=closing;inner=source.slice(start.length,-end.length);}
-  }
- }
- const lines=inner.split(/\r?\n/).filter(line=>line.includes('|')&&/[：:]/.test(line));
- const selected=String(outfitLabel||'').trim();
- const defaultLabels=['одежда','clothing','outfit','wearing','наряд','экипировка','костюм','гардероб','облачение'];
- let label=selected;
- if(!label){
-  for(const line of lines){
-   const labels=[...line.matchAll(/(?:^|\|)\s*([^|\r\n:：]{1,55})\s*[:：]/g)].map(m=>m[1].trim());
-   label=labels.find(item=>defaultLabels.some(key=>item.toLocaleLowerCase().includes(key)))||'';
-   if(label)break;
-  }
- }
- if(!label)return null;
- // The first pipe-delimited value on a record line is the character name;
- // intermediate fields (mood, position, etc.) may be in any order.
- const pattern=labeledRecordPattern(label);
- const check=new RegExp(pattern,'gmiu');
- if(![...inner.matchAll(check)].some(m=>m.groups?.name?.trim()&&m.groups?.outfit?.trim()))return null;
- return {type:start?'scopedRegex':'regex',enabled:true,...(start?{blockStart:start,blockEnd:end,outfitLabel:label}:{}),pattern,flags:'gmiu',nameGroup:'name',outfitGroup:'outfit'};
-}
 // Convert examples into the same rule objects consumed by settings; never execute pasted code.
-// Convert examples into the same rule objects consumed by settings; never execute pasted code.
-function compileNessRule({text,goal='cleanup',format='auto',start='',end='',nameGroup='',outfitGroup='',group='',label='',outfitLabel=''}={}){
+function compileNessRule({text,goal='cleanup',format='auto',start='',end='',nameGroup='',outfitGroup='',group='',label=''}={}){
  let source=String(text||'').trim().replace(/^```(?:json|regex|html|text)?\s*\n([\s\S]*?)\n```$/i,'$1').trim();
  if(format==='block'&&!source)source=start+end;
  if(!source||source.length>20000)throw Error('Вставь один пример длиной до 20 000 символов.');
- if(goal==='auto')goal=/(?:OUTFIT|ОДЕЖДА|\|\s*[^|\n]*(?:одежда|clothing|outfit|наряд|экипировка)\s*[:：]|data-(?:outfit|clothes|clothing)|_outfit\s*:|\(\?<outfit>|"(?:nameGroup|outfitGroup)"|"type"\s*:\s*"(?:html|markers|regex)")/i.test(source)?'wardrobe':'cleanup';
+ if(goal==='auto')goal=/(?:OUTFIT|ОДЕЖДА|data-(?:outfit|clothes|clothing)|_outfit\s*:|\(\?<outfit>|"(?:nameGroup|outfitGroup)"|"type"\s*:\s*"(?:html|markers|regex)")/i.test(source)?'wardrobe':'cleanup';
  const esc=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
  const checked=(pattern,flags='g')=>{const checked=normalizeNessRegexRule({pattern,flags});return {pattern:checked.pattern,flags:checked.flags};};
  function result(rule,kind){
@@ -691,8 +483,6 @@ function compileNessRule({text,goal='cleanup',format='auto',start='',end='',name
   return result({pattern:esc(source),flags:'g'},goal);
  }
  if(goal==='wardrobe'){
-  const structured=inferWardrobeRecordRule(source,{outfitLabel});
-  if(structured)return result(structured,goal);
   if(/<\w/.test(source)){
    const name=source.match(/\b(data-(?:name|character))\s*=/i)?.[1],outfit=source.match(/\b(data-(?:outfit|clothes|clothing))\s*=/i)?.[1];
    if(name&&outfit)return result({type:'html',enabled:true,rowSelector:'['+name+']['+outfit+']',nameSelector:'',nameAttribute:name,outfitSelector:'',outfitAttribute:outfit,stripSelector:''},goal);
@@ -819,89 +609,71 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
   if(description){box.classList.add('ness-settings-card');summary.textContent='';el('span',label,summary,'ness-settings-card-title');el('span',description,summary,'ness-settings-card-desc');}
   ui.help(summary,help||label);return box;
  },message=ui.note(root,'');
- const advanced=section(root,'⚙ Свои правила','Точные правила поиска',false);
- el('p','Заполняй только метки, которые видишь в своих постах. Все остальные настройки работают автоматически.',advanced,'ness-settings-mini-note');
+ let closeCoder=null;
+ const advanced=section(root,'⚙ Дополнительно','Точные правила поиска',false);
+ el('p','Здесь можно настроить нестандартные метки и исключения.',advanced,'ness-settings-mini-note');
  const wardrobe=section(right,'👕 Откуда брать одежду','Источники одежды');
- el('p','Готовые метки можно включить здесь. Свои записи настраиваются ниже: выбери источник и скопируй две границы прямо из текста.',wardrobe,'ness-settings-lead');
- function copySample(sample){try{const action=navigator.clipboard?.writeText?.(sample);if(!action)throw Error('no clipboard');Promise.resolve(action).then(()=>message.textContent='Пример скопирован.').catch(()=>message.textContent='Выдели пример вручную.');}catch{message.textContent='Выдели пример вручную.';}}
+ el('p','Сначала выбери источник. Затем посмотри пример записи — SP Imagen найдёт одежду сам. Если для одного героя указано несколько вариантов, свежая запись из чата важнее карточки.',wardrobe,'ness-settings-lead');
+ const wardrobeStep=(title,description)=>{const wrap=el('div',undefined,wardrobe,'ness-source-step');el('strong',title,wrap,'ness-step-title');el('p',description,wrap,'ness-step-desc');return wrap;};
+ const chatStep=wardrobeStep('1. Из сообщений чата','Для персонажа и твоей персоны правило одинаковое: укажи имя и одежду в специальной метке. Метка — это подпись, по которой расширение понимает, кому принадлежит одежда.');
  const chatOptions=initial.wardrobe.chatTags||DEFAULT_CHAT_TAGS;
- const chatMode=field(wardrobe,'Готовые метки из сообщений',choice([['default','Да, искать готовые метки'],['custom','Только ранее настроенные метки'],['both','Готовые и ранее настроенные'],['off','Нет, только мои правила ниже']],chatOptions.mode),'Метки одежды в чате');
+ const chatMode=field(chatStep,'Какие метки читать?',choice([['default','Готовые ⟦ОДЕЖДА:Имя⟧'],['custom','Только свои метки'],['both','Готовые и свои метки'],['off','Не искать одежду в сообщениях']],chatOptions.mode),'Метки одежды в чате');
  chatMode.setAttribute('data-setting','wardrobe.chatTags.mode');
- const chatTagFields={},customChat=el('div',undefined,wardrobe,'ness-source-step');
- for(const [key,label]of [['namePrefix','До имени'],['nameSuffix','После имени'],['outfitEnd','После одежды']])chatTagFields[key]=field(customChat,label,input(chatOptions[key]),'Своя метка одежды: '+label);
- const refreshChat=()=>{customChat.hidden=!['custom','both'].includes(chatMode.value);};chatMode.addEventListener('change',refreshChat);refreshChat();
- const examples=el('div',undefined,wardrobe,'ness-rule-explain');
- el('strong','Примеры готовых записей',examples);
- el('pre','HTML: <infoblock> … </infoblock>\nЗапись с regex-символами: [LOOK:Джи]синяя рубашка[/LOOK]\nДругие метки: ⟦ГАРДЕРОБ⟧ … ⟦/ГАРДЕРОБ⟧',examples,'ness-wardrobe-example');
- el('p','В начале и конце скопируй символы буквально из своего поста. Например, если видишь <infoblock>…</infoblock>, впиши <infoblock> и </infoblock>. Имя и одежда должны быть внутри записи.',examples,'ness-step-desc');
- const cardControls={};
- for(const [key,title,description]of [
-  ['card','Карточка персонажа','Из поля «Описание» активной карточки. В карточке-нарраторе пиши имя перед одеждой каждого героя.'],
-  ['persona','Описание персоны','Из описания выбранной персоны SillyTavern.']]){
-  const wrap=el('div',undefined,wardrobe,'ness-source-step'),opts=initial.wardrobe[key];
-  el('strong',title,wrap,'ness-step-title');el('p',description,wrap,'ness-step-desc');
-  cardControls[key]={enabled:checkbox(wrap,'Читать одежду отсюда',opts.enabled)};
-  const fields=el('div',undefined,wrap,'ness-rule-fields');
-  cardControls[key].start=field(fields,'Начало блока',input(opts.start),'Начальная метка');
-  cardControls[key].end=field(fields,'Конец блока',input(opts.end),'Конечная метка');
-  const ex=el('pre',key==='card'?opts.start+'\nДжи | Одежда: blue sweater\nКишибе | Одежда: grey shirt\n'+opts.end:opts.start+'\nblue sweater\n'+opts.end,wrap,'ness-wardrobe-example');
-  const draw=()=>{ex.textContent=key==='card'?cardControls[key].start.value+'\nДжи | Одежда: blue sweater\nКишибе | Одежда: grey shirt\n'+cardControls[key].end.value:cardControls[key].start.value+'\nblue sweater\n'+cardControls[key].end.value;};
-  cardControls[key].start.addEventListener('input',draw);cardControls[key].end.addEventListener('input',draw);
-  const update=()=>{fields.hidden=!cardControls[key].enabled.checked;ex.hidden=fields.hidden;};cardControls[key].enabled.addEventListener('change',update);update();
- }
- const customSources=section(advanced,'👕 Свои метки одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
- el('p','Выбери пример, укажи источник и вставь свои метки. {{имя}} обозначает любое имя персонажа. Если закрывающей метки нет, оставь конец пустым — одежда читается до конца строки.',customSources,'ness-settings-lead');
- const exampleTypes=[
-  ['line','Одна строка (без закрывающей метки)'],
-  ['markers','Метки со скобками'],
-  ['html','HTML-запись'],
-  ['block','Общий блок с несколькими персонажами']
- ];
- const tagExamples={
-  line:['Одежда_{{имя}}:',''],
-  markers:['[LOOK:{{имя}}]','[/LOOK]'],
-  html:['<look name="{{имя}}">','</look>'],
-  block:['<infoblock>','</infoblock>']
+ const customChat=el('div',undefined,chatStep,'ness-settings-subgroup');
+ el('p','В своей метке имя стоит между первой и второй частями. Описание одежды — после имени. Последняя часть закрывает запись.',customChat,'ness-step-desc');
+ const chatTagFields={};
+ for(const [key,label] of [['namePrefix','Текст перед именем'],['nameSuffix','Текст после имени'],['outfitEnd','Текст после одежды']])chatTagFields[key]=field(customChat,label,input(chatOptions[key]),'Своя метка одежды: '+label);
+ const chatExamples=ui.section(chatStep,'Посмотреть пример записи',false),chatExample=el('pre','',chatExamples,'ness-wardrobe-example');
+ const chatCopy=ui.button('Скопировать пример',chatExamples,()=>copySample(chatExample.textContent),'quiet');
+ const refreshChat=()=>{
+  const custom=['custom','both'].includes(chatMode.value);customChat.hidden=!custom;
+  const prefix=custom?chatTagFields.namePrefix.value:'⟦ОДЕЖДА:';
+  const suffix=custom?chatTagFields.nameSuffix.value:'⟧';
+  const ending=custom?chatTagFields.outfitEnd.value:'⟦/ОДЕЖДА⟧';
+  chatExample.textContent=chatMode.value==='off'?'Поиск одежды в сообщениях выключен.':prefix+'Джи'+suffix+'blue sweater, jeans'+ending+'\n'+prefix+'Кишибе'+suffix+'grey shirt'+ending;
+  chatCopy.disabled=chatMode.value==='off';
  };
- const whereOptions=[['chat','Ролевые сообщения'],['card','Карточка персонажа'],['persona','Описание персоны']];
- function addSource(value={type:'bounded',enabled:true,start:'Одежда_{{имя}}:',end:'',syntax:'line',where:'chat'}){
-  if(sourceRows.length>=8){message.textContent='Максимум 8 своих правил одежды.';return;}
-  const isLegacy=value.type!=='bounded';
-  const row=el('div',undefined,sources,'ness-friendly-rule');el('strong',isLegacy?'Сохранённое правило':'Правило одежды',row,'ness-step-title');
-  const enabled=checkbox(row,'Искать по этому правилу',value.enabled!==false);
-  const syntax=field(row,'Пример записи',choice(exampleTypes,tagExamples[value.syntax]?value.syntax:'line'),'Примеры меток одежды');
-  const where=field(row,'Где искать?',choice(whereOptions,value.where||'chat'),'Источники одежды');
-  el('p','Скопируй начало записи и замени в нём только имя на {{имя}}. Расширение само прочитает настоящее имя и найдёт нужного персонажа.',row,'ness-step-desc');
-  const startField=field(row,'Начало (вместо имени — {{имя}})',input(value.start||''),'Метка одежды с {{имя}}');
-  const endField=field(row,'Конец (если нет — оставить пустым)',input(value.end||''),'Конец одежды');
-  startField.placeholder='Одежда_{{имя}}:';endField.placeholder='Пусто = до конца строки';
-  const example=el('pre','',row,'ness-wardrobe-example');
-  const redraw=()=>{
-   const a=startField.value,b=endField.value,hasName=a.includes('{{имя}}');
-   example.textContent=hasName
-     ? `${a.replace('{{имя}}','Джи')}blue sweater${b||'\n'}\n${a.replace('{{имя}}','Кишибе')}grey shirt${b||'\n'}`
-     : `${a}\nДжи | Одежда: blue sweater\nКишибе | Одежда: grey shirt\n${b}`;
+ chatMode.addEventListener('change',refreshChat);Object.values(chatTagFields).forEach(e=>e.addEventListener('input',refreshChat));refreshChat();
+ function copySample(sample){try{const action=navigator.clipboard?.writeText?.(sample);if(!action)throw Error('no clipboard');Promise.resolve(action).then(()=>{message.textContent='Пример скопирован.';}).catch(()=>{message.textContent='Не удалось скопировать. Выдели пример вручную.';});}catch{message.textContent='Выдели и скопируй пример вручную.';}}
+ const cardControls={};
+ for(const [key,title,description,source]of [
+  ['card','2. Из карточки персонажа','Читается из поля «Описание» карточки персонажа SillyTavern. Если карточка управляет несколькими героями (нарратор), одежду каждого нужно подписать его именем.','карточка'],
+  ['persona','3. Из описания твоей персоны','Читается из описания активной персоны SillyTavern. Здесь не нужно повторять имя: SP Imagen связывает одежду с твоей персоной.','персона']]){
+  const group=wardrobeStep(title,description),opts=initial.wardrobe[key];
+  cardControls[key]={enabled:checkbox(group,key==='card'?'Читать из карточки персонажа':'Читать из описания моей персоны',opts.enabled)};
+  const entry=el('div',undefined,group,'ness-settings-subgroup');
+  el('p','Вставь в '+(source==='карточка'?'описание карточки':'описание персоны')+' отдельный блок с одеждой. Его начало и конец настраиваются здесь:',entry,'ness-step-desc');
+  cardControls[key].start=field(entry,'Начало блока',input(opts.start),'Начальная метка');
+  cardControls[key].end=field(entry,'Конец блока',input(opts.end),'Конечная метка');
+  const examples=ui.section(entry,'Посмотреть пример для '+(source==='карточка'?'карточки':'персоны'),false),code=el('pre','',examples,'ness-wardrobe-example');
+  const draw=()=>{
+   code.textContent=key==='card'
+    ? 'Один персонаж:\n'+cardControls[key].start.value+'\nblue shirt, dark jeans\n'+cardControls[key].end.value+'\n\nНарратор (несколько героев):\n'+cardControls[key].start.value+'\n⟦ОДЕЖДА:Джи⟧blue sweater⟦/ОДЕЖДА⟧\n⟦ОДЕЖДА:Кишибе⟧grey shirt⟦/ОДЕЖДА⟧\n'+cardControls[key].end.value
+    : cardControls[key].start.value+'\nblue sweater, jeans\n'+cardControls[key].end.value;
   };
-  const fillExample=()=>{if(isLegacy)return;const [a,b]=tagExamples[syntax.value]||tagExamples.line;startField.value=a;endField.value=b;redraw();onDirty();};
-  syntax.addEventListener('change',fillExample);
-  startField.addEventListener('input',redraw);endField.addEventListener('input',redraw);redraw();
-  const check=el('details',undefined,row,'ness-rule-check');el('summary','Проверить на своём примере',check);
-  const sample=el('textarea','',check,'ness-rule-test');sample.rows=3;sample.placeholder='Вставь запись из поста с именем и одеждой.';
-  const result=el('p','',check,'ness-step-desc');
-  ui.button('Проверить',check,()=>{
-   try{
-    const parsed=boundedWardrobe(sample.value,{start:startField.value,end:endField.value},{fallbackName:'',requireNames:true});
-    result.textContent=parsed.pairs.length?parsed.pairs.map(([name,wear])=>`${name} → ${wear}`).join(' | '):'Не найдено. Проверь точное начало, конец и {{имя}} в метке.';
-   }catch(error){result.textContent=String(error.message||error);}
-  },'quiet');
-  if(isLegacy){for(const e of [syntax.parentElement,where.parentElement,startField.parentElement,endField.parentElement,example,check])e.hidden=true;el('p','Правило прежней версии сохранено и продолжает работать.',row,'ness-step-desc');}
-  const actions=el('div',undefined,row,'ness-settings-actions');
-  const entry={row,enabled,getRule:()=>isLegacy?{...value,enabled:enabled.checked}:{type:'bounded',enabled:enabled.checked,start:startField.value,end:endField.value,syntax:syntax.value,where:where.value}};
-  ui.button('Удалить',actions,()=>{if(!window.confirm('Удалить правило одежды?'))return;sourceRows.splice(sourceRows.indexOf(entry),1);row.remove();onDirty();},'quiet');
-  sourceRows.push(entry);return entry;
+  cardControls[key].start.addEventListener('input',draw);cardControls[key].end.addEventListener('input',draw);draw();
+  ui.button('Скопировать пример',examples,()=>copySample(code.textContent),'quiet');
+  const refresh=()=>{entry.hidden=!cardControls[key].enabled.checked;};cardControls[key].enabled.addEventListener('change',refresh);refresh();
  }
- initial.wardrobe.sources.forEach(addSource);
- ui.button('+ Добавить правило',customSources,()=>{const item=addSource();if(item){advanced.open=true;onDirty();}},'quiet');
+ const wardrobeActions=el('div',undefined,wardrobe,'ness-settings-actions');
+ ui.button('Не получилось найти одежду? Настроить по примеру',wardrobeActions,()=>launchCoder(false,'wardrobe'),'quiet');
+ const customSources=section(advanced,'Свои форматы одежды','Свои форматы одежды',false),sources=el('div',undefined,customSources),sourceRows=[];
+ const shapes=WARDROBE_RULE_DEFAULTS;
+ const formats={markers:'Запись между метками',regex:'Готовое правило поиска (regex)',html:'HTML — запись в тегах <…>'};
+ const labels={namePrefix:'Текст перед именем',nameSuffix:'Текст сразу после имени',outfitEnd:'Текст после описания одежды',blockStart:'Общий блок: начало (если есть)',blockEnd:'Общий блок: конец (если есть)',pattern:'Готовое правило поиска',flags:'Как искать (флаги)',nameGroup:'Часть правила с именем',outfitGroup:'Часть правила с одеждой',rowSelector:'Как найти запись персонажа',nameSelector:'Как найти имя внутри записи',nameAttribute:'Имя хранится в атрибуте',outfitSelector:'Как найти одежду внутри записи',outfitAttribute:'Одежда хранится в атрибуте',stripSelector:'Как найти общий блок для удаления'};
+ function addSource(value={type:'markers',enabled:true,...shapes.markers}){
+  if(sourceRows.length>=8){message.textContent='Можно добавить до 8 правил гардероба.';return;}
+  const row=ui.section(sources,formats[value.type]+' · '+(sourceRows.length+1),false),heading=row.children[0],remove=ui.button('×',heading,undefined,'icon quiet');remove.setAttribute('aria-label','Удалить правило гардероба');
+  const controls=el('div',undefined,row,'ness-grid'),enabled=checkbox(controls,'Использовать этот источник',value.enabled!==false),type=field(controls,'Формат',choice(Object.entries(formats),value.type)),body=el('div',undefined,row,'ness-rule-fields');
+  const entry={row,type,enabled,fields:{},cache:{[value.type]:{...shapes[value.type],...value}},previous:value.type};
+  function render(data){clear(body);entry.fields={};for(const key of Object.keys(shapes[type.value])){const control=key==='pattern'?area(data[key]):input(data[key]);entry.fields[key]=field(body,labels[key],control);if(['pattern','rowSelector','stripSelector'].includes(key))control.parentNode.className+=' ness-wide';}}
+  type.onchange=()=>{entry.cache[entry.previous]=Object.fromEntries(Object.entries(entry.fields).map(([k,e])=>[k,e.value]));render(entry.cache[type.value]||shapes[type.value]);entry.previous=type.value;heading.textContent=formats[type.value]+' · '+(sourceRows.indexOf(entry)+1);heading.appendChild(remove);onDirty();};render(entry.cache[value.type]);
+  remove.onclick=e=>{e?.preventDefault?.();e?.stopPropagation?.();sourceRows.splice(sourceRows.indexOf(entry),1);row.remove();onDirty();};sourceRows.push(entry);return entry;
+ }
+ initial.wardrobe.sources.forEach(addSource);ui.button('+ Подключить свой формат',customSources,()=>{const added=addSource();if(added){added.row.open=true;onDirty();}});
+ const examples=section(customSources,'Добавить готовый пример','Примеры форматов',false),exampleRow=ui.row(examples);
+ const samples={markers:{type:'markers',enabled:true,namePrefix:'⟦ОДЕЖДА:',nameSuffix:'⟧',outfitEnd:'',blockStart:'⟦ГАРДЕРОБ⟧',blockEnd:'⟦/ГАРДЕРОБ⟧'},regex:{type:'regex',enabled:true,pattern:'(?<name>[^:\\n]+)_outfit:\\s*(?<outfit>[^\\n]+)',flags:'gm',nameGroup:'name',outfitGroup:'outfit'},html:{type:'html',enabled:true,rowSelector:'.wardrobe-entry',nameSelector:'',nameAttribute:'data-name',outfitSelector:'.outfit',outfitAttribute:'',stripSelector:''}};
+ for(const [key,title]of Object.entries(formats))ui.button(title,exampleRow,()=>{const added=addSource(samples[key]);if(added){added.row.open=true;onDirty();}});
  const posts=section(left,'📖 История чата','Количество постов'),numbers=el('div',undefined,posts,'ness-numbers'),postFields={};
  for(const [key,title,help]of [['snapshot','Кадр','Snapshot'],['comic','Комикс','Comic'],['story_page','Страница','Story Page']]){
   const control=input(initial.posts[key],'number');control.min='1';control.max='20';control.inputMode='numeric';control.setAttribute('data-setting','posts.'+key);postFields[key]=field(numbers,title,control,help);
@@ -922,47 +694,37 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
   const first=el('div',undefined,example);el('strong','До',first);el('pre',before,first);
   const second=el('div',undefined,example);el('strong','После',second);el('pre',after,second);
  }
- const customCleanup=section(advanced,'🧹 Убрать свои служебные блоки','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
- const exceptionScope=section(advanced,'💾 Оставить нужное','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
- const escapeBoundary=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- // Literal delimiters become regex only when the settings are saved.
- const delimitedPattern=(start,end,preserve=false)=>escapeBoundary(start)+(preserve?'(?<value>[\\s\\S]*?)':'[\\s\\S]*?')+escapeBoundary(end);
- function delimitersFromPattern(rule,preserve=false){
-  // Original imported regex rules remain intact; only rules authored in this UI are editable as literal bounds.
-  return rule?.uiBounds && typeof rule.uiBounds.start==='string' && typeof rule.uiBounds.end==='string' ? rule.uiBounds : null;
+ const cleanupHelperActions=el('div',undefined,cleanup,'ness-settings-actions');
+ ui.button('Скрыть свою вставку по примеру',cleanupHelperActions,()=>launchCoder(false,'cleanup'),'quiet');
+ ui.button('Оставить значение из скрытой вставки',cleanupHelperActions,()=>launchCoder(true,'preserve'),'quiet');
+ const customCleanup=section(advanced,'Свои правила удаления','Свои правила удаления',false),filters=el('div',undefined,customCleanup),filterRows=[];
+ function addFilter(value={pattern:'',flags:'gm'}){
+  if(filterRows.length>=8){message.textContent='Можно добавить до 8 фильтров очистки.';return;}
+  const box=ui.section(filters,'Убирать вставки · '+(filterRows.length+1),false),body=el('div',undefined,box,'ness-rule-fields'),pattern=field(body,'Правило поиска ненужной вставки',area(value.pattern),'Шаблон удаляемого текста (regex)'),flags=field(body,'Как искать (флаги)',input(value.flags),'Флаги');pattern.parentNode.className+=' ness-wide';
+  ui.button('Убрать правило',box,()=>{filterRows.splice(filterRows.indexOf(entry),1);box.remove();onDirty();},'quiet');const entry={pattern,flags,box};filterRows.push(entry);return entry;
  }
- function addSimpleRule(target,value=null){
-  const preserve=target==='preserve',rows=preserve?exceptionRows:filterRows,container=preserve?exceptionRules:filters;
-  if(rows.length>=8){message.textContent='Можно сохранить до 8 правил в этом разделе.';return;}
-  const initialBounds=delimitersFromPattern(value,preserve);
-  const legacy=Boolean(value&&!initialBounds);
-  const box=el('div',undefined,container,'ness-friendly-rule');el('strong',preserve?'Сохранить содержимое':'Убрать вставку',box,'ness-step-title');
-  const examples=el('div',undefined,box,'ness-rule-explain');
-  el('strong','Примеры начала и конца',examples);
-  el('pre','HTML: <note> … </note>\nЗапись в скобках: [PRIVATE] … [/PRIVATE]\nДругие метки: ⟦SCORE: … ⟧',examples,'ness-wardrobe-example');
-  const syntax=field(box,'Вид метки',choice([['html','HTML <...>'],['regex','Квадратные скобки [...]'],['markers','Другие метки ⟦...⟧']],initialBounds?.syntax||'markers'),'Способ поиска');
-  const begin=field(box,'Начало',input(initialBounds?.start||''),'Начальная метка');
-  const finish=field(box,'Конец',input(initialBounds?.end||''),'Конечная метка');
-  begin.placeholder=preserve?'⟦SCORE:':'[PRIVATE]';finish.placeholder=preserve?'⟧':'[/PRIVATE]';
-  const label=preserve?field(box,'Подпись (необязательно)',input(value?.label||''),'Название извлечённых данных'):null;
-  if(legacy){for(const control of [syntax,begin,finish,label].filter(Boolean))control.parentNode.hidden=true;el('p','Старое правило сохранено и продолжит работать. Для изменения создай новое с началом и концом.',box,'ness-step-desc');}
-  const preview=el('p',preserve?'Например: ⟦SCORE:12⟧ → Шкала отношений: 12':'Запись между границами исчезнет только из задания для картинки. В самом чате она останется.',box,'ness-step-desc');
-  const actions=el('div',undefined,box,'ness-settings-actions');
-  const entry={box,getRule:()=>{
-   if(legacy)return {...value};
-   const start=begin.value,end=finish.value;
-   if(!start||!end)throw Error('Заполни начало и конец правила или удали пустое правило.');
-   return preserve?{pattern:delimitedPattern(start,end,true),flags:'g',group:'value',label:label.value.trim(),uiBounds:{start,end,syntax:syntax.value}}:{pattern:delimitedPattern(start,end),flags:'g',uiBounds:{start,end,syntax:syntax.value}};
-  }};
-  ui.button('Удалить',actions,()=>{if(!window.confirm('Удалить это правило?'))return;rows.splice(rows.indexOf(entry),1);box.remove();onDirty();},'quiet');
-  rows.push(entry);return entry;
+ initial.cleanup.customPatterns.forEach(addFilter);
+ const cleanupActions=el('div',undefined,customCleanup,'ness-settings-actions');
+ ui.button('+ Ввести правило вручную',cleanupActions,()=>{if(addFilter())onDirty();});
+ const exceptionScope=section(advanced,'Сохранить нужное из скрытых блоков','Исключения',false),exceptionRules=el('div',undefined,exceptionScope),exceptionRows=[];
+ function addException(value={pattern:'',flags:'gm',group:'',label:''}){
+  if(exceptionRows.length>=8)throw Error('Можно добавить до 8 исключений.');
+  const box=ui.section(exceptionRules,value.label||'Сохранять фрагмент · '+(exceptionRows.length+1),false),label=field(box,'Как назвать извлечённые данные?',input(value.label||''),'Название извлечённых данных'),manual=ui.section(box,'Дополнительно · точный способ поиска'),body=el('div',undefined,manual,'ness-rule-fields');
+  const group=field(body,'Часть правила с нужным значением',input(value.group||''),'Группа извлечения'),pattern=field(body,'Правило поиска нужного фрагмента',area(value.pattern),'Шаблон сохраняемого текста (regex)'),flags=field(body,'Как искать (флаги)',input(value.flags),'Флаги');pattern.parentNode.className+=' ness-wide';
+  const entry={box,label,group,pattern,flags};ui.button('Убрать исключение',box,()=>{exceptionRows.splice(exceptionRows.indexOf(entry),1);box.remove();onDirty();},'quiet');exceptionRows.push(entry);
  }
- el('p','Удалит любую запись между указанными границами. Просто скопируй начало и конец из поста.',customCleanup,'ness-settings-lead');
- initial.cleanup.customPatterns.forEach(value=>addSimpleRule('cleanup',value));
- ui.button('+ Добавить правило',customCleanup,()=>{const item=addSimpleRule('cleanup');if(item){advanced.open=true;onDirty();}},'quiet');
- el('p','Сохранит текст между границами и уберёт сами метки. При желании добавь короткую подпись.',exceptionScope,'ness-settings-lead');
- (initial.cleanup.exceptions||[]).forEach(value=>addSimpleRule('preserve',value));
- ui.button('+ Добавить правило',exceptionScope,()=>{const item=addSimpleRule('preserve');if(item){advanced.open=true;onDirty();}},'quiet');
+ (initial.cleanup.exceptions||[]).forEach(addException);
+ const exceptionActions=el('div',undefined,exceptionScope,'ness-settings-actions');ui.button('+ Ввести правило вручную',exceptionActions,()=>{try{addException();onDirty();}catch(e){message.textContent=e.message;}});
+ ui.button('⌘ Сохранить нужное по примеру',exceptionActions,()=>launchCoder(true),'quiet');
+ function launchCoder(exceptions,initialGoal='auto'){
+  if(closeCoder)return;
+  closeCoder=openNessCoder(D,D.querySelector('#sp-imagen-review-panel'),{exceptions,initialGoal,onClose:()=>{closeCoder=null;},onAdd:result=>{
+   if(result.kind==='wardrobe'){if(sourceRows.length>=8)throw Error('Можно добавить до 8 источников одежды.');addSource(result.rule);advanced.open=customSources.open=true;sourceRows.at(-1).row.open=false;}
+   else if(result.kind==='preserve'){addException(result.rule);advanced.open=exceptionScope.open=true;}
+   else{if(filterRows.length>=8)throw Error('Можно добавить до 8 правил удаления.');addFilter(result.rule);advanced.open=customCleanup.open=true;}
+   onDirty();message.textContent='Правило добавлено в это окно. Осталось нажать «Сохранить настройки».';
+  }});
+ }
  const dialogue=section(left,'💬 Реплики на картинке','Текст на картинке'),dialogueFields={};
  for(const [mode,title]of [['comic','Комикс'],['story','Страница истории']]){
   const row=el('div',undefined,dialogue,'ness-dialogue-row');el('strong',title,row,'ness-dialogue-title');
@@ -978,8 +740,8 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  grid.replaceChildren(posts,wardrobe,dialogue,previewSection,cleanup);
  root.appendChild(advanced);
  const number=e=>e.value.trim()?Number(e.value):NaN;
- function getValue(){return {version:1,wardrobe:{version:1,keepDefault:['default','both'].includes(chatMode.value),chatTags:{mode:chatMode.value,...Object.fromEntries(Object.entries(chatTagFields).map(([k,e])=>[k,e.value]))},sources:sourceRows.map(r=>r.getRule()),card:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.card[k].checked:cardControls.card[k].value])),persona:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.persona[k].checked:cardControls.persona[k].value]))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>r.getRule()),exceptions:exceptionRows.map(r=>r.getRule())},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),previewEnabled:previewToggle.checked};}
- return {element:root,getValue,scope,dispose:()=>{}};
+ function getValue(){return {version:1,wardrobe:{version:1,keepDefault:['default','both'].includes(chatMode.value),chatTags:{mode:chatMode.value,...Object.fromEntries(Object.entries(chatTagFields).map(([k,e])=>[k,e.value]))},sources:sourceRows.map(r=>({type:r.type.value,enabled:r.enabled.checked,...Object.fromEntries(Object.entries(r.fields).map(([k,e])=>[k,e.value]))})),card:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.card[k].checked:cardControls.card[k].value])),persona:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.persona[k].checked:cardControls.persona[k].value]))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value})),exceptions:exceptionRows.map(r=>({pattern:r.pattern.value,flags:r.flags.value,group:r.group.value,label:r.label.value.trim()}))},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),previewEnabled:previewToggle.checked};}
+ return {element:root,getValue,scope,dispose:()=>closeCoder?.()};
 }
 
 // Module: virtual_list
@@ -1501,12 +1263,10 @@ validateKind(kind);
   v.sp_imagen_rp_outfits=[...collected.wardrobe].map(([name,wear])=>name+'_outfit: '+wear).join('\n');
   v.sp_imagen_parsed_scene=formatConfiguredPosts(recent);
   v.sp_imagen_active_kind=kind;
-  // Do not run a separate LLM just to guess NPCs on every generation.
-  // The existing explicit “Предложить NPC по постам” button still invokes prepareNpc().
+  // NPC-only helper: independent of the unchanged RP/wardrobe preparation.
   v.sp_imagen_npc_request_scene=v.sp_imagen_parsed_scene;
   v.sp_imagen_tracker_npcs='';
-  v.sp_imagen_npc_draft='';
-  v.sp_imagen_npc_status='NPC можно добавить вручную или предложить по кнопке.';
+  await prepareNpc();
 
   if(SillyTavern.getContext().chat!==chat||SillyTavern.getContext().chatId!==id)throw Error('Чат изменился во время подготовки.');
   v.sp_imagen_rp_source_count=String(recent.length);
@@ -1635,10 +1395,11 @@ async function reviewSceneDialog(){
       compositionExtra=[settings.common||'',settings[kind]||''].map(x=>x.trim()).filter(Boolean).join('\n\n');
       compositionCatalog=settings.catalogs?.[kind]||{};
       if(!compositionCatalog||typeof compositionCatalog!=='object'||Array.isArray(compositionCatalog)||Object.values(compositionCatalog).some(x=>typeof x!=='string'))throw Error('Неверный каталог композиций '+kind);
-      // Keep the complete composition catalogue, but do not delay each image
-      // with a separate automatic model request. Users may choose a category
-      // or request AI selection explicitly from the review dialog.
-      compositionWarning='Выбери категорию вручную или нажми «Подобрать по сцене». Без выбора режиссёр построит композицию по RP.';
+      if(Object.keys(compositionCatalog).length){
+        const result=await selectComposition(compositionCatalog,kind,scene);
+        if(result&&Object.hasOwn(compositionCatalog,result.mood))compositionMood=result.mood;
+        compositionWarning=String(result?.warning||'');
+      }
       if(SillyTavern.getContext().chat!==startChat||SillyTavern.getContext().chatId!==startId)throw Error('Чат изменился во время подбора композиции');
       defaultComposition=[compositionMood?'Mood: '+compositionMood+'\n'+compositionCatalog[compositionMood]:'',compositionExtra].filter(Boolean).join('\n\n');
   }
@@ -1785,25 +1546,6 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
     const compositionInfo=document.createElement('p');compositionInfo.className='ness-note';compositionInfo.textContent=compositionWarning||'Приёмы из исходной библиотеки. Выбор категории заменит текст ниже; его можно отредактировать.';
     view.compControls.appendChild(compositionInfo);
     compositionSelect.onchange=()=>{const mood=compositionSelect.value;compEl.value=[mood?'Mood: '+mood+'\n'+compositionCatalog[mood]:'',compositionExtra].filter(Boolean).join('\n\n');};
-    const moodButton=ui.button('Подобрать по сцене',view.compControls);
-    moodButton.onclick=async()=>{
-      if(done||committing)return;
-      const now=SillyTavern.getContext();
-      if(now.chat!==startChat||now.chatId!==startId){compositionInfo.textContent='Чат изменился. Открой подготовку заново.';return;}
-      const previous=compEl.value;
-      moodButton.disabled=true;next.disabled=true;compositionInfo.textContent='Подбираю композицию по сцене…';
-      try{
-        const result=await selectComposition(compositionCatalog,kind,sceneEl.value.trim());
-        if(done)return;
-        if(compEl.value!==previous){compositionInfo.textContent='Композиция была изменена вручную: оставлена без замены.';return;}
-        if(result?.mood&&Object.hasOwn(compositionCatalog,result.mood)){
-          compositionSelect.value=result.mood;
-          compositionSelect.onchange();
-          compositionInfo.textContent='Категория подобрана. Её можно изменить.';
-        }else compositionInfo.textContent=result?.warning||'Не удалось выбрать категорию. Выбери вручную.';
-      }catch(error){if(!done)compositionInfo.textContent='Подбор композиции: '+String(error?.message||error);}
-      finally{moodButton.disabled=false;if(!done)next.disabled=false;}
-    };
   }
 
 
@@ -2092,18 +1834,13 @@ const filteredSource=filterProfileSources(source,profile);
 const identityInstruction=/^(?:Prompt name|Subject):/m.test(filteredSource['FIXED CHARACTER APPEARANCE']) ? codePrompt('identity_fields') : '';
 const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
-const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
-const settingsForPrompt=runtimeSettings;
-const preparedDirectorPrompt=configuredDirectorPrompt(director.prompt,kind,settingsForPrompt,useDialogueSettings);
-const systemPrompt=preparedDirectorPrompt+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile);
+const settingsForPrompt=profile?.options?.useDialogueSettings===false
+ ? {...runtimeSettings,dialogue:{...GEN2_SETTINGS_DEFAULTS.dialogue}} : runtimeSettings;
+const systemPrompt=configuredDirectorPrompt(director.prompt,kind,settingsForPrompt)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile);
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 let parsedTransport;
 for(let attempt=0;attempt<2;attempt++){
- const messages=attempt===0?directorMessages:[
-  {...directorMessages[0],content:systemPrompt+directorFormatRetry(kind,v.sp_imagen_last_director_error)},
-  directorMessages[1],
- ];
- const raw=await requestNessText(kind,messages);
+ const raw=await requestNessText(kind,directorMessages);
  requireOrigin();
  v.sp_imagen_last_director_raw=raw;
  await saveNessGenerationMetadata(st,'получен ответ режиссёра');
@@ -2120,18 +1857,13 @@ for(let attempt=0;attempt<2;attempt++){
 }
 const config=parsedTransport.config;
 v.sp_imagen_last_transport_repaired=parsedTransport.repaired;
-config.prompt=normalizeDirectorSections(config.prompt);
 config.prompt=normalizeImagePrompt(config.prompt);
-// Resolve a single obvious misspelled visibility marker locally; no LLM retry.
-if(visibility.size && profile?.options?.includeCharacters!==false)
- config.prompt=resolveVisibilityAliases(config.prompt,visibility);
 if(npcLanguage){
  config.prompt=await repairNpcPromptLanguage(kind,config.prompt);
  requireOrigin();
 }
 if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
-config.prompt=synchronizeBubbleText(normalizeSubjectCounts(config.prompt));
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
  if(!accepted){finished=true;return 'Отправка в NAI5 отменена';}
@@ -2201,6 +1933,6 @@ async function generateAt(request=null){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{normalizeDirectorSections,resolveVisibilityAliases,normalizeSubjectCounts,synchronizeBubbleText,inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,directorDialogueInstruction,directorPromptWithDialogueLimits,directorFormatRetry,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }
