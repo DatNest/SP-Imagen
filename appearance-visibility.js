@@ -58,13 +58,15 @@ export function visibleAppearanceRanges(ranges,id,selections={},includeAlways=fa
 export function appearanceVisibilityInstruction(records,rules={},customTemplate){
  if(!records.size)return '';
  const descriptions=Object.entries(NESS_APPEARANCE_RULES).map(([id,[,text]])=>id+': '+(rules[id]||text)).join('\n');
- const template=typeof customTemplate==='string' && customTemplate.trim() ? customTemplate : `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:id:upper_back]]. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:id:none]]. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n{{rules}}`;
+ const template=typeof customTemplate==='string' && customTemplate.trim() ? customTemplate : `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:sorabella:upper_back]]. Replace sorabella with the actual supplied character ID. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:sorabella:none]] with that same character ID. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n{{rules}}`;
  return template.includes('{{rules}}') ? template.replaceAll('{{rules}}',descriptions) : template+'\n'+descriptions;
 }
 
 export function insertVisibleAppearance(prompt,records){
  const seen=new Set();
- const result=prompt.replace(/([ \t]*,[ \t]*)?\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]([ \t]*[,;])?/g,(_,before,id,spec,after)=>{
+ const marker=/([ \t]*,[ \t]*)?\[\[(?:NESS_VIS:([a-z][a-z0-9_]*)|([a-z][a-z0-9_]*):id):([^\]\r\n]+)\]\]([ \t]*[,;])?/g;
+ const result=prompt.replace(marker,(_,before,nessId,legacyId,spec,after)=>{
+  const id=nessId||legacyId;
   if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
   seen.add(id);
   if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
@@ -76,7 +78,7 @@ export function insertVisibleAppearance(prompt,records){
    :String(base||'').trim().replace(/[;,\s]+$/,'');
   return text?(before||'')+text+';':after||'';
  });
- if(result.includes('[[NESS_VIS:'))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
+ if(/\[\[(?:NESS_VIS:[^\]\r\n]+|[a-z][a-z0-9_]*:id:[^\]\r\n]+)\]\]/i.test(result))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
  // A director can accidentally omit a visibility marker. If a known library character
  // is explicitly named at the start of its own section, use the base as a safe fallback
  // rather than silently generating a generic look-alike. Never create a new character.
