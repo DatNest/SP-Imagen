@@ -177,6 +177,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(readOnly()||!tags.length)return;
   const relevant=tags.filter(t=>isChosen(t,preset)!==assign);
   if(!relevant.length)return;
+  if(mode==='base'&&assign){
+   const hidden=relevant.filter(t=>t.source==='skin'||t.source==='nsfw');
+   if(hidden.length&&!confirm('Внимание: '+hidden.length+' тег(ов) относятся к коже под одеждой или NSFW. Добавление в «Основу» может раскрыть скрытые особенности даже в обычной сцене. Продолжить осознанно?'))return;
+  }
   record();
   if(mode==='skin'){
    const ids=new Set();
