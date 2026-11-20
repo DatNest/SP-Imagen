@@ -563,7 +563,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  const pencil=button('✎',wrap,undefined,'icon quiet ness-appearance-pencil');
  pencil.setAttribute('aria-label','Разметить видимую внешность');
  pencil.setAttribute('aria-pressed','false');
- const box=el('div',undefined,form,'ness-appearance-tools');
+ const box=el('div',undefined,wrap.parentNode,'ness-appearance-tools');
  const editHelp='Enter добавляет тег. Для перестановки потяни за ⠿ или нажми на тег и выбери «Раньше» или «Позже».';
  const message=el('p',editHelp,box,'ness-note');
  message.setAttribute('aria-live','polite');
@@ -815,7 +815,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  }
  area.oninput=()=>{sync();changed();drawFragments();};
  const board=createAppearanceBoard({
-   ui,parent:form,initialSkin:initial.appearanceSkin,initialSections:initial.appearanceSections,
+   ui,parent:wrap.parentNode,initialSkin:initial.appearanceSkin,initialSections:initial.appearanceSections,
    readBaseState:()=>({base,ranges,selections}),
    writeBaseState:next=>{
      area.value=base=next.base;
