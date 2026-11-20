@@ -1171,7 +1171,6 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         settings: requestSettings,
         prompt: config.prompt,
         style: snapshot?.style ? style.value : (profile?.options?.useArtStyle === false ? '' : style.value),
-        mediumNegative: resolveCodePrompt(settings().codePrompts,'nai_medium_negative'),
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
     });
