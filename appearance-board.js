@@ -109,6 +109,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
  const boardButton=button('Конструктор',tools,()=>{if(mode==='base'&&appearanceFormat==='prose')return;layout='board';render();},'quiet');
  const textButton=button('Текстовый режим',tools,()=>{layout='text';render();},'quiet');
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
+ const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
+ const warn=value=>{notice.textContent=value;notice.hidden=!value;};
  const basic=button('Основа',modes,()=>{mode='base';preset='face';if(appearanceFormat==='prose')layout='text';checked.clear();render();},'quiet');
  const marks=button('Кожа и отметины',modes,()=>{mode='skin';layout='board';preset='upper_front';checked.clear();render();},'quiet');
  const content=el('div',undefined,frame,'ness-tagboard-body');
@@ -215,8 +217,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   after();
  }
  function addTag(value){
-  const tag=String(value||'').trim().replace(/[,;]+$/,'').trim();
+  const tag=String(value||'').trim().replace(/[;,\s]+$/,'').trim();
   if(!tag||readOnly())return;
+  if(/[,\r\n]/.test(tag)){warn('Добавляй по одному тегу. Запятая используется только как разделитель при сборке промпта.');return;}
+  warn('');
   if(mode==='skin'){
    if(skin.tags.some(x=>norm(x.text)===norm(tag)))return;
    record();const id='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -241,6 +245,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
  function renameTag(tag,next){
   const text=String(next||'').trim().replace(/[,;]+$/,'').trim();
   if(!text||text===tag.text||readOnly())return;
+  if(/[,\r\n]/.test(text)){warn('В одном теге нельзя использовать запятую: она разделяет разные теги.');return;}
+  warn('');
   if(items().some(x=>x!==tag&&norm(x.text)===norm(text)))return;
   if(mode==='skin'){record();skin.tags.find(x=>x.id===tag.id).text=text;after();}
   else changeTagList(items().map(x=>x.start===tag.start?{...x,text}:x),{old:tag.text,next:text});
@@ -318,7 +324,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
        if(readOnly())return;
        const editField=el('input',undefined,item,'ness-input');editField.value=tag.text;
        editField.setAttribute('aria-label','Изменить текст тега');editField.autocomplete='off';
-       const done=ok=>{if(ok)renameTag(tag,editField.value);else editField.remove();};
+       const done=ok=>{const next=editField.value;editField.onblur=null;editField.remove();use.hidden=false;edit.hidden=false;if(ok)renameTag(tag,next);};
        editField.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();done(true);}else if(e.key==='Escape'){e.preventDefault();done(false);}};
        editField.onblur=()=>{if(editField.isConnected)done(true);};
        use.hidden=true;edit.hidden=true;editField.focus();editField.select?.();
