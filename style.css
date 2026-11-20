@@ -939,3 +939,25 @@
   grid-template-columns:repeat(3,minmax(0,1fr))!important;
  }
 }
+
+/* Divider controls are inline tools in the original tag list, not another window. */
+#sp-imagen-review-panel .ness-appearance-divider-actions{
+ display:inline-flex;gap:2px;align-items:center;flex:none;
+}
+#sp-imagen-review-panel .ness-appearance-divider-actions>.ness-button{
+ min-width:24px!important;min-height:25px!important;padding:2px 5px!important;
+ font-size:11px!important;border-radius:5px!important;
+ color:var(--ness-muted)!important;
+}
+#sp-imagen-review-panel .ness-appearance-divider-create{
+ display:flex;gap:5px;align-items:center;flex-wrap:wrap;
+ flex:0 0 100%;min-width:0;margin:3px 0;
+}
+#sp-imagen-review-panel .ness-appearance-divider-create>.ness-input{
+ flex:1 1 155px;min-width:0;max-width:310px;
+ min-height:32px!important;font-size:12px!important;
+}
+#sp-imagen-review-panel .ness-appearance-divider-create>.ness-button{
+ min-height:32px!important;padding:4px 9px!important;font-size:11px!important;
+}
+#sp-imagen-review-panel [data-library-body-details][hidden]{display:none!important}
