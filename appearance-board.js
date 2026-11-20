@@ -100,17 +100,17 @@ export function reorderBaseTags(state,reordered){
 export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,initialSkin,initialSections,changed,readOnly,onLayoutChange=()=>{}}){
  const {el,button,clear,input}=ui;
  let skin=normalizeSkinTags(initialSkin),sections=normalizeAppearanceSections(initialSections,readBaseState().base);
- let mode='base',preset='face',layout='board',filter='',checked=new Set(),undo=[],redo=[];
+ let mode='base',preset='face',layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Конструктор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
  el('strong','Редактор внешности',header);
  const tools=el('div',undefined,header,'ness-tagboard-actions');
- const boardButton=button('Конструктор',tools,()=>{layout='board';render();},'quiet');
+ const boardButton=button('Конструктор',tools,()=>{if(mode==='base'&&appearanceFormat==='prose')return;layout='board';render();},'quiet');
  const textButton=button('Текстовый режим',tools,()=>{layout='text';render();},'quiet');
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
- const basic=button('Основа',modes,()=>{mode='base';preset='face';checked.clear();render();},'quiet');
- const marks=button('Кожа и отметины',modes,()=>{mode='skin';preset='upper_front';checked.clear();render();},'quiet');
+ const basic=button('Основа',modes,()=>{mode='base';preset='face';if(appearanceFormat==='prose')layout='text';checked.clear();render();},'quiet');
+ const marks=button('Кожа и отметины',modes,()=>{mode='skin';layout='board';preset='upper_front';checked.clear();render();},'quiet');
  const content=el('div',undefined,frame,'ness-tagboard-body');
  const snapshot=()=>copy({base:readBaseState(),sections,skin});
  function applySnapshot(s){
@@ -258,6 +258,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   onLayoutChange(layout,mode);
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
+  boardButton.disabled=mode==='base'&&appearanceFormat==='prose';
+  boardButton.title=boardButton.disabled?'Для обычного текста используй текстовый редактор; кожа остаётся независимым набором тегов.':'';
   boardButton.setAttribute('aria-pressed',String(layout==='board'));
   textButton.setAttribute('aria-pressed',String(layout==='text'));
   clear(content);
@@ -312,7 +314,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
       const groupPick=el('select',undefined,item,'ness-input ness-tagboard-groupselect');groupPick.title='Группа (не попадает в промпт)';
       for(const g of [{id:'',title:'Без раздела'},...sectionsForMode()]){const o=el('option',g.title,groupPick);o.value=g.id;}
       groupPick.value=group.id;groupPick.onchange=()=>moveGroup(tag,groupPick.value);
-      const edit=button('✎',item,()=>{const next=prompt('Точный текст тега',tag.text);if(next!==null)renameTag(tag,next);},'quiet');edit.title='Изменить текст тега';
+      const edit=button('✎',item,()=>{
+       if(readOnly())return;
+       const editField=el('input',undefined,item,'ness-input');editField.value=tag.text;
+       editField.setAttribute('aria-label','Изменить текст тега');editField.autocomplete='off';
+       const done=ok=>{if(ok)renameTag(tag,editField.value);else editField.remove();};
+       editField.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();done(true);}else if(e.key==='Escape'){e.preventDefault();done(false);}};
+       editField.onblur=()=>{if(editField.isConnected)done(true);};
+       use.hidden=true;edit.hidden=true;editField.focus();editField.select?.();
+     },'quiet');edit.title='Изменить текст тега';
       button('×',item,()=>removeTag(tag),'quiet').title='Удалить тег полностью';
      }
     }
@@ -380,7 +390,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();undo.push(snapshot());applySnapshot(redo.pop());}
  });
  render();
- return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(sections,readBaseState().base),refresh:render,getMode:()=>mode,setAvailableFormat(value){textButton.disabled=false;if(value==='prose'&&mode==='base'){layout='text';render();}}};
+ return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(sections,readBaseState().base),refresh:render,getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';render();}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
