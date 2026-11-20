@@ -169,7 +169,10 @@ async function synchronizePrompts() {
 }
 
 async function getRuntime() {
-    return runtime ??= createSpImagenRuntime({ getExtension: () => extensionApi, getMediaSlots: () => mediaSlots });
+    const loaded = runtime ??= createSpImagenRuntime({ getExtension: () => extensionApi, getMediaSlots: () => mediaSlots });
+    if (typeof loaded.resumePost !== 'function' || typeof loaded.generateAt !== 'function')
+        throw new Error('SP Imagen: модули обновились не полностью. Останови генерацию, обнови расширение целиком и перезагрузи страницу без кэша.');
+    return loaded;
 }
 
 async function getLibraryRuntime() {
@@ -1198,6 +1201,10 @@ async function initialize() {
     try {
         await synchronizePrompts();
         mediaSlots = await installSpImagenMediaSlots({ getExtension: () => extensionApi });
+        if (mediaSlots?.bundleVersion !== SP_IMAGEN_BUNDLE_VERSION) {
+            mediaSlots?.dispose?.();
+            throw new Error('SP Imagen: обнаружена смешанная версия файлов галереи. Генерация остановлена. Обнови расширение целиком и перезагрузи страницу с отключённым кэшем.');
+        }
         settingsPanel();
         refreshNewIndicators();
         initialized = true;
