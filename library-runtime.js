@@ -593,6 +593,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  let activePreset='face',editing=false,pending=false,transitioning=false,editingTag=null,draggedStart=null;
  let formatMode=initial.appearanceFormat==='prose'?'prose':'tags';
  let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base),board=null;
+ const sectionKey=value=>String(value||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
  function renderSkinTab(){
   clear(skinPane);
   const source=board?.getSkin()||skin;
