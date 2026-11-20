@@ -9,6 +9,7 @@ import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { parseImageHtml } from './image-transport.js';
 import { normalizeImagePrompt, limitComicDialogue } from './image-prompt.js';
+import { createSpImagenProgress } from './progress-ui.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
 export function createSpImagenRuntime({ getExtension, getMediaSlots } = {}){
@@ -1138,7 +1139,7 @@ function cleanRpVisualText(value,preferences={serviceTags:true,comments:true,htm
 }
 
 // Module: image_prompt
-async function repairNpcPromptLanguage(kind,prompt){
+async function repairNpcPromptLanguage(kind,prompt,signal=null){
  const boundary=prompt.indexOf('\n\nText:');
  const description=boundary<0?prompt:prompt.slice(0,boundary);
  const lettering=boundary<0?'':prompt.slice(boundary);
@@ -1154,7 +1155,7 @@ async function repairNpcPromptLanguage(kind,prompt){
  const translated=(await requestNessText(kind,[
   {role:'system',content:codePrompt('translate_cyrillic')},
   {role:'user',content:masked}
- ])).trim();
+ ],signal)).trim();
  const tokens=translated.match(tokenPattern)||[];
  if(hasCyrillic(translated)||/[\r\n|]/.test(translated)||translated.startsWith('```')||tokens.length!==protectedParts.length||tokens.some((token,i)=>token!==protectedParts[i].token)){
   throw Error('Не удалось перевести описание NPC с сохранением структуры промпта. Запусти генерацию заново.');
@@ -1228,11 +1229,14 @@ function getNessDirector(kind){
  if(!director||typeof director.prompt!=='string'||!director.prompt.trim())throw Error('В SP Imagen не найден промпт '+kind+'.');
  return director;
 }
-async function requestNessText(kind,messages){
+async function requestNessText(kind,messages,externalSignal=null){
  validateKind(kind);
  const extension=spImagenExtension();
  if(typeof extension.generateText!=='function')throw Error('SP Imagen не загрузил текстовый API.');
  const controller=new AbortController();
+ const externalAbort=()=>controller.abort(externalSignal?.reason || new Error('Генерация остановлена пользователем.'));
+ if(externalSignal?.aborted)externalAbort();
+ else externalSignal?.addEventListener('abort',externalAbort,{once:true});
  const origin=SillyTavern.getContext(),chat=origin.chat,chatId=origin.chatId;
  const event=origin.event_types?.CHAT_CHANGED;
  const changed=()=>{
@@ -1253,18 +1257,32 @@ async function requestNessText(kind,messages){
   return response;
  }catch(cause){
   if(cause?.code==='NESS_TIMEOUT')throw cause;
+  if(externalSignal?.aborted)throw new Error('Генерация остановлена пользователем.',{cause});
   if(controller.signal.aborted)throw new Error('Запрос SP Imagen отменён из-за тайм-аута или смены чата.',{cause});
   throw new Error('Запрос к текстовой модели завершился ошибкой: '+String(cause?.message||cause),{cause});
  }finally{
   if(event)origin.eventSource?.removeListener?.(event,changed);
+  externalSignal?.removeEventListener('abort',externalAbort);
  }
 }
 async function lastRpIndex(chat){
  if(SillyTavern.getContext().chat!==chat)throw Error('Чат изменился');
- const config=loadGen2Settings(),one={...config,posts:{...config.posts,snapshot:1}};
- const found=await collectConfiguredRp('snapshot',config.wardrobe,one);
- if(SillyTavern.getContext().chat!==chat)throw Error('Чат изменился');
- return found.recent.length?found.recent[found.recent.length-1].index:-1;
+ // Find one drawable RP post without doing the complete, historical wardrobe scan again.
+ const settings=loadGen2Settings();
+ for(let index=chat.length-1;index>=0;index--){
+  const raw=getCarrierRpText(chat[index],Boolean(settings.cleanup.exceptions?.length));
+  if(!raw)continue;
+  let body=raw;
+  if(mayContainWardrobe(raw,settings.wardrobe)){
+   try{body=(await readConfiguredWardrobe(raw,settings.wardrobe)).text;}
+   catch{body=stripWardrobeTags(raw);}
+  }else body=stripWardrobeTags(raw);
+  let clean='';
+  try{clean=await cleanConfiguredRp(body,settings);}
+  catch{clean=cleanRpVisualText(body);}
+  if(clean)return index;
+ }
+ return -1;
 }
 // Locks belong to this extension instance only, never to window or another script.
 const generationLocks=new WeakSet();
@@ -1395,7 +1413,10 @@ validateKind(kind);
   // NPC-only helper: independent of the unchanged RP/wardrobe preparation.
   v.sp_imagen_npc_request_scene=v.sp_imagen_parsed_scene;
   v.sp_imagen_tracker_npcs='';
-  await prepareNpc();
+  // NPC discovery is an optional, explicitly labeled button in the review window.
+  // Do not launch an extra LLM request for every ordinary image generation.
+  v.sp_imagen_npc_draft='';
+  v.sp_imagen_npc_status='NPC не подбирались автоматически. Можно добавить вручную или нажать «Предложить NPC по постам».';
 
   if(SillyTavern.getContext().chat!==chat||SillyTavern.getContext().chatId!==id)throw Error('Чат изменился во время подготовки.');
   v.sp_imagen_rp_source_count=String(recent.length);
@@ -1924,7 +1945,7 @@ validateKind(kind);scene=String(scene||'');
 }
 
 // Module: render_image
-async function renderImage(kind){
+async function renderImage(kind,providedProgress=null){
 validateKind(kind);
 
 const st=SillyTavern.getContext();
@@ -1941,19 +1962,25 @@ if(v.sp_imagen_preview_status!=='approved'||!ticket||v.sp_imagen_prepared_ticket
 const lockedChat=st.chat;
 if(!spImagenExtension().directGenerationEnabled?.())throw Error('Включи прямую генерацию NovelAI в SP Imagen и укажи свой API-токен.');
 if(generationLocks.has(lockedChat))throw Error('Генерация уже выполняется');
+const progress=providedProgress||createSpImagenProgress();
 generationLocks.add(lockedChat);
+progress.set('Подготовка режиссёра', 'Собираю параметры и внешность для текстовой модели.');
 const originEvent=st.event_types?.CHAT_CHANGED;
 let onOriginChanged=null;
+let userAbort=()=>{};
 let finished=false;
 try{
 const beforeChat=st.chat,beforeId=st.chatId,beforeCount=st.chat.length;
 const imageController=new AbortController();
+userAbort=()=>imageController.abort(progress.signal.reason || new Error('Остановлено пользователем.'));
+if(progress.signal.aborted)userAbort();else progress.signal.addEventListener('abort',userAbort,{once:true});
 onOriginChanged=()=>{
  const now=SillyTavern.getContext();
  if(now.chat!==beforeChat||now.chatId!==beforeId)imageController.abort(new Error('Чат изменился.'));
 };
 if(originEvent)st.eventSource?.on?.(originEvent,onOriginChanged);
 const requireOrigin=()=>{
+ if(imageController.signal.aborted)throw Error('Генерация остановлена или чат изменился.');
  const now=SillyTavern.getContext();
  if(now.chat!==beforeChat||now.chatId!==beforeId||now.chat.length!==beforeCount)
   throw Error('Чат изменился во время подготовки итогового промпта. Запусти генерацию заново.');
@@ -1979,36 +2006,42 @@ const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_la
 const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
 const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile);
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
+// A fresh director request already includes the complete required format. Never
+// submit the exact same costly request twice blindly after a format mismatch.
+progress.set('Режиссёр · ожидание ответа', 'Один запрос к текстовой модели. Время зависит от сервера и модели.');
+const raw=await requestNessText(kind,directorMessages,imageController.signal);
+requireOrigin();
+v.sp_imagen_last_director_raw=raw;
 let parsedTransport;
-for(let attempt=0;attempt<2;attempt++){
- const raw=await requestNessText(kind,directorMessages);
- requireOrigin();
- v.sp_imagen_last_director_raw=raw;
- await saveNessGenerationMetadata(st,'получен ответ режиссёра');
- requireOrigin();
- try{
-  parsedTransport=parseImageHtml(raw);
-  delete v.sp_imagen_last_director_error;
-  break;
- }catch(error){
-  v.sp_imagen_last_director_error=String(error?.message||error);
-  await saveNessGenerationMetadata(st,'ошибка формата режиссёра');
-  if(attempt===1)throw new Error('Режиссёр дважды вернул неподходящий формат: '+v.sp_imagen_last_director_error+' Увеличь лимит выходных токенов или проверь исходный ответ sp_imagen_last_director_raw.',{cause:error});
- }
+try{
+ parsedTransport=parseImageHtml(raw);
+ delete v.sp_imagen_last_director_error;
+}catch(error){
+ v.sp_imagen_last_director_error=String(error?.message||error);
+ await saveNessGenerationMetadata(st,'ошибка формата режиссёра');
+ const reasoningOnly=/(?:final one.line prompt|deliver HTML|JSON escaping|reasoning|write final prompt)/i.test(raw)
+    && !/<(?:naicom|image_lite)\b/i.test(raw);
+ if(reasoningOnly)throw new Error('Текстовая модель вернула рассуждения/черновик вместо готового HTML/JSON. NovelAI не запускался. Проверь режим reasoning и профиль подключения модели; исходный ответ сохранён в sp_imagen_last_director_raw.',{cause:error});
+ throw new Error('Режиссёр вернул неподходящий формат. NovelAI не запускался. Исходный ответ сохранён в sp_imagen_last_director_raw: '+v.sp_imagen_last_director_error,{cause:error});
 }
+progress.set('Проверка промпта', 'Проверяю формат, подставляю внешность и применяю настройки.');
+await saveNessGenerationMetadata(st,'получен ответ режиссёра');
+requireOrigin();
 const config=parsedTransport.config;
 v.sp_imagen_last_transport_repaired=parsedTransport.repaired;
 config.prompt=normalizeImagePrompt(config.prompt);
 if(npcLanguage){
- config.prompt=await repairNpcPromptLanguage(kind,config.prompt);
+ progress.set('Перевод NPC', 'Перевожу только нужные описания из подготовленного NPC-блока.');
+ config.prompt=await repairNpcPromptLanguage(kind,config.prompt,imageController.signal);
  requireOrigin();
 }
 if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
-if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,settingsForPrompt);
+if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,runtimeSettings);
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
+ progress.set('Проверка перед NovelAI', 'Подтверди готовый промпт. Пока запрос NovelAI не отправлен.');
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
- if(!accepted){finished=true;return 'Отправка в NAI5 отменена';}
+ if(!accepted){finished=true;progress.close();return 'Отправка в NAI5 отменена';}
 }
 const imagePrompt=config.prompt,cast=Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[];
 const live = SillyTavern.getContext();
@@ -2030,9 +2063,12 @@ const live = SillyTavern.getContext();
   if(!directExtension.directGenerationEnabled?.()){
     throw new Error('В SP Imagen → NovelAI включи прямую генерацию и укажи API-токен. Внешний SillyImages больше не требуется.');
   }
+  requireOrigin();
+  progress.submitted(); // The paid request might have reached NovelAI; never promise cancellation.
   const generated=await directExtension.generateImage(config,{signal:imageController.signal});
   requireOrigin();
   if(live.chat[targetIndex]!==target)throw new Error('Целевой RP-пост изменился за время генерации.');
+  progress.set('Сохранение изображения', 'Добавляю результат в галерею и жду подтверждения сохранения.', {stoppable:false});
   const stored=await slotManager.publish(targetIndex,kind,generated);
   requireOrigin();
   const persisted=live.chat[targetIndex]?.extra?.ness_media_slots_v2?.[kind]?.versions;
@@ -2044,11 +2080,17 @@ const live = SillyTavern.getContext();
   finished=true;
   if(stored.savePending){
     globalThis.toastr?.warning?.('Картинка добавлена в галерею, но SillyTavern ещё не подтвердил сохранение чата. Не перезагружай страницу, пока не убедишься, что чат сохранился.', 'SP Imagen');
+    progress.complete('Изображение добавлено', 'Чат ещё сохраняется. Не обновляй страницу до подтверждения.');
     return 'SP Imagen: изображение добавлено; сохранение чата пока не подтверждено.';
   }
+  progress.complete('Изображение готово', 'Сохранено в галерее выбранного RP-поста.');
   return 'SP Imagen: '+kind+' сохранён в слоте RP-поста #'+targetIndex;
 
+}catch(error){
+ progress.fail(error);
+ throw error;
 }finally{
+ progress.signal.removeEventListener('abort',userAbort);
  if(originEvent&&onOriginChanged)st.eventSource?.removeListener?.(originEvent,onOriginChanged);
  if(!finished && SillyTavern.getContext().chat===lockedChat && v.sp_imagen_run_ticket===ticket && v.sp_imagen_preview_status==='cancelled'){
    v.sp_imagen_preview_status='approved';
@@ -2065,13 +2107,29 @@ async function generateAt(request=null){
  const st=SillyTavern.getContext();
  if(!request||request.chat!==st.chat||request.chatId!==st.chatId||st.chat[request.index]!==request.message)throw Error('Выбранный пост или чат изменился. Нажми кнопку на посте заново.');
  validateKind(request.kind);
- await prepareRp(request.kind,request.index);
- await reviewScene();
- const live=SillyTavern.getContext();
- if(live.chat!==request.chat||live.chatId!==request.chatId)throw Error('Чат изменился.');
- if(live.chatMetadata.variables.sp_imagen_preview_status!=='approved')return 'Генерация отменена';
- await prepareLibrary();
- return await renderImage(request.kind);
+ const progress=createSpImagenProgress();
+ const checkStopped=()=>{if(progress.signal.aborted)throw Error('Генерация остановлена пользователем.');};
+ try{
+  progress.set('Сбор сцены и одежды', 'Читаю настроенное количество RP-постов и актуальный гардероб.');
+  await prepareRp(request.kind,request.index);
+  checkStopped();
+  progress.set('Проверка сцены', 'Проверь подготовленную сцену, одежду и состав персонажей.',{stoppable:false});
+  await reviewScene();
+  const live=SillyTavern.getContext();
+  if(live.chat!==request.chat||live.chatId!==request.chatId)throw Error('Чат изменился.');
+  checkStopped();
+  if(live.chatMetadata.variables.sp_imagen_preview_status!=='approved'){
+   progress.close();
+   return 'Генерация отменена';
+  }
+  progress.set('Подготовка библиотеки', 'Подставляю внешность выбранных персонажей.');
+  await prepareLibrary();
+  checkStopped();
+  return await renderImage(request.kind,progress);
+ }catch(error){
+  progress.fail(error);
+  throw error;
+ }
 }
 
 // Module: runtime_exports

@@ -196,3 +196,22 @@
 .spi-guide-caption .spi-guide-help { position: absolute; right: 0; top: 0; }
 .spi-tour-unavailable { padding: 7px 9px; border-left: 2px solid #f1c98a; color: #ead7ba; background: rgba(245,206,150,.07); border-radius: 4px; font-size: 12px; }
 .spi-tour-controls, .spi-tour-card h2, .spi-tour-count { flex-shrink: 0; }
+
+/* Non-modal generation stages: status comes from actual awaited operations. */
+.spi-generation-progress {
+  position: fixed; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 2147482400; width: min(365px, calc(100vw - 24px)); box-sizing: border-box;
+  display: grid; gap: 7px; padding: 15px 16px; border-radius: 13px;
+  border: 1px solid var(--SmartThemeBorderColor, #928590);
+  background: var(--SmartThemeBlurTintColor, #29252c); color: var(--SmartThemeBodyColor, #f6f0f2);
+  box-shadow: 0 8px 27px rgba(0, 0, 0, .28); line-height: 1.45;
+}
+.spi-generation-progress strong {font-size: 14px; line-height: 1.35;}
+.spi-generation-progress p {margin: 0; font-size: 12px; overflow-wrap: anywhere;}
+.spi-generation-progress small {font-size: 11px; opacity: .76; font-variant-numeric: tabular-nums;}
+.spi-generation-progress-actions {display:flex; justify-content:flex-end; margin-top:3px;}
+.spi-generation-progress-actions button {padding: 7px 13px; border: 1px solid var(--SmartThemeBorderColor, #928590); border-radius: 9px; color: inherit; background: transparent; cursor: pointer;}
+.spi-generation-progress-actions button:disabled {opacity: .48; cursor: default;}
+.spi-generation-progress-actions button[hidden] {display:none;}
+.spi-generation-failed {border-inline-start: 3px solid #cd7777;}
+@media (max-width: 620px) {.spi-generation-progress {right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: min(320px, calc(100vw - 16px)); padding: 12px;}}
