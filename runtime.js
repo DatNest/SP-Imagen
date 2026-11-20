@@ -1107,18 +1107,19 @@ async function previewFinalPrompt(config, origin) {
 // Module: review_view
 function createReviewView({kind,manualMode,postCount}){
  const ui=createUiKit(document),{el,area,button,note}=ui,{overlay,panel}=createDialogShell('review');
- const names={snapshot:'Snapshot · один кадр',comic:'Comic · комикс',story_page:'Story Page · история'};
+ const names={snapshot:'Snapshot · один кадр',comic:'Comic · комикс',story_page:'Story Page · история'},base=validateKind(kind);
+ names[kind] ||= getExtension?.()?.getGenerationProfileLabel?.(kind)||kind;
  createNessHeader(document,panel,manualMode?'Своя сцена':'Перед созданием иллюстрации',manualMode?'Опиши сцену и проверь детали.':'Посты → детали сцены → задание для картинки',manualMode?'Ручной ввод':names[kind]||names.snapshot);
  const scroll=el('div',undefined,panel);scroll.setAttribute('data-review-scroll','');
  const warning=el('p','',scroll,'ness-warning');warning.setAttribute('data-warning','');warning.style.display='none';
  const layout=el('div',undefined,scroll,'ness-scene-layout'),main=el('div',undefined,layout,'ness-scene-main'),side=el('aside',undefined,layout,'ness-scene-side');
  function card(parent,title,type){const box=el('details',undefined,parent,'ness-scene-card ness-scene-'+type);box.open=true;el('summary',title,box);return box;}
  const context=card(main,manualMode?'01 · ✎ Описание сцены':'01 · ▤ Посты для режиссёра','context');
- el('p',manualMode?'Ручной ввод':'Постов: '+String(postCount)+' · '+(kind==='story_page'?'последовательность событий':'текущая сцена'),context,'ness-scene-meta');
+ el('p',manualMode?'Ручной ввод':'Постов: '+String(postCount)+' · '+(base==='story_page'?'последовательность событий':'текущая сцена'),context,'ness-scene-meta');
  const sceneEl=area('');sceneEl.setAttribute('data-scene','');sceneEl.setAttribute('aria-label',manualMode?'Описание сцены':'Исходные RP-посты');ui.field(context,manualMode?'Описание сцены':'Исходные RP-посты',sceneEl);
  const wardrobe=card(main,'02 · ◇ Одежда и открытые участки тела','wardrobe'),wardrobeInfo=note(wardrobe,'');wardrobeInfo.setAttribute('data-wardrobe-info','');
  const outfEl=area('');outfEl.setAttribute('data-outfits','');outfEl.setAttribute('aria-label','Гардероб персонажей');outfEl.placeholder='Имя_outfit: одежда, открытые участки тела';ui.field(wardrobe,'Гардероб персонажей',outfEl);
- const composition=card(main,kind==='story_page'?'03 · ◈ Ритм и композиция страницы':'03 · ◈ Композиция','composition'),compControls=el('div',undefined,composition),compEl=area('');compEl.setAttribute('data-composition','');compEl.setAttribute('aria-label','Пожелания к композиции');ui.field(composition,'Пожелания к композиции',compEl);
+ const composition=card(main,base==='story_page'?'03 · ◈ Ритм и композиция страницы':'03 · ◈ Композиция','composition'),compControls=el('div',undefined,composition),compEl=area('');compEl.setAttribute('data-composition','');compEl.setAttribute('aria-label','Пожелания к композиции');ui.field(composition,'Пожелания к композиции',compEl);
  const castSlot=card(side,'♙ Участники сцены','cast'),npcSlot=card(side,'＋ Дополнительные участники · NPC','npc');
  const actions=el('footer',undefined,panel);actions.setAttribute('data-review-actions','');
  const errEl=el('p','',actions,'ness-error');errEl.setAttribute('data-error','');errEl.style.display='none';
@@ -1305,7 +1306,11 @@ function createNpcCards(D) {
 }
 
 // Module: services
-function validateKind(kind){if(!['snapshot','comic','story_page'].includes(kind))throw Error('Неизвестный профиль: '+kind);}
+function validateKind(kind){
+ const base=getExtension?.()?.getProfileBaseKind?.(kind)||(['snapshot','comic','story_page'].includes(kind)?kind:null);
+ if(!['snapshot','comic','story_page'].includes(base))throw Error('Профиль «'+kind+'» не найден или удалён.');
+ return base;
+}
 const NESS_TEXT_TIMEOUT_MS=180000;
 const NESS_METADATA_TIMEOUT_MS=30000;
 async function waitForNessOperation(run,timeoutMs,timeoutMessage,controller=null){
@@ -1500,8 +1505,10 @@ validateKind(kind);
 
   if(targetIndex===null)nessGenerationTargets.delete(chat);
   else nessGenerationTargets.set(chat,{index:targetIndex,message:chat[targetIndex],text:chat[targetIndex].mes,chatId:id});
+  const base=validateKind(kind),profile=getExtension?.()?.getActiveProfile?.(kind)||null;
   const userSettings=loadGen2Settings();
-  const collected=await collectConfiguredRp(kind,userSettings.wardrobe,userSettings,targetIndex);
+  const options={...userSettings,posts:{...userSettings.posts,[base]:profile?.parser?.posts||userSettings.posts[base]}};
+  const collected=await collectConfiguredRp(base,userSettings.wardrobe,options,targetIndex);
   if(SillyTavern.getContext().chat!==chat||SillyTavern.getContext().chatId!==id)throw Error('Чат изменился во время подготовки.');
   const recent=collected.recent;
   if(!recent.length)throw Error('Нет настоящих RP-постов');
@@ -1642,8 +1649,7 @@ async function reviewSceneDialog(providedProgress=null){
   if(!manualMode){
       const settings=loadCompositionSettings();
       if(!settings||typeof settings!=='object'||Array.isArray(settings))throw Error('Блок композиции должен возвращать объект common/snapshot/comic/story_page');
-      const kind=String(v.sp_imagen_active_kind||'snapshot');
-      if(!['snapshot','comic','story_page'].includes(kind))throw Error('Неизвестный режим композиции: '+kind);
+      const kind=validateKind(String(v.sp_imagen_active_kind||'snapshot'));
       for(const key of ['common','snapshot','comic','story_page'])if(settings[key]!==undefined&&typeof settings[key]!=='string')throw Error('Пожелания '+key+' должны быть текстом');
 
       compositionExtra=[settings.common||'',settings[kind]||''].map(x=>x.trim()).filter(Boolean).join('\n\n');
@@ -1743,7 +1749,8 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
   const outfits=(manualMode ? [] : [...assignments.values()].filter(x=>x.name && normalize(x.name)!=='не указан')).map(x=>
     `${x.name}_outfit: ${x.text}`
   ).join('\n');
-  const view=createReviewView({kind:v.sp_imagen_active_kind||'snapshot',manualMode,postCount:v.sp_imagen_rp_source_count||loadGen2Settings().posts[v.sp_imagen_active_kind||'snapshot']});
+  const reviewKind=v.sp_imagen_active_kind||'snapshot';
+  const view=createReviewView({kind:reviewKind,manualMode,postCount:v.sp_imagen_rp_source_count||loadGen2Settings().posts[validateKind(reviewKind)]});
   const {overlay,panel,sceneEl,outfEl,compEl,errEl,cancel,next}=view;
   const ui=createUiKit(document);
   sceneEl.value=resumeReview?.scene??scene;outfEl.value=resumeReview?.outfits??outfits;compEl.value=resumeReview?.composition??suggestion;
@@ -1810,7 +1817,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
       try{
         const current=SillyTavern.getContext();
         if(current.chat!==startChat||current.chatId!==startId)throw Error('Чат изменился.');
-        const result=await selectComposition(compositionCatalog,String(v.sp_imagen_active_kind||'snapshot'),sceneEl.value.trim());
+        const result=await selectComposition(compositionCatalog,validateKind(String(v.sp_imagen_active_kind||'snapshot')),sceneEl.value.trim());
         if(done||SillyTavern.getContext().chat!==startChat||SillyTavern.getContext().chatId!==startId)return;
         if(result?.mood && Object.hasOwn(compositionCatalog,result.mood)){
           compositionSelect.value=result.mood;
@@ -2132,25 +2139,27 @@ const requireOrigin=()=>{
 v.sp_imagen_preview_status='cancelled';
 await saveNessGenerationMetadata(st,'запуск режиссёра');
 requireOrigin();
-const director=getNessDirector(kind);
+const director=getNessDirector(kind),baseKind=validateKind(kind);
+const profile=getExtension?.()?.getActiveProfile?.(kind)||null;
 const runtimeSettings=loadGen2Settings();
+const directorSettings={...runtimeSettings,posts:{...runtimeSettings.posts,[baseKind]:profile?.parser?.posts||runtimeSettings.posts[baseKind]}};
 const source={
 'RP POSTS':String(v.sp_imagen_tracker_scene||''),
 'FIXED CHARACTER APPEARANCE':String(v.sp_imagen_structured_library||''),
 'CURRENT WARDROBE':String(v.sp_imagen_tracker_outfits||''),
 'COMPOSITION WISHES':String(v.sp_imagen_composition_wishes||'')};
 const prepared=nessPreparedVisibility.get(lockedChat);
-const visibility=prepared?.ticket===ticket && getExtension?.()?.getActiveProfile?.(kind)?.options?.includeCharacters!==false ? prepared.records : new Map();
+const visibility=prepared?.ticket===ticket && profile?.parser?.options?.includeCharacters!==false ? prepared.records : new Map();
 if(!visibility.size&&/^NESS_VIS character ID:/m.test(source['FIXED CHARACTER APPEARANCE']))throw Error('Разметка внешности устарела. Запусти подготовку заново.');
-const profile=getExtension?.()?.getActiveProfile?.(kind) || null;
 const filteredSource=filterProfileSources(source,profile);
 const identityInstruction=/^(?:Prompt name|Subject):/m.test(filteredSource['FIXED CHARACTER APPEARANCE']) ? codePrompt('identity_fields') : '';
 const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
-const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
-const ratioOverride=runtimeSettings.aspectRatio?.[kind]||'auto';
+const useDialogueSettings=profile?.parser?.options?.useDialogueSettings!==false;
+const ratioOverride=runtimeSettings.aspectRatio?.[baseKind]||'auto';
 const ratioInstruction=ratioOverride==='auto'?'':'\n\nIMAGE RATIO: Set aspect_ratio to '+ratioOverride+' in the required JSON. Keep the original output contract unchanged.';
-const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+skinAppearanceInstruction(visibility)+npcLanguage+directorProfileGuidance(profile)+ratioInstruction;
+const sharedRules=getExtension?.()?.getGlobalDirectorRules?.()||[];
+const systemPrompt=configuredDirectorPrompt(director.prompt,baseKind,directorSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+skinAppearanceInstruction(visibility)+npcLanguage+directorProfileGuidance({extraPrompts:sharedRules},profile)+ratioInstruction;
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 // A fresh director request already includes the complete required format. Never
 // submit the exact same costly request twice blindly after a format mismatch.
@@ -2188,7 +2197,9 @@ if(visibility.size && profile?.options?.includeCharacters!==false){
 }
 // Personal composition rules are already included in the director's instructions.
 // Never prepend their raw text to the NAI5 image prompt.
-if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,runtimeSettings);
+if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,baseKind,runtimeSettings);
+config.kind=kind;
+config.profileName=getExtension?.()?.getGenerationProfileLabel?.(kind)||kind;
 const snapshot=spImagenExtension().snapshotGenerationConfig?.(config,kind);
 if(snapshot?.spImagenDirect)config.spImagenDirect=snapshot.spImagenDirect;
 requireOrigin();
