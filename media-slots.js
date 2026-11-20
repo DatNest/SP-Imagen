@@ -54,7 +54,9 @@ export async function installSpImagenMediaSlots(options) {
     }
     if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
     if (create) {
-      for (const kind of availableKinds(slots)) {
+      // Do not allocate empty custom slots for every RP post. Create a custom
+      // slot only when that profile actually publishes an image.
+      for (const kind of KINDS) {
         if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0, collapsed: true };
       }
     }
@@ -978,7 +980,7 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   async function publish(index, kind, item) {
-    if (!validKind(kind) || !safeUrl(item?.src)) throw new Error('Неверный слот или адрес изображения.');
+    if (!(validKind(kind)||validCustomId(kind)) || !safeUrl(item?.src)) throw new Error('Неверный слот или адрес изображения.');
     const current = context();
     const originalChat = current.chat, originalId = current.chatId;
     const message = originalChat?.[index];
@@ -1005,6 +1007,8 @@ export async function installSpImagenMediaSlots(options) {
     try {
       migrateMessage(message);
       const slots = slotsOf(message, true);
+      if(!slots[kind]||!Array.isArray(slots[kind].versions))
+        slots[kind]={versions:[],selected:0,collapsed:true};
       slots[kind].label=String(item?.config?.profileName||slots[kind].label||LABEL[kind]).slice(0,100);
       addVersion(slots[kind], storedItem);
       paint();
