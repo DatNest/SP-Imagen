@@ -328,8 +328,8 @@
  display:flex;align-items:center;gap:8px;min-width:0;padding:7px 0;
  color:var(--ness-muted);background:transparent;border-radius:5px;
 }
-#sp-imagen-review-panel .ness-tagboard-divider::before,
-#sp-imagen-review-panel .ness-tagboard-divider::after{
+#sp-imagen-review-panel .ness-divider-line::before,
+#sp-imagen-review-panel .ness-divider-line::after{
  content:'';display:block;height:1px;flex:1 1 14px;min-width:14px;
  background:var(--ness-border);
 }
@@ -378,3 +378,16 @@
   height:auto;max-height:37dvh;min-height:110px;overflow-y:auto;
  }
 }
+
+/* Center wrapping divider titles in symmetric rules, independently from drag handles. */
+#sp-imagen-review-panel .ness-divider-line{display:flex;align-items:center;flex:1 1 auto;min-width:0;}
+#sp-imagen-review-panel .ness-divider-line::before,
+#sp-imagen-review-panel .ness-divider-line::after{flex:1 1 0;min-width:16px;}
+#sp-imagen-review-panel .ness-divider-line>.ness-tagboard-divider-title{
+ max-width:min(74%,420px);flex:0 1 auto;padding:0 14px;white-space:normal;
+ overflow-wrap:anywhere;text-align:center;text-wrap:balance;
+}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-divider-line{order:0;}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-tagboard-grip{order:-1;}
+#sp-imagen-review-panel .ness-tagboard-grip{touch-action:none!important;user-select:none;-webkit-user-select:none;}
+#sp-imagen-review-panel .ness-tagboard-item>.ness-button:first-child{flex:1 1 auto;}
