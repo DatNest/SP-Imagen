@@ -733,8 +733,13 @@ function openTextApiSettings({ back = false } = {}) {
     const tokenControl = formField(grid, 'API-ключ', tokenWrap, 'Не попадает в экспорты SP Imagen.');
     const temperature = input(draft.temperature, 'number'); temperature.min = '0'; temperature.max = '2'; temperature.step = '0.1'; formField(grid, 'Temperature', temperature);
     const maxTokens = input(draft.maxTokens, 'number'); maxTokens.min = '1000'; maxTokens.max = '100000'; maxTokens.step = '1000'; formField(grid, 'Максимум токенов', maxTokens);
-    const streaming=input('','checkbox');streaming.checked=draft.streaming;
-    formField(grid,'Streaming · потоковый ответ',streaming,'Режиссёр получает готовый результат после завершения потока.');
+    const streaming=select({
+        profile:'Как в профиле / стандарт ST',
+        on:'Включить только для SP Imagen',
+        off:'Выключить только для SP Imagen',
+    },draft.streamingMode);
+    formField(grid,'Streaming · только SP Imagen',streaming,
+        'У SillyTavern профиль подключения не хранит настройку Streaming: «Как в профиле» использует стандартный непотоковый режим. Все варианты применяются только к запросам SP Imagen; настройки основного чата не меняются.');
     const jailbreak=input('','checkbox');jailbreak.checked=draft.jailbreak;
     formField(grid,'Jailbreak · дополнительная system-инструкция',jailbreak,'Необязательная собственная инструкция. Может повлиять на строгий формат HTML.');
     const jailbreakText=document.createElement('textarea');jailbreakText.className='spi-short-area';jailbreakText.value=draft.jailbreakText;
@@ -750,7 +755,7 @@ function openTextApiSettings({ back = false } = {}) {
     const readDraft = () => normalizeTextApiSettings({
       ...draft,mode:mode.value,profileId:profile.value,endpoint:endpoint.value,apiKey:token.value,
       model:model.value,temperature:Number(temperature.value),maxTokens:Number(maxTokens.value),
-      streaming:streaming.checked,jailbreak:jailbreak.checked,jailbreakText:jailbreakText.value,
+      streamingMode:streaming.value,streaming:streaming.value==='on',jailbreak:jailbreak.checked,jailbreakText:jailbreakText.value,
       reasoningMode:reasoningMode.value,reasoningProtocol:reasoningProtocol.value,
       reasoningEffort:reasoningEffort.value,reasoningBudget:Number(reasoningBudget.value)
     });

@@ -3,7 +3,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
-import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections } from './appearance-board.js';
+import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, SKIN_PRESETS } from './appearance-board.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -549,7 +549,7 @@ function restoreLibraryBodyFields(input){
 }
 
 // Module: appearance_visibility_editor
-function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,save,canEdit){
+function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,save,canEdit,readNsfw=()=>({}),writeNsfw=()=>{}){
  const {el,clear,button,input}=ui;
  const wrap=el('div',undefined,undefined,'ness-appearance-wrap');
  if(tagColor)wrap.style.setProperty('--ness-appearance-color',tagColor);
@@ -569,20 +569,63 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  const editHelp='Enter добавляет тег. Для перестановки потяни за ⠿ или нажми на тег и выбери «Раньше» или «Позже».';
  const message=el('p',editHelp,box,'ness-note');
  message.setAttribute('aria-live','polite');
- const presets=el('div',undefined,box,'ness-appearance-presets');
+ const subTabs=el('div',undefined,box,'ness-appearance-subtabs');
+ subTabs.setAttribute('role','tablist');subTabs.setAttribute('aria-label','Разделы тегов внешности');
+ const anglesTab=button('Ракурсы',subTabs,()=>selectSubTab('angles'),'quiet');
+ const skinTab=button('Метки под одеждой',subTabs,()=>selectSubTab('skin'),'quiet');
+ const nsfwTab=button('NSFW',subTabs,()=>selectSubTab('nsfw'),'quiet');
+ const anglesPane=el('div',undefined,box,'ness-appearance-tab-content');
+ const skinPane=el('div',undefined,box,'ness-appearance-tab-content');
+ const nsfwPane=el('div',undefined,box,'ness-appearance-tab-content');
+ let activeSubTab='angles';
+ const presets=el('div',undefined,anglesPane,'ness-appearance-presets');
  presets.setAttribute('role','group');presets.setAttribute('aria-label','Ракурсы внешности');
  const presetButtons=new Map();
- const copyToggle=button('Добавить из ракурса',box,()=>{
+ const copyToggle=button('Добавить из ракурса',anglesPane,()=>{
   if(!editing||transitioning||!canEdit())return;
   if(copyPanel.hidden)openCopyPanel();else closeCopyPanel();
  },'quiet');
  copyToggle.hidden=true;copyToggle.setAttribute('aria-expanded','false');
- const copyPanel=el('div',undefined,box,'ness-appearance-copy');copyPanel.hidden=true;
+ const copyPanel=el('div',undefined,anglesPane,'ness-appearance-copy');copyPanel.hidden=true;
  let base=area.value;
  let ranges=normalizeAppearanceRanges(base,initial.appearanceRanges);
  let selections=normalizeAppearanceSelections(base,initial.appearanceSelections);
  let activePreset='face',editing=false,pending=false,transitioning=false,editingTag=null,draggedStart=null;
  let formatMode=initial.appearanceFormat==='prose'?'prose':'tags';
+ let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base),board=null;
+ const sectionKey=value=>String(value||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+ function renderSkinTab(){
+  clear(skinPane);
+  const source=board?.getSkin()||skin;
+  const available=new Map(source.tags.map(t=>[t.id,t.text]));
+  el('p','Все теги доступны в конструкторе; здесь видно распределение по открытым участкам.',skinPane,'ness-note');
+  for(const [id,label] of Object.entries({always:'✦ Всегда',...SKIN_PRESETS})){
+   const line=el('div',undefined,skinPane,'ness-appearance-assignment-line');
+   const ids=source.selections[id]||[];
+   el('strong',label+' · '+ids.length,line);
+   const chips=el('div',undefined,line,'ness-appearance-assignment-chips');
+   for(const key of ids)if(available.has(key))el('span',available.get(key),chips,'ness-appearance-assignment-chip');
+  }
+ }
+ function renderNsfwTab(){
+  clear(nsfwPane);
+  for(const [key,label] of [['nudeUpper','Голый верх'],['nudeLower','Голый низ']]){
+   const line=el('label',undefined,nsfwPane,'ness-appearance-nsfw-field');
+   el('span',label,line,'ness-label');
+   const editor=el('textarea',undefined,line,'ness-input');
+   editor.rows=3;editor.value=readNsfw()?.[key]||'';editor.spellcheck=false;
+   editor.oninput=()=>{if(!canEdit())return;writeNsfw(key,editor.value);changed();};
+  }
+ }
+ function selectSubTab(id){
+  activeSubTab=id;
+  for(const [key,tab,pane] of [['angles',anglesTab,anglesPane],['skin',skinTab,skinPane],['nsfw',nsfwTab,nsfwPane]]){
+   tab.setAttribute('aria-pressed',String(key===id));
+   pane.hidden=key!==id;
+  }
+  if(id==='skin')renderSkinTab();
+  if(id==='nsfw')renderNsfwTab();
+ }
 
  const labels=new Map([[NESS_APPEARANCE_ALWAYS,'Вставлять всегда'],...Object.entries(NESS_APPEARANCE_PRESETS).map(([id,preset])=>[id,preset.label])]);
  for(const [id,label] of labels){
@@ -641,11 +684,43 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   }
   return items;
  }
+ function normalSections(items){
+  const listed=skin.poolSections?.length?skin.poolSections:sections;
+  const all=skin.poolOrder?.length?skin.poolOrder:items.map(t=>sectionKey(t.text));
+  const known=new Set(items.map(t=>sectionKey(t.text)));
+  return listed.map(section=>{
+   const before=skin.poolSections?.length&&skin.poolOrder?.length
+    ?all.slice(0,section.before).filter(key=>known.has(key)).length
+    :Math.min(items.length,section.before);
+   return {...section,before:Math.max(0,Math.min(items.length,before))};
+  });
+ }
+ function moveNormalSection(id,delta){
+  if(!canEdit()||editing)return;
+  const all=skin.poolSections?.length?skin.poolSections:sections;
+  const entry=all.find(t=>t.id===id);if(!entry)return;
+  entry.before=Math.max(0,Math.min(Math.max(clauses().length,skin.poolOrder?.length||0),entry.before+delta));
+  skin.poolSections=all.map(t=>({...t}));
+  sections=normalizeAppearanceSections(all.filter(t=>t.before<=clauses().length),base);
+  changed();drawFragments();
+ }
  function drawFragments(focusStart){
   const scroll=fragments.scrollTop,visible=editing?selected(activePreset):[];
   clear(fragments);
-  const items=clauses();
+  const items=clauses(),dividers=normalSections(items);
+  const showDivider=position=>{
+   for(const divider of dividers.filter(x=>x.before===position)){
+    const band=el('div',undefined,fragments,'ness-appearance-divider');
+    el('span',divider.title,band);
+    if(!editing){
+     const controls=el('div',undefined,band,'ness-appearance-divider-actions');
+     button('↑',controls,()=>moveNormalSection(divider.id,-1),'quiet').title='Сдвинуть разделитель выше';
+     button('↓',controls,()=>moveNormalSection(divider.id,1),'quiet').title='Сдвинуть разделитель ниже';
+    }
+   }
+  };
   for(const [index,fragment] of items.entries()){
+   showDivider(index);
    const {start,end,text}=fragment;
    const marked=visible.some(r=>r.start<end&&start<r.end);
    const chip=el('span',undefined,fragments,'ness-appearance-chip');
@@ -678,6 +753,22 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
     remove.setAttribute('aria-label','Удалить тег '+text);
    }
    if(start===focusStart)part.focus();
+  }
+  showDivider(items.length);
+  if(!editing&&formatMode==='tags'){
+   const controls=el('div',undefined,fragments,'ness-appearance-divider-create');
+   const field=el('input',undefined,controls,'ness-input');
+   field.placeholder='Название разделителя';
+   const add=()=>{
+    if(!canEdit()||!field.value.trim())return;
+    const value=field.value.trim().slice(0,50);
+    const record={id:'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:value,before:items.length};
+    skin.poolSections=[...(skin.poolSections?.length?skin.poolSections:sections),record];
+    sections=normalizeAppearanceSections([...sections,record],base);
+    changed();drawFragments();
+   };
+   field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add();}};
+   button('+ Разделитель',controls,add,'quiet');
   }
   fragments.scrollTop=scroll;
   updateMoves();
@@ -816,13 +907,13 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   base=next;updatePresets();
  }
  area.oninput=()=>{sync();changed();drawFragments();};
- let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base),board=null;
  function openBoard(parent){
   sync();
   closeBoard();
   board=createAppearanceBoard({
    ui,parent,initialSkin:skin,initialSections:sections,
    readBaseState:()=>({base,ranges,selections}),
+   readNsfw,writeNsfw,
    writeBaseState:next=>{
     area.value=base=next.base;
     ranges=normalizeAppearanceRanges(base,next.ranges);
@@ -840,6 +931,8 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   sections=board.getSections();
   board.element.remove();
   board=null;
+  if(activeSubTab==='skin')renderSkinTab();
+  if(activeSubTab==='nsfw')renderNsfwTab();
  }
  function updateFormat(){
    const prose=formatMode==='prose';
@@ -852,7 +945,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    if(!prose){drawFragments();updateMoves();}
    if(board)board.setAvailableFormat(formatMode);
  }
- updatePresets();drawFragments();updateFormat();
+ updatePresets();drawFragments();updateFormat();selectSubTab('angles');
  return {
    setFormat(mode){
      const next=mode==='prose'?'prose':'tags';
@@ -891,7 +984,7 @@ async function openLibraryEditor(){
   entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields))if(e.value!==''||Object.hasOwn(entry,key))entry[key]=e.value;
   const {ranges,selections,skin,sections}=visibility.value;
-  if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
+  if(skin.tags.length||skin.sections.length||skin.poolSections?.length||skin.poolOrder?.length||entry.appearanceSkin)entry.appearanceSkin=skin;
   if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
   if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
   if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
@@ -1023,36 +1116,7 @@ async function openLibraryEditor(){
    if(!editor||editor.id!==selected.id){select.value=previous;return;}
    displayBoard();
   };
-  const extras=el('div',undefined,host,'ness-fullboard-exposure');
-  el('span','Детали открытого тела',extras,'ness-label');
-  const exposedHelp=button('?',extras,undefined,'icon quiet ness-mini-help');
-  exposedHelp.setAttribute('aria-label','Как работают голый верх и голый низ');
-  const exposureTip=view.tip(exposedHelp,'Здесь хранятся постоянные особенности открытого тела. Кнопки только открывают редактор соответствующего поля: они не снимают одежду и не меняют сцены. Данные используются, когда участок действительно открыт и виден.');
-  exposedHelp.onclick=e=>{e.preventDefault();exposureTip.toggle();};
-  const bodyEdit=el('div',undefined,host,'ness-fullboard-exposure-editor');bodyEdit.hidden=true;
-  const controls=[];
-  for(const [key,label] of [['nudeUpper','Голый верх'],['nudeLower','Голый низ']]){
-   const source=editor.fields[key];
-   const toggle=button(label+(source?.value?.trim()?' •':''),extras,undefined,'quiet ness-fullboard-exposure-toggle');
-   toggle.setAttribute('aria-expanded','false');
-   controls.push({key,label,toggle});
-   toggle.onclick=()=>{
-    const selected=bodyEdit.dataset.key===key&&!bodyEdit.hidden;
-    clear(bodyEdit);bodyEdit.hidden=selected;bodyEdit.dataset.key=selected?'':key;
-    controls.forEach(item=>{const open=!selected&&item.key===key;item.toggle.setAttribute('aria-pressed',String(open));item.toggle.setAttribute('aria-expanded',String(open));});
-    if(selected)return;
-    const prompt=el('label',label+' · особенности открытого тела',bodyEdit,'ness-label');
-    const textarea=el('textarea',undefined,bodyEdit,'ness-input ness-fullboard-exposure-text');
-    textarea.value=source?.value||'';textarea.spellcheck=false;
-    prompt.setAttribute('for','ness-fullboard-'+key);textarea.id='ness-fullboard-'+key;
-    textarea.oninput=()=>{
-     if(!editor?.fields?.[key])return;
-     editor.fields[key].value=textarea.value;
-     toggle.textContent=label+(textarea.value.trim()?' •':'');
-     changed();
-    };
-   };
-  }
+  // Nude upper/lower fields are edited within the board's NSFW tab.
   const boardArea=el('div',undefined,host,'ness-fullboard-area');
   editor.visibility.openBoard(boardArea);
   view.showConstructor();
@@ -1092,7 +1156,9 @@ async function openLibraryEditor(){
   fields.base=field(appearance,labels.base,area(entry.base));fields.base.className+=' ness-appearance';
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
-  const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done);
+  const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done,
+   ()=>({nudeUpper:fields.nudeUpper?.value??entry.nudeUpper??'',nudeLower:fields.nudeLower?.value??entry.nudeLower??''}),
+   (key,value)=>{if(fields[key])fields[key].value=value;else entry[key]=value;changed();});
   visibility.setFormat(appearanceFormat.value);
   const openConstructor=button('◫ Открыть конструктор тегов',appearance,()=>enterBoard(),'quiet ness-open-constructor');
   openConstructor.title='Полноэкранный редактор ракурсов, отдельных тегов кожи и разделителей';
@@ -1109,14 +1175,14 @@ async function openLibraryEditor(){
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
   const body=tabs.add('Старые поля отметин');
-  el('p','Старые поля сохранены для совместимости. Отдельные наборы «Кожа и отметины» доступны через кнопку «Открыть конструктор тегов» во вкладке «Внешность». Не дублируй признаки в обоих местах.',body,'ness-note');
+  el('p','Старые поля отметин сохранены для совместимости. Ракурсы, кожа и NSFW редактируются во вкладке «Внешность».',body,'ness-note');
   const marks=el('section',undefined,body,'ness-body-section');marks.setAttribute('data-library-body-marks','');
   el('h4','Отметины на коже',marks);
   el('p','Шрамы, татуировки, родинки и другие постоянные отметины. Выбери часть тела и впиши короткие английские теги через запятую. Укажи сторону, если это важно.',marks,'ness-note');
   el('p','Например: small scar on left thigh, flower tattoo on right forearm.',marks,'ness-body-example');
   const marksGrid=el('div',undefined,marks,'ness-grid');
   for(const key of ['thighMarks','kneeMarks','shinMarks','shoulderMarks','forearmMarks'])fields[key]=field(marksGrid,labels[key],area(entry[key]||''));
-  const details=el('section',undefined,body,'ness-body-section');details.setAttribute('data-library-body-details','');
+  const details=el('section',undefined,body,'ness-body-section');details.setAttribute('data-library-body-details','');details.hidden=true;
   el('h4','Особенности открытого тела',details);
   el('p','«Верх» — грудь, живот и торс. «Низ» — бёдра, таз и интимная анатомия. Записывай особенности короткими английскими тегами. Обе графы можно оставить пустыми.',details,'ness-note');
   const bodyGrid=el('div',undefined,details,'ness-grid');

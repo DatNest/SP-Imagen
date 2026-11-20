@@ -1,5 +1,5 @@
 export function defaultTextApiSettings() {
-    return { mode: 'st', profileId: '', endpoint: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000, streaming: false, jailbreak: false, jailbreakText: '', reasoningMode: 'inherit', reasoningProtocol: 'auto', reasoningEffort: 'medium', reasoningBudget: 4096 };
+    return { mode: 'st', profileId: '', endpoint: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000, streaming: false, streamingMode: 'profile', jailbreak: false, jailbreakText: '', reasoningMode: 'inherit', reasoningProtocol: 'auto', reasoningEffort: 'medium', reasoningBudget: 4096 };
 }
 
 export function normalizeTextApiSettings(value) {
@@ -14,7 +14,13 @@ export function normalizeTextApiSettings(value) {
     settings.maxTokens = Math.trunc(Number(settings.maxTokens));
     if (!Number.isFinite(settings.temperature) || settings.temperature < 0 || settings.temperature > 2) settings.temperature = 0.2;
     if (!Number.isInteger(settings.maxTokens) || settings.maxTokens < 1000 || settings.maxTokens > 100000) settings.maxTokens = 16000;
-    settings.streaming = settings.streaming === true;
+    // Connection Manager profiles do not persist a streaming flag.
+    // Their request service defaults to non-streaming unless explicitly
+    // overridden. Preserve legacy boolean settings without changing behavior.
+    settings.streamingMode = ['profile','on','off'].includes(input.streamingMode)
+        ? input.streamingMode
+        : typeof input.streaming === 'boolean' ? (input.streaming ? 'on' : 'off') : 'profile';
+    settings.streaming = settings.streamingMode === 'on';
     settings.jailbreak = settings.jailbreak === true;
     settings.jailbreakText = String(settings.jailbreakText || '').slice(0, 10000);
     if (!['inherit','off','effort','budget'].includes(settings.reasoningMode)) settings.reasoningMode = 'inherit';
@@ -178,7 +184,9 @@ async function collectDirectStream(response) {
     try{
         while(!wasDone){
             const next=await reader.read();
-            buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done}).replace(/\r\n/g,'\n');
+            // Normalize CRLF only after joining chunks; the separator may cross network reads.
+            buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done});
+            buffer=buffer.replace(/\r\n/g,'\n');
             let split;
             while((split=buffer.indexOf('\n\n'))!==-1){
                 const packet=buffer.slice(0,split);buffer=buffer.slice(split+2);
