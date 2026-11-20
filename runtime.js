@@ -2181,6 +2181,8 @@ if(npcLanguage){
 if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
 if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,runtimeSettings);
+const snapshot=spImagenExtension().snapshotGenerationConfig?.(config,kind);
+if(snapshot?.spImagenDirect)config.spImagenDirect=snapshot.spImagenDirect;
 requireOrigin();
 const selected=nessGenerationTargets.get(beforeChat);
 if(selected&&(selected.chatId!==beforeId||beforeChat[selected.index]!==selected.message||selected.message.mes!==selected.text))throw Error('Выбранный пост изменился. Подготовь картинку заново.');
