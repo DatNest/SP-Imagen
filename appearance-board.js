@@ -337,7 +337,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(readOnly())return;
   if(!confirm('Удалить тег из общего пула? Он будет снят со всех ракурсов, меток кожи и NSFW.'))return;
   record();
-  const key=tag.poolKey;
+  const key=tag.poolKey,former=items(),removedAt=former.findIndex(x=>x.poolKey===key);
   const before=baseState(),kept=parseBaseTags(before.base).filter(x=>tagKey(x.text)!==key);
   if(kept.length!==parseBaseTags(before.base).length)writeBaseState(reorderBaseTags(before,kept));
   const skinIds=new Set(skin.tags.filter(x=>tagKey(x.text)===key).map(x=>x.id));
@@ -346,6 +346,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   for(const id of Object.keys(nudeFields)){
    const old=nudeSelected(id),next=old.filter(x=>tagKey(x)!==key);
    if(next.length!==old.length)writeNsfw(id,next.join(', '));
+  }
+  if(removedAt>=0){
+   poolSections=poolSections.map(section=>({...section,before:Math.max(0,section.before-(section.before>removedAt?1:0))}));
+   skin.poolSections=copy(poolSections);
   }
   skin.poolOrder=skin.poolOrder.filter(x=>x!==key);after();
  }
