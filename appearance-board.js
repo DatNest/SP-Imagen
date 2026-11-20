@@ -486,6 +486,26 @@ export function skinAppearanceInstruction(records){
   +'Skin-equipped character IDs and available parts:\n'+names;
 }
 export function insertSkinAppearance(prompt,records){
+ const source=String(prompt||'');
+ const openings=[...source.matchAll(/\[\[NESS_SKIN\b/gi)],seenMarkers=new Set();
+ if(!openings.length&&/\bNESS_SKIN\s*:/i.test(source))
+  throw Error('Метка ОТКРЫТОЙ КОЖИ написана без [[...]]. Это [[NESS_SKIN:ID:ОБЛАСТЬ]], а не [[NESS_VIS]] базовой внешности и не метка одежды.');
+ for(const opening of openings){
+  const pos=opening.index,close=source.indexOf(']]',pos),newline=source.indexOf('\n',pos);
+  if(close<0||newline>=0&&close>newline)
+   throw Error('Незавершённая метка ОТКРЫТОЙ КОЖИ [[NESS_SKIN:...]]: нет ]]. Она должна стоять после [[NESS_VIS]] и перед описанием одежды.');
+  const exact=source.slice(pos,close+2),m=exact.match(/^\[\[NESS_SKIN:([a-z][a-z0-9_]*):([a-z_, \t]+)\]\]$/);
+  if(!m)throw Error('Некорректный формат метки ОТКРЫТОЙ КОЖИ '+JSON.stringify(exact.slice(0,100))+'. Ожидается [[NESS_SKIN:ID:lower_back]] или [[NESS_SKIN:ID:none]].');
+  const [,id,definition]=m,record=records.get(id);
+  if(!record)throw Error('Метка ОТКРЫТОЙ КОЖИ с неизвестным ID «'+id+'»: персонаж не найден в подготовленной библиотеке.');
+  if(!hasSkinSelections(record.skinTags))throw Error('[[NESS_SKIN]] для «'+(record.name||id)+'», хотя ему не настроены теги открытой кожи. Удали эту метку из ответа режиссёра.');
+  if(seenMarkers.has(id))throw Error('Две метки [[NESS_SKIN]] у персонажа «'+(record.name||id)+'». Требуется ровно одна для всех открытых участков.');
+  seenMarkers.add(id);
+  const parts=definition.split(',').map(x=>x.trim());
+  if(!parts.length||parts.some(p=>p!=='none'&&!Object.hasOwn(SKIN_PRESETS,p))||parts.includes('none')&&parts.length>1){
+   throw Error('Неизвестная комбинация открытых участков у «'+(record.name||id)+'»: '+definition.slice(0,110)+'. Допустимы: none, '+Object.keys(SKIN_PRESETS).join(', ')+'.');
+  }
+ }
  const inserted=new Set();
  const result=String(prompt||'').replace(/\[\[NESS_SKIN:([a-z][a-z0-9_]*):([a-z_, \t]+)\]\][ \t]*(?:[,;][ \t]*)?/g,(whole,id,definition)=>{
   const record=records.get(id);
@@ -499,7 +519,7 @@ export function insertSkinAppearance(prompt,records){
   const line=formatSkinParts(record.skinTags,chosen);
   return line?' '+line+'; ':'';
  });
- if(result.includes('[[NESS_SKIN:'))throw Error('Режиссёр вернул незавершённую метку открытой кожи.');
+ if(result.includes('[[NESS_SKIN:'))throw Error('Режиссёр оставил неподставленную [[NESS_SKIN]] ОТКРЫТОЙ КОЖИ; проверь ID, названия открытых областей и закрывающие ]]. Это НЕ ракурс базовой внешности.');
  for(const [id,record] of records)if(hasSkinSelections(record.skinTags)&&!inserted.has(id))
   console.warn('[SP Imagen] Режиссёр не выбрал открытые участки '+id+'; детали кожи не вставлены во избежание невидимой анатомии.');
  return result;
