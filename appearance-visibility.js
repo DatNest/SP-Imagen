@@ -68,12 +68,15 @@ export function insertVisibleAppearance(prompt,records){
   if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
   seen.add(id);
   if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
-  const {base,ranges=[],selections={}}=records.get(id);
+  const {base,ranges=[],selections={},appearanceFormat='tags'}=records.get(id);
   if(spec==='none')return after||'';
+  const prose=appearanceFormat==='prose';
   const view=visibleAppearanceRanges(ranges,spec,selections,false);
-  const text=view.length
-   ?visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trimEnd().replace(/[,;]+$/,'')).filter(Boolean).join(', ')
-   :String(base||'').trim().replace(/[;,\s]+$/,'');
+  const parts=view.length?visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trim()).filter(Boolean):[];
+  // In prose mode preserve the authorial punctuation between sentences.
+  // Only the final boundary is standardized before clothing/pose instructions.
+  const text=(view.length?(prose?parts.join(' '):parts.map(x=>x.replace(/[,;]+$/,'')).join(', ')):String(base||'').trim())
+    .replace(prose?/[.,;!?\s]+$/:/[;,\s]+$/,'');
   return text?(before||'')+text+';':after||'';
  });
  if(result.includes('[[NESS_VIS:'))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
@@ -96,7 +99,7 @@ export function insertVisibleAppearance(prompt,records){
   const candidates=ids.filter(([id,r])=>!seen.has(id)&&identityMatch(body,r));
   if(candidates.length!==1)return whole;
   const [id,record]=candidates[0];
-  const base=String(record.base).trim().replace(/[;,\s]+$/,'');
+  const base=String(record.base).trim().replace(record.appearanceFormat==='prose'?/[.,;!?\s]+$/:/[;,\s]+$/,'');
   if(!base||body.includes(base))return whole;
   const matched=identityMatch(body,record);
   if(!matched)return whole;
