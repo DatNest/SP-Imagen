@@ -2150,7 +2150,7 @@ const source={
 'COMPOSITION WISHES':String(v.sp_imagen_composition_wishes||'')};
 const prepared=nessPreparedVisibility.get(lockedChat);
 const visibility=prepared?.ticket===ticket && profile?.parser?.options?.includeCharacters!==false ? prepared.records : new Map();
-if(!visibility.size&&/^NESS_VIS character ID:/m.test(source['FIXED CHARACTER APPEARANCE']))throw Error('Разметка внешности устарела. Запусти подготовку заново.');
+if(!visibility.size&&profile?.parser?.options?.includeCharacters!==false&&/^NESS_VIS character ID:/m.test(source['FIXED CHARACTER APPEARANCE']))throw Error('Разметка внешности устарела. Запусти подготовку заново.');
 const filteredSource=filterProfileSources(source,profile);
 const identityInstruction=/^(?:Prompt name|Subject):/m.test(filteredSource['FIXED CHARACTER APPEARANCE']) ? codePrompt('identity_fields') : '';
 const appearancePunctuation=codePrompt('appearance_punctuation');
@@ -2191,7 +2191,7 @@ if(npcLanguage){
  config.prompt=await repairNpcPromptLanguage(kind,config.prompt,imageController.signal);
  requireOrigin();
 }
-if(visibility.size && profile?.options?.includeCharacters!==false){
+if(visibility.size && profile?.parser?.options?.includeCharacters!==false){
  config.prompt=insertVisibleAppearance(config.prompt,visibility);
  config.prompt=insertSkinAppearance(config.prompt,visibility);
 }
