@@ -1100,6 +1100,21 @@ function saveImageStyle({name, value}) {
     return {...style};
 }
 
+function snapshotGenerationConfig(config, kind='snapshot') {
+    const saved=settings().novelai;
+    // Preserve settings necessary for a resumed request, but NEVER store credentials.
+    const {apiKey, endpoint, enabled, ...publicSettings}=saved;
+    const profile=activeProfile(settings(),kind);
+    if(profile?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
+    const style=profile?.options?.useArtStyle===false
+        ? {id:'',name:'Без стиля',value:''}
+        : clone(activeStyle(saved)||{id:'',name:'Без стиля',value:''});
+    return {
+        ...clone(config), kind,
+        spImagenDirect: {version:1,provider:'novelai',style,settings:clone(publicSettings)}
+    };
+}
+
 async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     const saved = settings().novelai;
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
@@ -1210,6 +1225,7 @@ const extensionApi = {
     persistImageSource,
     directGenerationEnabled,
     generateImage,
+    snapshotGenerationConfig,
     listImageStyles,
     saveImageStyle,
     getDirector,
