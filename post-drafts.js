@@ -3,6 +3,7 @@
 export const DRAFT_FIELD = 'sp_imagen_post_draft_v1';
 const STORAGE_PREFIX = 'sp_imagen_draft_v1:';
 const ACTIVE_KEY = 'sp_imagen_active_post_v1';
+const validKind=kind=>['snapshot','comic','story_page'].includes(kind)||/^custom_[a-z0-9_-]{3,75}$/i.test(String(kind||''));
 
 export function postFingerprint(message) {
     // Identify the message, not its editable RP text: editing the post must not erase the draft.
@@ -45,7 +46,7 @@ function keepLocal(chatId, index, message, draft) {
 function validDraft(draft, message, index) {
     return Boolean(draft && draft.version === 1 && draft.index === index
         && draft.fingerprint === postFingerprint(message)
-        && ['snapshot', 'comic', 'story_page'].includes(draft.kind));
+        && validKind(draft.kind));
 }
 export function readPostDraft(ctx, index) {
     const message = ctx?.chat?.[index];
@@ -88,7 +89,7 @@ export function savePostDraft(ctx, index, changes, { replace = false } = {}) {
         ...(before || {}), ...changes, version: 1, index,
         fingerprint: postFingerprint(message), updatedAt: Date.now(),
     };
-    if (!['snapshot', 'comic', 'story_page'].includes(draft.kind)) throw new Error('Неизвестный тип черновика.');
+    if (!validKind(draft.kind)) throw new Error('Неизвестный тип черновика.');
     message.extra ||= {};
     message.extra[DRAFT_FIELD] = draft;
     keepLocal(ctx.chatId,index,message,draft);
