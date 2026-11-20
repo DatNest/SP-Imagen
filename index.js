@@ -385,14 +385,14 @@ function openPromptJsonTransfer() {
 }
 
 function openPromptWindow(name) {
-    const prompt = shippedPrompt(name);
+    const prompt = settings().prompts[name] || shippedPrompt(name);
     if (!prompt) return toastr.error(`Профиль ${PROFILE_LABELS[name] || name} не найден.`, 'SP Imagen');
     const { dialog, close } = shell(`SP Imagen · ${PROFILE_LABELS[name]} (только чтение)`, 'spi-prompt-window', { back: true });
     const area = document.createElement('textarea');
     area.value = prompt; area.readOnly = true; area.spellcheck = false;
-    area.setAttribute('aria-label', `Оригинал ${PROFILE_LABELS[name]}, только чтение`);
+    area.setAttribute('aria-label', `Текущая встроенная инструкция ${PROFILE_LABELS[name]}, только чтение`);
     const note = document.createElement('p'); note.className='spi-status';
-    note.textContent='Официальная инструкция защищена. Чтобы изменить её, нажми «Создать копию» в списке профилей.';
+    note.textContent='Встроенная инструкция доступна только для чтения. Чтобы изменить правила, создай пользовательскую копию выбранного формата.';
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
     button('Закрыть', actions, close, true);
     dialog.append(note, area, actions);
