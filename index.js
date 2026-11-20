@@ -14,6 +14,8 @@ import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNove
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, testSillyTavernProfile, testTextApi } from './text-api.js';
 
 const EXTENSION_KEY = 'spImagen';
+// Change with every extension build. Including packaged hashes also detects changed shipped instructions.
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.1';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -97,39 +99,78 @@ function saveSettings() {
     context().saveSettingsDebounced?.();
 }
 
+// A backup contains only bundled prompt slots. User-created profiles are never replaced.
+function snapshotBundledPrompts(state = settings()) {
+    return {
+        createdAt: new Date().toISOString(),
+        bundle: state.appliedBundleSignature || '',
+        prompts: clone(state.prompts || {}),
+        codePrompts: clone(state.codePrompts || {}),
+    };
+}
+function validPromptSnapshot(backup) {
+    return backup && typeof backup === 'object' && backup.prompts && typeof backup.prompts === 'object'
+        && !Array.isArray(backup.prompts) && backup.codePrompts && typeof backup.codePrompts === 'object'
+        && !Array.isArray(backup.codePrompts);
+}
+function saveManualPromptBackup() {
+    const state = settings();
+    state.promptBackups ??= {};
+    state.promptBackups.manual = snapshotBundledPrompts(state);
+    saveSettings();
+}
+function exchangePromptBackup(slot = 'manual') {
+    const state = settings(), backups = state.promptBackups || {}, previous = backups[slot];
+    if (!validPromptSnapshot(previous)) throw new Error('Резервной копии пока нет. Сначала сделай её.');
+    const now = snapshotBundledPrompts(state);
+    // Copy only bundled official and system prompt values. Never touch customProfiles or activeProfiles.
+    state.prompts = clone(previous.prompts);
+    state.codePrompts = clone(previous.codePrompts);
+    for (const [name, shipped] of Object.entries(SP_IMAGEN_PROMPTS))
+        if (typeof state.prompts[name] !== 'string' || !state.prompts[name].trim()) state.prompts[name] = shipped;
+    state.promptBackups[slot] = now; // Swap: a second click reverses the action.
+    saveSettings();
+}
+function resetAllBundledPrompts() {
+    const state = settings();
+    state.promptBackups ??= {};
+    state.promptBackups.manual = snapshotBundledPrompts(state);
+    state.prompts = { ...SP_IMAGEN_PROMPTS };
+    state.codePrompts = {}; // Empty overrides resolve to packaged CODE_PROMPT_DEFAULTS.
+    state.promptBases = {};
+    state.pendingPrompts = {};
+    state.seenRelease = SP_IMAGEN_RELEASE;
+    saveSettings();
+}
 async function synchronizePrompts() {
     const state = settings();
-    let changed = false;
-    for (const [name, shippedPrompt] of Object.entries(SP_IMAGEN_PROMPTS)) {
-        const exists = typeof state.prompts[name] === 'string' && Boolean(state.prompts[name].trim());
-        const currentHash = exists ? await hash(state.prompts[name]) : '';
-        const shippedHash = await hash(shippedPrompt);
-        const previousOfficialHash = state.promptBases[name];
-        const decision = decidePromptUpdate({ exists, currentHash, previousOfficialHash, shippedHash });
-        if (decision === 'install') {
-            state.prompts[name] = shippedPrompt;
-            state.promptBases[name] = shippedHash;
-            changed = true;
-            continue;
+    // The signature changes for BOTH upgrades and downgrades. User edits within one build persist.
+    const signature = SP_IMAGEN_BUNDLE_VERSION + ':'
+        + await hash(JSON.stringify(SP_IMAGEN_PROMPTS) + '\n' + JSON.stringify(CODE_PROMPT_DEFAULTS));
+    if (state.appliedBundleSignature === signature) {
+        // Repair missing shipped keys without overwriting deliberate edits made in this build.
+        let missing = false;
+        for (const [name, shipped] of Object.entries(SP_IMAGEN_PROMPTS)) {
+            if (typeof state.prompts[name] !== 'string' || !state.prompts[name].trim()) {
+                state.prompts[name] = shipped; missing = true;
+            }
         }
-        if (decision === 'adopt') {
-            state.promptBases[name] = shippedHash;
-            changed = true;
-            continue;
-        }
-        if (decision === 'none') continue;
-        if (decision === 'update') {
-            state.prompts[name] = shippedPrompt;
-            state.promptBases[name] = shippedHash;
-            delete state.pendingPrompts[name];
-            changed = true;
-        } else {
-            state.pendingPrompts[name] = { shippedHash };
-            changed = true;
-        }
+        if (missing) saveSettings();
+        return;
     }
-    if (state.seenRelease !== SP_IMAGEN_RELEASE) changed = true;
-    if (changed) saveSettings();
+    const alreadyInstalled = Object.keys(state.prompts).length || Object.keys(state.codePrompts).length;
+    state.promptBackups ??= {};
+    // Before replacing originals on an update, keep the previous full set. Never lose user profiles.
+    if (alreadyInstalled) state.promptBackups.automatic = snapshotBundledPrompts(state);
+    state.prompts = { ...SP_IMAGEN_PROMPTS };
+    state.codePrompts = {};
+    state.promptBases = Object.fromEntries(await Promise.all(
+        Object.entries(SP_IMAGEN_PROMPTS).map(async ([key, value]) => [key, await hash(value)])));
+    state.pendingPrompts = {};
+    state.seenRelease = SP_IMAGEN_RELEASE;
+    state.appliedBundleSignature = signature;
+    // Save immediately via the host save function; a later page load must not re-run migration.
+    await Promise.resolve(context().saveSettingsDebounced?.());
 }
 
 async function getRuntime() {
@@ -458,10 +499,42 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     const transfer = document.createElement('div');
     transfer.className = 'spi-dialog-actions spi-prompt-transfer';
     button('↥ ↧ Импорт / экспорт JSON', transfer, openPromptJsonTransfer);
+    const backups = document.createElement('div'); backups.className = 'spi-dialog-actions spi-prompt-transfer';
+    backups.style.flexWrap = 'wrap';
+    const backupInfo = document.createElement('p'); backupInfo.className = 'spi-status';
+    backupInfo.style.flexBasis = '100%';
+    backupInfo.textContent = 'Обновления заменяют встроенные инструкции; личные профили сохраняются. Перед обновлением старая версия копируется автоматически.';
+    const backupButton = button('◇ Сделать резервную копию промптов', backups, () => {
+        try { saveManualPromptBackup(); backupInfo.textContent = 'Копия сохранена. Кнопка обмена меняет старые и текущие промпты местами.'; syncBackupButtons(); }
+        catch (error) { backupInfo.textContent = String(error?.message || error); }
+    });
+    const manualSwap = button('↔ Моя копия / текущие', backups, () => {
+        try { exchangePromptBackup('manual'); backupInfo.textContent = 'Промпты обменяны с ручной копией. Повторное нажатие вернёт прежние.'; }
+        catch (error) { backupInfo.textContent = String(error?.message || error); }
+        syncBackupButtons();
+    });
+    const autoSwap = button('↔ До обновления / текущие', backups, () => {
+        try { exchangePromptBackup('automatic'); backupInfo.textContent = 'Промпты обменяны с автоматической копией. Повторное нажатие отменит обмен.'; }
+        catch (error) { backupInfo.textContent = String(error?.message || error); }
+        syncBackupButtons();
+    });
+    const resetAll = button('↺ Сбросить все встроенные промпты', backups, () => {
+        if (!confirm('Вернуть ВСЕ встроенные промпты из этой версии? Личные профили останутся нетронутыми. Текущие промпты сохранятся в ручную резервную копию.')) return;
+        resetAllBundledPrompts();
+        backupInfo.textContent = 'Все встроенные промпты восстановлены. Предыдущую версию можно вернуть через «Моя копия / текущие».';
+        syncBackupButtons();
+    });
+    resetAll.title = 'Snapshot, Comic, Story Page и все системные code-prompts. Не трогает «Создать профиль».';
+    function syncBackupButtons() {
+        const slots = settings().promptBackups || {};
+        manualSwap.disabled = !validPromptSnapshot(slots.manual);
+        autoSwap.disabled = !validPromptSnapshot(slots.automatic);
+    }
+    syncBackupButtons();
     const scroll=document.createElement('div');scroll.className='spi-profile-scroll';
     scroll.append(list, customTitle, customList, addProfile);
     if (pending.size) dialog.append(copy);
-    dialog.append(transfer, scroll, footer);
+    dialog.append(transfer, backups, backupInfo, scroll, footer);
     if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
     return closed;
 }
@@ -1124,7 +1197,7 @@ async function initialize() {
 
 const extensionApi = {
     installed: true,
-    version: '2.8.7',
+    version: SP_IMAGEN_BUNDLE_VERSION,
     get hasNew() { return hasNew(); },
     get hubChildOpen() { return hubChildOpen; },
     run,
