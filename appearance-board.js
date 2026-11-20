@@ -344,3 +344,34 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
  render();
  return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(sections,readBaseState().base),refresh:render,getMode:()=>mode,setAvailableFormat(value){textButton.disabled=value==='prose';if(value==='prose'&&mode==='base'){layout='text';render();}}};
 }
+/** One additional marker in the existing director call; no extra model requests. */
+export function skinAppearanceInstruction(records){
+ const entries=[...records].filter(([,v])=>hasSkinSelections(v.skinTags));
+ if(!entries.length)return '';
+ const names=entries.map(([id,v])=>id+': '+Object.keys(SKIN_PRESETS).filter(k=>(v.skinTags?.selections?.[k]||[]).length).join(', ')).join('\n');
+ return '\n\nVISIBLE SKIN AND MARKS — ONE OPTIONAL MARKER PER CHARACTER\n'
+  +'In each character entry whose ID is listed below, immediately after its [[NESS_VIS:id:preset]] marker and BEFORE any clothing, append [[NESS_SKIN:id:part1,part2]] for ONLY the uncovered skin areas actually visible in at least one chosen panel. You may choose multiple parts independently of the main appearance camera preset. '
+  +'Allowed skin parts: '+Object.keys(SKIN_PRESETS).join(', ')+'. The lower_front and lower_back parts are DISTINCT; do not include lower_front when only the rear is visible, nor vice versa. Upper-front/back are distinct as well. '
+  +'If no configured exposed skin part is visible, use [[NESS_SKIN:id:none]]. Include the marker only once for each listed participant, keep literal [[NESS_SKIN:...]] syntax; never invent anatomy or reveal skin covered by clothing. '
+  +'Skin tags are inserted by the library after the base appearance and before clothing, not written by you. The source fields with legacy nudeUpper/nudeLower are independent and remain governed by their existing visibility rules.\n'
+  +'Skin-equipped character IDs and available parts:\n'+names;
+}
+export function insertSkinAppearance(prompt,records){
+ const inserted=new Set();
+ const result=String(prompt||'').replace(/\[\[NESS_SKIN:([a-z][a-z0-9_]*):([a-z_,]+)\]\]/g,(whole,id,definition)=>{
+  const record=records.get(id);
+  if(!record||!hasSkinSelections(record.skinTags)||inserted.has(id))
+   throw Error('Некорректная повторная метка открытой кожи персонажа '+id+'. Сохрани исходный ответ режиссёра для проверки.');
+  inserted.add(id);
+  const chosen=definition.split(',').map(s=>s.trim());
+  if(chosen.length===1&&chosen[0]==='none')return '';
+  if(!chosen.length||chosen.some(p=>!Object.hasOwn(SKIN_PRESETS,p)))
+   throw Error('Режиссёр выбрал неизвестную область кожи персонажа '+id+'.');
+  const line=formatSkinParts(record.skinTags,chosen);
+  return line?' '+line+'; ':'';
+ });
+ if(result.includes('[[NESS_SKIN:'))throw Error('Режиссёр вернул незавершённую метку открытой кожи.');
+ for(const [id,record] of records)if(hasSkinSelections(record.skinTags)&&!inserted.has(id))
+  console.warn('[SP Imagen] Режиссёр не выбрал открытые участки '+id+'; детали кожи не вставлены во избежание невидимой анатомии.');
+ return result;
+}
