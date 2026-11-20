@@ -1513,13 +1513,13 @@ return {common:"",snapshot:"",comic:"",story_page:"",catalogs:{snapshot:SNAPSHOT
 }
 
 // Module: review_scene
-async function reviewScene(){
+async function reviewScene(providedProgress=null){
  const chat=SillyTavern.getContext()?.chat;
  if(!Array.isArray(chat))throw Error('Нет контекста чата');
  if(reviewLocks.has(chat)||typeof document!=='undefined'&&document.querySelector('#sp-imagen-review-overlay'))throw Error('Окно подготовки уже открыто.');
- reviewLocks.add(chat);try{return await reviewSceneDialog();}finally{reviewLocks.delete(chat);}
+ reviewLocks.add(chat);try{return await reviewSceneDialog(providedProgress);}finally{reviewLocks.delete(chat);}
 }
-async function reviewSceneDialog(){
+async function reviewSceneDialog(providedProgress=null){
 
   const st = SillyTavern.getContext();
   if (!st?.chatMetadata || typeof document === 'undefined')
@@ -1545,9 +1545,16 @@ async function reviewSceneDialog(){
       compositionExtra=[settings.common||'',settings[kind]||''].map(x=>x.trim()).filter(Boolean).join('\n\n');
       compositionCatalog=settings.catalogs?.[kind]||{};
       if(!compositionCatalog||typeof compositionCatalog!=='object'||Array.isArray(compositionCatalog)||Object.values(compositionCatalog).some(x=>typeof x!=='string'))throw Error('Неверный каталог композиций '+kind);
-      // Category selection is optional. The preparation window must open without
-      // an extra text-model request, even when the mood catalogue is configured.
-      defaultComposition=compositionExtra;
+      // Restore automatic composition selection; keep the manual fallback unchanged.
+      if(Object.keys(compositionCatalog).length){
+        providedProgress?.set('Подбор композиции', 'Подбираю композиционные приёмы к сцене; это отдельный запрос к текстовой модели.',{stoppable:false});
+        const result=await selectComposition(compositionCatalog,kind,scene);
+        if(SillyTavern.getContext().chat!==startChat||SillyTavern.getContext().chatId!==startId)throw Error('Чат изменился при подборе композиции.');
+        if(result?.mood&&Object.hasOwn(compositionCatalog,result.mood))compositionMood=result.mood;
+        compositionWarning=String(result?.warning||'');
+      }
+      defaultComposition=[compositionMood?'Mood: '+compositionMood+'\n'+compositionCatalog[compositionMood]:'',compositionExtra].filter(Boolean).join('\n\n');
+      providedProgress?.set('Проверка сцены', 'Проверь композицию, сцену, одежду и персонажей.',{stoppable:false});
   }
   const suggestion=manualMode?'':String(v.sp_imagen_composition_proposal||defaultComposition);
   const normalize = x => String(x || '').normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
@@ -2114,7 +2121,7 @@ async function generateAt(request=null){
   await prepareRp(request.kind,request.index);
   checkStopped();
   progress.set('Проверка сцены', 'Проверь подготовленную сцену, одежду и состав персонажей.',{stoppable:false});
-  await reviewScene();
+  await reviewScene(progress);
   const live=SillyTavern.getContext();
   if(live.chat!==request.chat||live.chatId!==request.chatId)throw Error('Чат изменился.');
   checkStopped();
