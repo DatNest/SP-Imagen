@@ -479,3 +479,186 @@
 .spi-custom-profile-editor .spi-profile-advanced .spi-custom-prompt{min-height:125px;}
 .spi-prompt-center .spi-create-custom-profile{white-space:normal;}
 @media(max-width:620px){.spi-prompt-center .spi-profile-visible{font-size:12px;}}
+
+/* v2.9.8 — compact library description switch (in normal character editor). */
+#sp-imagen-review-panel .ness-format-strip{
+ display:flex;flex-wrap:wrap;align-items:center;gap:7px;
+ margin:8px 0 9px;padding:0;min-height:34px;
+}
+#sp-imagen-review-panel .ness-format-strip>.ness-label{margin-right:4px;}
+#sp-imagen-review-panel .ness-format-switch{
+ display:inline-flex;align-items:center;gap:3px;padding:3px;
+ border:1px solid var(--ness-border);border-radius:10px;background:var(--ness-input);
+}
+#sp-imagen-review-panel .ness-format-switch>.ness-button{
+ min-height:30px!important;padding:4px 13px!important;border:1px solid transparent!important;
+ border-radius:7px!important;font-size:12px!important;
+}
+#sp-imagen-review-panel .ness-format-switch>.ness-button[aria-pressed=true]{
+ background:var(--ness-surface)!important;border-color:var(--ness-accent)!important;
+ color:var(--ness-text)!important;font-weight:650;
+}
+#sp-imagen-review-panel .ness-format-native{display:none!important;}
+#sp-imagen-review-panel .ness-mini-help{
+ flex:none;width:27px!important;min-width:27px!important;height:27px!important;min-height:27px!important;
+ padding:0!important;border:1px solid var(--ness-border)!important;border-radius:50%!important;
+ color:var(--ness-muted)!important;font-weight:650!important;font-size:12px!important;
+}
+
+/* v2.9.8 — compact, responsive, full-window appearance board. */
+#sp-imagen-review-panel .ness-library-constructor{gap:6px;padding:7px 12px 9px;}
+#sp-imagen-review-panel .ness-fullboard-toolbar{padding:0 0 7px;min-height:40px;gap:5px 12px;}
+#sp-imagen-review-panel .ness-fullboard-area{min-height:0;overflow:hidden;}
+#sp-imagen-review-panel .ness-fullboard-area>.ness-tagboard{
+ padding:9px 11px;margin:0;gap:7px;border-radius:12px;min-height:0;overflow:hidden;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-header{min-height:31px;gap:5px;}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-header strong{font-size:14px;}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-actions{gap:3px;}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-actions>.ness-button{
+ padding:4px 9px!important;min-height:30px!important;font-size:12px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-modes{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:3px;flex:none;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-modes>.ness-button{
+ min-width:0!important;min-height:30px!important;padding:3px 8px!important;font-size:12px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-body{
+ display:flex;flex-direction:column;gap:7px;min-width:0;min-height:0;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-ribbon{
+ display:flex;align-items:center;gap:4px;flex:none;min-height:35px;max-height:80px;
+ padding:3px 0 6px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;
+ scrollbar-width:thin;scrollbar-color:var(--ness-border) transparent;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-ribbon>.ness-button{
+ flex:0 0 auto;white-space:nowrap;min-height:28px!important;
+ padding:4px 9px!important;font-size:11px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-tools{
+ display:grid;grid-template-columns:minmax(130px,21%) minmax(130px,1fr) minmax(130px,1fr) auto;
+ align-items:center;gap:6px;flex:none;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-tools>:is(select,input){
+ min-width:0!important;width:100%!important;max-width:100%!important;
+ min-height:34px!important;height:34px!important;font-size:12px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-tools>.ness-button{
+ white-space:nowrap;min-height:34px!important;padding:5px 11px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-history{
+ display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;
+ min-height:29px;gap:4px;flex:none;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-history>.ness-button{
+ padding:3px 8px!important;min-height:28px!important;font-size:11px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-columns{
+ grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px;min-height:0;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-column{
+ display:flex;flex-direction:column;gap:7px;min-height:0;min-width:0;
+ padding:10px 11px;overflow-y:auto;overflow-x:hidden;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-column>strong{
+ font-size:12px;font-weight:650;flex:none;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-flow,
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-selected{
+ display:flex!important;flex-wrap:wrap;align-content:flex-start;align-items:flex-start;
+ justify-content:flex-start;gap:5px 6px;min-width:0;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-divider{
+ display:flex;flex:1 0 100%;width:100%;margin:4px 0 2px;padding:2px 0;min-height:29px;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-item{
+ display:inline-flex;align-items:center;flex:0 1 auto;
+ width:max-content;max-width:100%;min-width:0;min-height:30px;
+ gap:3px;padding:2px 5px;border-radius:8px;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-item>.ness-button:first-child{
+ flex:0 1 auto;min-width:0;min-height:27px!important;height:auto;
+ padding:3px 5px!important;text-align:left;font-size:12px!important;
+ line-height:1.3!important;overflow-wrap:anywhere;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-grip{
+ flex:none;width:23px!important;min-width:23px!important;
+ height:27px!important;min-height:27px!important;
+ padding:1px!important;font-size:13px!important;
+ border:0!important;background:transparent!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-item>.ness-button:not(:first-child):not(.ness-tagboard-grip){
+ min-height:27px!important;min-width:25px!important;padding:3px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-item>input[type=checkbox]{
+ width:16px!important;height:16px!important;min-width:16px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-board-group-create{
+ flex:none;gap:5px;min-width:0;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-board-group-create .ness-input{
+ flex:1 1 160px;width:auto!important;min-height:30px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-board-group-create .ness-button{min-height:30px!important;}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-always{
+ flex:1 0 100%;width:100%;padding:6px;gap:4px;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-bottom{margin-top:auto;}
+
+/* Nude upper/lower remain existing editable body data; these chips only open the editor. */
+#sp-imagen-review-panel .ness-fullboard-exposure{
+ display:flex;flex:none;align-items:center;flex-wrap:wrap;min-height:31px;gap:5px;
+}
+#sp-imagen-review-panel .ness-fullboard-exposure>.ness-label{margin-right:4px;}
+#sp-imagen-review-panel .ness-fullboard-exposure-toggle{
+ border:1px solid var(--ness-border)!important;border-radius:15px!important;
+ min-height:27px!important;padding:3px 10px!important;font-size:12px!important;
+}
+#sp-imagen-review-panel .ness-fullboard-exposure-toggle[aria-pressed=true]{
+ border-color:var(--ness-accent)!important;background:var(--ness-surface)!important;
+ color:var(--ness-text)!important;
+}
+#sp-imagen-review-panel .ness-fullboard-exposure-editor{
+ padding:7px 9px;border:1px solid var(--ness-border);border-radius:9px;
+ display:grid;gap:5px;max-height:min(180px,28dvh);overflow:auto;flex:none;
+}
+#sp-imagen-review-panel .ness-fullboard-exposure-editor[hidden]{display:none!important;}
+#sp-imagen-review-panel .ness-fullboard-exposure-text{
+ height:85px!important;min-height:72px!important;max-height:125px!important;
+ resize:vertical;
+}
+
+@media(max-width:720px){
+ #sp-imagen-review-panel .ness-library-constructor{padding:5px 7px 8px;}
+ #sp-imagen-review-panel .ness-fullboard-area{
+  display:block;flex:1 1 auto;overflow-y:auto;overflow-x:hidden;
+ }
+ #sp-imagen-review-panel .ness-fullboard-area>.ness-tagboard{
+  overflow:visible;min-height:100%;padding:7px;gap:6px;
+ }
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-body{overflow:visible;min-height:auto;}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-ribbon{max-height:35px;}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-tools{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px;
+ }
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-tools>select{grid-column:1/-1;}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-tools>input[type=search]{grid-column:1/-1;}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-tools>.ness-button{min-width:0;white-space:normal;}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-columns{
+  display:flex;flex-direction:column;overflow:visible;min-height:auto;gap:8px;
+ }
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-column{
+  height:auto;max-height:none;min-height:105px;overflow:visible;padding:8px;
+ }
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-flow,
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-selected{gap:5px;}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-item{min-height:28px;}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-item>.ness-button:first-child{
+  min-height:25px!important;font-size:11px!important;
+ }
+ #sp-imagen-review-panel .ness-fullboard-exposure>.ness-label{flex:0 0 auto;}
+ #sp-imagen-review-panel .ness-fullboard-exposure{gap:4px;}
+ #sp-imagen-review-panel .ness-fullboard-exposure-toggle{font-size:11px!important;}
+ #sp-imagen-review-panel .ness-format-strip{gap:5px;}
+}
