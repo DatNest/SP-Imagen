@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.6';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.7';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -325,7 +325,7 @@ function downloadPromptJson(filename, data) {
 function openPromptJsonTransfer() {
     const { dialog, close } = shell('SP Imagen · JSON промптов', 'spi-prompt-json');
     const intro = document.createElement('p');
-    intro.textContent = 'Импорт создаёт три ЛИЧНЫЕ копии режиссёров, не перезаписывая штатные инструкции. Копии можно включить отдельно для каждого формата.';
+    intro.textContent = 'Импорт создаёт три самостоятельных профиля на основе режиссёров Snapshot, Comic и Story Page. Встроенные инструкции остаются неизменными. Импортированные профили можно показывать по ✧ или скрывать.';
     const upload = document.createElement('input');
     upload.type = 'file';
     upload.accept = '.json,application/json';
