@@ -3,7 +3,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
-import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections } from './appearance-board.js';
+import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -473,6 +473,7 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(Object.hasOwn(entry,'appearanceSelections'))entry.appearanceSelections=normalizeAppearanceSelections(entry.base,entry.appearanceSelections);
   if(Object.hasOwn(entry,'appearanceSections'))entry.appearanceSections=normalizeAppearanceSections(entry.appearanceSections,entry.base);
   if(Object.hasOwn(entry,'appearanceSkin'))entry.appearanceSkin=normalizeSkinTags(entry.appearanceSkin);
+   if(Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog=normalizeAppearanceCatalog(entry.appearanceCatalog,entry.base,entry.appearanceSkin,{nudeUpper:entry.nudeUpper,nudeLower:entry.nudeLower},entry.appearanceSections);
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
  const normalize=s=>s.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
@@ -503,7 +504,7 @@ function loadMasterLibrary(){
 
 // Module: library_publish
 function librarySnapshot(data){
- return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
+ return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
 }
 async function saveMasterLibrary(input,expectedRaw){
  const st=SillyTavern.getContext();
@@ -549,7 +550,7 @@ function restoreLibraryBodyFields(input){
 }
 
 // Module: appearance_visibility_editor
-function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,save,canEdit){
+function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,save,canEdit,readNsfw=()=>({}),writeNsfw=()=>{},openCategory=()=>{}){
  const {el,clear,button,input}=ui;
  const wrap=el('div',undefined,undefined,'ness-appearance-wrap');
  if(tagColor)wrap.style.setProperty('--ness-appearance-color',tagColor);
@@ -566,18 +567,41 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  pencil.setAttribute('aria-label','Разметить видимую внешность');
  pencil.setAttribute('aria-pressed','false');
  const box=el('div',undefined,wrap.parentNode,'ness-appearance-tools');
+ const categoryTabs=el('div',undefined,box,'ness-context-tab-strip'),categoryPanels=new Map(),categoryButtons=new Map();
+ categoryTabs.setAttribute('role','tablist');categoryTabs.setAttribute('aria-label','Разделы тегов');
+ for(const [key,label] of [['views','Ракурсы'],['skin','Метки одежды'],['nsfw','NSFW описания']]){
+  const tab=button(label,categoryTabs,()=>activateCategory(key),'quiet ness-context-tab');
+  tab.setAttribute('role','tab');tab.id='ness-context-'+key;tab.setAttribute('aria-controls','ness-context-panel-'+key);
+  const pane=el('section',undefined,box,'ness-context-tab-content');
+  pane.id='ness-context-panel-'+key;pane.setAttribute('role','tabpanel');pane.setAttribute('aria-labelledby',tab.id);
+  categoryPanels.set(key,pane);categoryButtons.set(key,tab);
+ }
+ function activateCategory(active,focus=false){
+  for(const [key,pane] of categoryPanels){
+   const tab=categoryButtons.get(key),selected=key===active;
+   pane.hidden=!selected;tab.tabIndex=selected?0:-1;tab.setAttribute('aria-selected',String(selected));
+  }
+  if(focus)categoryButtons.get(active)?.focus();
+ }
+ const order=['views','skin','nsfw'];
+ for(const [index,key] of order.entries())categoryButtons.get(key).onkeydown=event=>{
+  const next={ArrowLeft:order[(index+2)%3],ArrowRight:order[(index+1)%3],Home:'views',End:'nsfw'}[event.key];
+  if(next){event.preventDefault();activateCategory(next,true);}
+ };
+ activateCategory('views');
+ const viewsPanel=categoryPanels.get('views');
  const editHelp='Enter добавляет тег. Для перестановки потяни за ⠿ или нажми на тег и выбери «Раньше» или «Позже».';
- const message=el('p',editHelp,box,'ness-note');
+ const message=el('p',editHelp,viewsPanel,'ness-note');
  message.setAttribute('aria-live','polite');
- const presets=el('div',undefined,box,'ness-appearance-presets');
+ const presets=el('div',undefined,viewsPanel,'ness-appearance-presets');
  presets.setAttribute('role','group');presets.setAttribute('aria-label','Ракурсы внешности');
  const presetButtons=new Map();
- const copyToggle=button('Добавить из ракурса',box,()=>{
+ const copyToggle=button('Добавить из ракурса',viewsPanel,()=>{
   if(!editing||transitioning||!canEdit())return;
   if(copyPanel.hidden)openCopyPanel();else closeCopyPanel();
  },'quiet');
  copyToggle.hidden=true;copyToggle.setAttribute('aria-expanded','false');
- const copyPanel=el('div',undefined,box,'ness-appearance-copy');copyPanel.hidden=true;
+ const copyPanel=el('div',undefined,viewsPanel,'ness-appearance-copy');copyPanel.hidden=true;
  let base=area.value;
  let ranges=normalizeAppearanceRanges(base,initial.appearanceRanges);
  let selections=normalizeAppearanceSelections(base,initial.appearanceSelections);
@@ -645,7 +669,20 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   const scroll=fragments.scrollTop,visible=editing?selected(activePreset):[];
   clear(fragments);
   const items=clauses();
-  for(const [index,fragment] of items.entries()){
+  const shared=board?board.getCatalog():catalog;
+   const dividers=shared.sections||[],renderedDividers=new Set();
+   const showDividers=(before)=>{
+    for(const divider of dividers){
+     if(renderedDividers.has(divider.id)||divider.before>before)continue;
+     const row=el('div',undefined,fragments,'ness-appearance-inline-divider');
+     el('span',divider.title,row);
+     row.title='Разделитель для удобства: не входит в промпт';
+     renderedDividers.add(divider.id);
+    }
+   };
+   for(const [index,fragment] of items.entries()){
+    const position=shared.tags.findIndex(tag=>String(tag.text||'').trim().toLowerCase()===fragment.text.trim().toLowerCase());
+    showDividers(position>=0?position:shared.tags.length);
    const {start,end,text}=fragment;
    const marked=visible.some(r=>r.start<end&&start<r.end);
    const chip=el('span',undefined,fragments,'ness-appearance-chip');
@@ -679,7 +716,8 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    }
    if(start===focusStart)part.focus();
   }
-  fragments.scrollTop=scroll;
+  showDividers(shared.tags.length);
+   fragments.scrollTop=scroll;
   updateMoves();
  }
  function updateMoves(){
@@ -813,15 +851,43 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   ranges=move(ranges,false);
   selections=Object.fromEntries(Object.entries(selections).map(([id,items])=>[id,move(items,true)]));
   if(ranges.length+Object.values(selections).flat().length<previousCount)message.textContent='Метки изменённых фраз сняты. При необходимости отметь их заново.';
-  base=next;updatePresets();
+  base=next;catalog=normalizeAppearanceCatalog(catalog,base,skin,readNsfw(),sections);updatePresets();
  }
  area.oninput=()=>{sync();changed();drawFragments();};
- let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base),board=null;
- function openBoard(parent){
+ let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base);
+  let catalog=normalizeAppearanceCatalog(initial.appearanceCatalog,base,skin,readNsfw(),sections),board=null;
+ function refreshCategoryPanes(){
+  const skinPanel=categoryPanels.get('skin'),nsfwPanel=categoryPanels.get('nsfw');
+  clear(skinPanel);clear(nsfwPanel);
+  const state=board?board.getSkin():skin;
+  const allParts=[['always','✦ Для всех открытых областей'],...Object.entries(SKIN_PRESETS)];
+  for(const [id,label] of allParts){
+   const row=el('div',undefined,skinPanel,'ness-context-row');
+   const selected=new Set([...(state.selections.always||[]),...(id==='always'?[]:(state.selections[id]||[]))]);
+   const tags=state.tags.filter(tag=>selected.has(tag.id)).map(tag=>tag.text);
+   const open=button(label+(tags.length?' •':''),row,()=>openCategory('skin',id),'quiet ness-context-link');
+   open.title='Настроить теги этого участка в конструкторе';
+   const sample=el('span',tags.join(', ')||'Нет назначенных тегов',row,'ness-context-excerpt');
+   sample.title=tags.join(', ');
+  }
+  for(const [key,label] of Object.entries(NSFW_PRESETS)){
+   const row=el('div',undefined,nsfwPanel,'ness-context-row ness-context-nsfw-row');
+   const top=el('div',undefined,row,'ness-context-row-top');
+   el('strong',label,top);
+   button('↗ Назначить теги',top,()=>openCategory('nsfw',key),'quiet ness-context-link');
+   const value=el('textarea',undefined,row,'ness-input ness-context-nsfw-text');
+   value.value=readNsfw()[key]||'';value.spellcheck=false;
+   value.setAttribute('aria-label',label+' — особенности открытого тела');
+   value.placeholder='Короткие английские теги через запятую';
+   value.oninput=()=>{if(canEdit())writeNsfw({...readNsfw(),[key]:value.value});};
+  }
+ }
+ function openBoard(parent,{mode='base',preset}={}){
   sync();
   closeBoard();
   board=createAppearanceBoard({
-   ui,parent,initialSkin:skin,initialSections:sections,
+   ui,parent,initialSkin:skin,initialSections:sections,initialCatalog:catalog,initialMode:mode,initialPreset:preset,
+    readNsfwState:readNsfw,writeNsfwState:writeNsfw,
    readBaseState:()=>({base,ranges,selections}),
    writeBaseState:next=>{
     area.value=base=next.base;
@@ -837,9 +903,10 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  function closeBoard(){
   if(!board)return;
   skin=board.getSkin();
-  sections=board.getSections();
+  sections=board.getSections();catalog=board.getCatalog();
   board.element.remove();
   board=null;
+  drawFragments();refreshCategoryPanes();
  }
  function updateFormat(){
    const prose=formatMode==='prose';
@@ -852,7 +919,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    if(!prose){drawFragments();updateMoves();}
    if(board)board.setAvailableFormat(formatMode);
  }
- updatePresets();drawFragments();updateFormat();
+ updatePresets();drawFragments();updateFormat();refreshCategoryPanes();
  return {
    setFormat(mode){
      const next=mode==='prose'?'prose':'tags';
@@ -864,7 +931,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    },
    openBoard,closeBoard,
    get format(){return formatMode;},
-   get value(){sync();return {ranges,selections,skin:board?board.getSkin():skin,sections:board?board.getSections():normalizeAppearanceSections(sections,base)};}
+   get value(){sync();return {ranges,selections,skin:board?board.getSkin():skin,sections:board?board.getSections():normalizeAppearanceSections(sections,base),catalog:board?board.getCatalog():normalizeAppearanceCatalog(catalog,base,skin,readNsfw())};}
  };
 }
 
@@ -890,9 +957,10 @@ async function openLibraryEditor(){
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
   entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields))if(e.value!==''||Object.hasOwn(entry,key))entry[key]=e.value;
-  const {ranges,selections,skin,sections}=visibility.value;
+  const {ranges,selections,skin,sections,catalog}=visibility.value;
   if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
   if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
+   entry.appearanceCatalog=catalog;
   if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
   if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
   aliases.commit();const names=aliases.values;
@@ -995,7 +1063,7 @@ async function openLibraryEditor(){
   view.showEditor();
   status(dirty?'Изменения в конструкторе ещё не сохранены. Нажми «Сохранить».':'Вернулись в карточку персонажа.');
  }
- function displayBoard(){
+ function displayBoard(mode='base',preset){
   if(!editor||!inBoardMode)return;
   const host=view.constructorHost;
   clear(host);
@@ -1023,44 +1091,14 @@ async function openLibraryEditor(){
    if(!editor||editor.id!==selected.id){select.value=previous;return;}
    displayBoard();
   };
-  const extras=el('div',undefined,host,'ness-fullboard-exposure');
-  el('span','Детали открытого тела',extras,'ness-label');
-  const exposedHelp=button('?',extras,undefined,'icon quiet ness-mini-help');
-  exposedHelp.setAttribute('aria-label','Как работают голый верх и голый низ');
-  const exposureTip=view.tip(exposedHelp,'Здесь хранятся постоянные особенности открытого тела. Кнопки только открывают редактор соответствующего поля: они не снимают одежду и не меняют сцены. Данные используются, когда участок действительно открыт и виден.');
-  exposedHelp.onclick=e=>{e.preventDefault();exposureTip.toggle();};
-  const bodyEdit=el('div',undefined,host,'ness-fullboard-exposure-editor');bodyEdit.hidden=true;
-  const controls=[];
-  for(const [key,label] of [['nudeUpper','Голый верх'],['nudeLower','Голый низ']]){
-   const source=editor.fields[key];
-   const toggle=button(label+(source?.value?.trim()?' •':''),extras,undefined,'quiet ness-fullboard-exposure-toggle');
-   toggle.setAttribute('aria-expanded','false');
-   controls.push({key,label,toggle});
-   toggle.onclick=()=>{
-    const selected=bodyEdit.dataset.key===key&&!bodyEdit.hidden;
-    clear(bodyEdit);bodyEdit.hidden=selected;bodyEdit.dataset.key=selected?'':key;
-    controls.forEach(item=>{const open=!selected&&item.key===key;item.toggle.setAttribute('aria-pressed',String(open));item.toggle.setAttribute('aria-expanded',String(open));});
-    if(selected)return;
-    const prompt=el('label',label+' · особенности открытого тела',bodyEdit,'ness-label');
-    const textarea=el('textarea',undefined,bodyEdit,'ness-input ness-fullboard-exposure-text');
-    textarea.value=source?.value||'';textarea.spellcheck=false;
-    prompt.setAttribute('for','ness-fullboard-'+key);textarea.id='ness-fullboard-'+key;
-    textarea.oninput=()=>{
-     if(!editor?.fields?.[key])return;
-     editor.fields[key].value=textarea.value;
-     toggle.textContent=label+(textarea.value.trim()?' •':'');
-     changed();
-    };
-   };
-  }
   const boardArea=el('div',undefined,host,'ness-fullboard-area');
-  editor.visibility.openBoard(boardArea);
+  editor.visibility.openBoard(boardArea,{mode,preset});
   view.showConstructor();
  }
- function enterBoard(){
+ function enterBoard(mode='base',preset){
   if(!editor||busy||done||!tryFlush())return;
   inBoardMode=true;
-  displayBoard();
+  displayBoard(mode,preset);
  }
  function editCharacter(id,group){
   if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);const entry=draft[group][id],fields={};
@@ -1092,10 +1130,13 @@ async function openLibraryEditor(){
   fields.base=field(appearance,labels.base,area(entry.base));fields.base.className+=' ness-appearance';
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
-  const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done);
+  const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done,
+    ()=>({nudeUpper:fields.nudeUpper?.value??entry.nudeUpper??'',nudeLower:fields.nudeLower?.value??entry.nudeLower??''}),
+    state=>{for(const key of Object.keys(NSFW_PRESETS))if(fields[key]&&Object.hasOwn(state,key))fields[key].value=state[key];changed();},
+    (mode,preset)=>enterBoard(mode,preset));
   visibility.setFormat(appearanceFormat.value);
   const openConstructor=button('◫ Открыть конструктор тегов',appearance,()=>enterBoard(),'quiet ness-open-constructor');
-  openConstructor.title='Полноэкранный редактор ракурсов, отдельных тегов кожи и разделителей';
+  openConstructor.title='Полноэкранный редактор общего каталога тегов, ракурсов, открытой кожи и NSFW';
   function selectAppearanceFormat(next){
    if(!visibility.setFormat(next)){appearanceFormat.value=visibility.format;updateFormatButtons();return;}
    if(appearanceFormat.value===next)return;
