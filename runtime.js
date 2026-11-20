@@ -1014,6 +1014,7 @@ function restoreParserToVariables(v,draft){
  v.sp_imagen_npc_status=String(parsed.npcStatus||'');
  v.sp_imagen_rp_source_count=String(parsed.sourceCount||'');
  v.sp_imagen_active_kind=draft.kind;
+ v.sp_imagen_manual_mode=draft.review?.manualMode===true;
  v.sp_imagen_preview_status='cancelled';
  v.sp_imagen_run_ticket='';
  v.sp_imagen_prepared_ticket='';
