@@ -213,6 +213,25 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel .ness-coder-preview{padding:9px 11px;margin:8px 0 12px;border-left:2px solid var(--ness-accent);background:var(--ness-surface);color:var(--ness-text);font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;}
 #sp-imagen-review-panel .ness-coder-result textarea{height:150px;font-family:ui-monospace,monospace!important;}
 #sp-imagen-review-panel .ness-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end;min-width:0;}
+#sp-imagen-review-panel .ness-helper-shortcut,#sp-imagen-review-panel .ness-helper-home{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;min-width:0;padding:13px 15px;border-radius:12px;border:1px solid var(--ness-accent);background:color-mix(in srgb,var(--ness-accent) 8%,var(--ness-surface));}
+#sp-imagen-review-panel .ness-helper-shortcut>div{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:5px;}
+#sp-imagen-review-panel .ness-helper-home{margin:12px 0 16px;flex-direction:column;align-items:flex-start;}
+#sp-imagen-review-panel .ness-helper-shortcut>.ness-button,#sp-imagen-review-panel .ness-helper-home>.ness-button{white-space:normal;}
+#sp-imagen-review-panel .ness-friendly-rule{margin:10px 0!important;padding:10px 12px!important;border:1px solid var(--ness-border);border-radius:11px;background:color-mix(in srgb,var(--ness-surface) 55%,var(--ness-bg));min-width:0;}
+#sp-imagen-review-panel .ness-friendly-rule>summary{padding:7px 55px 7px 0!important;min-height:42px;line-height:1.45;}
+#sp-imagen-review-panel .ness-friendly-rule>summary>.ness-button{position:absolute;right:0;top:3px;z-index:1;}
+#sp-imagen-review-panel .ness-rule-head{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:8px 12px;min-width:0;}
+#sp-imagen-review-panel .ness-rule-head>.ness-check-label{align-self:center;}
+#sp-imagen-review-panel .ness-rule-head>.ness-field{width:100%;min-width:0;margin:0!important;}
+#sp-imagen-review-panel .ness-rule-explain{display:flex;flex-direction:column;gap:7px;margin:10px 0;padding:11px;border:1px solid var(--ness-border);border-radius:10px;min-width:0;background:var(--ness-bg);}
+#sp-imagen-review-panel .ness-rule-feedback{margin:0!important;color:var(--ness-accent);font-size:12px;line-height:1.55;overflow-wrap:anywhere;}
+#sp-imagen-review-panel .ness-rule-explain>strong{color:var(--ness-text);font-size:12px;}
+#sp-imagen-review-panel .ness-rule-explain>.ness-settings-actions{padding:0;}
+#sp-imagen-review-panel .ness-rule-explain>.ness-wardrobe-example{max-height:130px;margin:0;}
+#sp-imagen-review-panel .ness-rule-extra{margin:10px 0 0!important;padding:8px 10px!important;background:var(--ness-bg);}
+#sp-imagen-review-panel .ness-rule-extra>summary{white-space:normal!important;line-height:1.45;}
+#sp-imagen-review-panel .ness-rule-extra>.ness-field{width:100%;max-width:100%;}
+#sp-imagen-review-panel .ness-rule-extra .ness-field>.ness-input{width:100%;min-width:0;}
 #sp-imagen-review-panel .ness-rule-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px;}
 #sp-imagen-review-panel .ness-rule-fields .ness-wide{grid-column:1/-1;}
 #sp-imagen-review-panel .ness-rule-fields textarea{height:72px;min-height:60px;font-family:ui-monospace,monospace!important;}
@@ -301,6 +320,11 @@ export const NESS_UI_CSS = String.raw`
  #sp-imagen-review-panel[data-dialog=settings] [data-review-actions]>.ness-status{grid-column:1/-1;min-width:0;margin:0!important;}
  #sp-imagen-review-panel[data-dialog=settings] [data-review-actions]>.ness-button{width:100%;min-width:0;padding:8px 5px!important;font-size:12px!important;white-space:normal;overflow-wrap:anywhere;text-align:center;}
  #sp-imagen-review-panel .ness-settings-top>.ness-field{width:100%;}
+ #sp-imagen-review-panel .ness-helper-shortcut{padding:10px 12px;}
+ #sp-imagen-review-panel .ness-helper-shortcut>.ness-button{width:100%;}
+ #sp-imagen-review-panel .ness-rule-head{grid-template-columns:minmax(0,1fr);}
+ #sp-imagen-review-panel .ness-friendly-rule{padding:9px!important;}
+ #sp-imagen-review-panel .ness-rule-explain{padding:9px;}
  #sp-imagen-review-panel .ness-settings-transferbar{justify-content:stretch;}
  #sp-imagen-review-panel .ness-settings-transferbar>.ness-button{flex:1;}
  #sp-imagen-review-panel .ness-library-item{height:80px;min-height:80px;}

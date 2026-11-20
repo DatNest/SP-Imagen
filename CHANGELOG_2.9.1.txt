@@ -1,0 +1,39 @@
+SP Imagen 2.9.1 — CONSOLIDATED RELEASE (base 2.8.7)
+
+1. Automatic bundled prompt synchronization
+- On upgrade OR downgrade, replace all built-in Snapshot/Comic/Story Page director prompts with the exact text shipped in that build.
+- Reset built-in system code prompt overrides to the shipped defaults.
+- Preserve all user-created customProfiles, their contents and their selected activeProfiles.
+- Save an automatic before-update snapshot; create a manual snapshot via «Профили».
+- Swap current/backup with one click; second click reverses the swap. «Сбросить все встроенные промпты» includes an undo snapshot.
+- Same-build manual edits persist over page refresh. Next build returns to official texts.
+
+2. Reliable wardrobe search and settings
+- Unified label-bounded wardrobe rules for chat, character card and persona; legacy [OUTFIT] and ⟦ОДЕЖДА⟧ preserved.
+- Support multi-person blocks with labeled clothing fields and scopedRegex.
+- Separate historical outfit lookup from N recent RP messages: old narrative is not sent to director.
+- Newest complete wardrobe record wins; character aliases are normalized before merging.
+- Invalid saved rules can no longer block the settings window: the original raw settings are retained pending explicit user save.
+- Exact source counts, dialogue limits, cleanup switches, appearance choices and preview behavior are all applied from current settings.
+- Updated export instructions to reflect all supported wardrobe schemas.
+
+3. Faster default path
+- Removed the mandatory model call for mood classification while opening preparation. Optional button available.
+- NPC model lookup remains optional.
+- No extra long duplicate dialogue policy appended to the official director; just replace the numeric values in its original instruction.
+- Limit expensive deep-history regex scanning. Invalid or slow regex is isolated in a separate Worker.
+- Local output dialogue limits keep Text: synchronized with selected bubbles in supported layouts without extra model call.
+
+4. Network failure handling
+- Distinguish the NovelAI and direct text-API stages for browser-side Failed to fetch, with actionable error messages.
+- No silent automatic retransmission of a potentially billable NovelAI image POST.
+- A network/CORS/server outage cannot be fixed from the extension alone; inspect the browser Network panel if the new diagnostic appears.
+
+5. Kept from 2.8.7
+- official-prompts.js byte-for-byte unchanged.
+- image-transport.js byte-for-byte unchanged (HTML / prompt+aspect_ratio+image_size JSON contract).
+- NAI5 payload assembly unchanged (only network error diagnostics in novelai.js).
+- appearance-visibility.js byte-for-byte unchanged.
+- Existing image gallery, publishing, library, prompt profiles and styles retain their behavior.
+
+Testing: 17 automated regression/integration scripts executed; live NovelAI access and the user's SillyTavern environment not available in this build environment.

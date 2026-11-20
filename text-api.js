@@ -66,6 +66,12 @@ async function fetchWithTimeout(url, options, timeoutMs, outerSignal) {
     try { return await fetch(url, { ...options, signal: controller.signal }); }
     catch (error) {
         if (controller.signal.aborted && !outerSignal?.aborted) throw new Error('Текстовый API не ответил вовремя.');
+        if (outerSignal?.aborted) throw error;
+        if (error instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(String(error?.message || error))) {
+            let host = 'текстовому API';
+            try { host = new URL(url).origin; } catch {}
+            throw new Error('Текстовый API: Failed to fetch (' + host + '). Запрос не получил HTTP-ответ: проверь endpoint, соединение, CORS или выбери подключение через профиль SillyTavern. Автоматический повтор отключён, чтобы не создавать лишних платных запросов.', { cause: error });
+        }
         throw error;
     } finally { clearTimeout(timer); outerSignal?.removeEventListener('abort', abort); }
 }

@@ -145,6 +145,15 @@ async function fetchWithTimeout(url, options, timeoutMs, outerSignal) {
     try { return await fetch(url, { ...options, signal: controller.signal }); }
     catch (error) {
         if (controller.signal.aborted && !outerSignal?.aborted) throw new Error('Время ожидания NovelAI истекло. Повтори запуск.');
+        if (outerSignal?.aborted) throw error;
+        // A browser TypeError (Failed to fetch) has no HTTP response. Never retry a billed image POST:
+        // the server may already have accepted it before the connection was lost.
+        if (error instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(String(error?.message || error))) {
+            const stage = /\/user\/subscription(?:\?|$)/.test(String(url)) ? 'проверки подписки' : 'генерации изображения';
+            let host = 'сервером NovelAI';
+            try { host = new URL(url).origin; } catch {}
+            throw new Error('NovelAI: Failed to fetch на этапе ' + stage + ' (' + host + '). Браузер не получил HTTP-ответ. Проверь адрес API, сеть, VPN/прокси и CORS в Console → Network. Автоматического повторного списания Anlas не будет.', { cause: error });
+        }
         throw error;
     } finally { clearTimeout(timer); outerSignal?.removeEventListener('abort', abort); }
 }
