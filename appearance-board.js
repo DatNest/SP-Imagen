@@ -361,6 +361,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(mode==='skin'){
    if(preset==='always')return skin.tags.filter(t=>(skin.selections.always||[]).includes(t.id)).map(t=>t.text).join(', ')||'(нет тегов)';
    return formatSkinParts(skin,[preset])||'(нет тегов)';
+   }
+   if(mode==='nsfw')return String(readNsfwState()?.[preset]||'').trim()||'(нет тегов)';
+   if(false){
   }
   const state=baseState();
   const configured=hasConfiguredAppearanceViews({appearanceRanges:state.ranges,appearanceSelections:state.selections});
@@ -373,7 +376,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function render(){
   onLayoutChange(layout,mode);
   basic.setAttribute('aria-pressed',String(mode==='base'));
-  marks.setAttribute('aria-pressed',String(mode==='skin'));
+  marks.setAttribute('aria-pressed',String(mode==='skin'));nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
   boardButton.disabled=mode==='base'&&appearanceFormat==='prose';
   boardButton.title=boardButton.disabled?'Для обычного текста используй текстовый редактор; кожа остаётся независимым набором тегов.':'';
   boardButton.setAttribute('aria-pressed',String(layout==='board'));
@@ -393,9 +396,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   }
   pick.value=preset;pick.onchange=()=>{preset=pick.value;checked.clear();render();};
   if(layout==='text'){
-   const note=el('p',mode==='base'?'Исходное описание сохраняет точный текст и разметку тегов. Для редактирования используй текстовое поле внешности в карточке.':'Отдельный набор открытых участков: видимые теги собираются после базовой внешности перед одеждой.',content,'ness-note');
-   if(mode==='skin'){
-    const textArea=el('textarea',undefined,content,'ness-input');textArea.value=skin.tags.map(t=>t.text).join(', ');textArea.readOnly=true;
+   const note=el('p',mode==='base'?'Исходное описание сохраняет точный текст и разметку тегов. Для редактирования используй текстовое поле внешности в карточке.':mode==='skin'?'Метки открытой кожи вставляются после базовой внешности перед одеждой. Общие теги доступны во всех разделах.':'NSFW-особенности используются только при видимых открытых участках.',content,'ness-note');
+   if(mode==='skin'||mode==='nsfw'){
+    const textArea=el('textarea',undefined,content,'ness-input');textArea.value=preview();textArea.readOnly=true;
    }
   }else{
    const act=el('div',undefined,content,'ness-tagboard-history');
