@@ -683,11 +683,43 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   }
   return items;
  }
+ function normalSections(items){
+  const listed=skin.poolSections?.length?skin.poolSections:sections;
+  const all=skin.poolOrder?.length?skin.poolOrder:items.map(t=>sectionKey(t.text));
+  const known=new Set(items.map(t=>sectionKey(t.text)));
+  return listed.map(section=>{
+   const before=skin.poolSections?.length&&skin.poolOrder?.length
+    ?all.slice(0,section.before).filter(key=>known.has(key)).length
+    :Math.min(items.length,section.before);
+   return {...section,before:Math.max(0,Math.min(items.length,before))};
+  });
+ }
+ function moveNormalSection(id,delta){
+  if(!canEdit()||editing)return;
+  const all=skin.poolSections?.length?skin.poolSections:sections;
+  const entry=all.find(t=>t.id===id);if(!entry)return;
+  entry.before=Math.max(0,Math.min(Math.max(clauses().length,skin.poolOrder?.length||0),entry.before+delta));
+  skin.poolSections=all.map(t=>({...t}));
+  sections=normalizeAppearanceSections(all.filter(t=>t.before<=clauses().length),base);
+  changed();drawFragments();
+ }
  function drawFragments(focusStart){
   const scroll=fragments.scrollTop,visible=editing?selected(activePreset):[];
   clear(fragments);
-  const items=clauses();
+  const items=clauses(),dividers=normalSections(items);
+  const showDivider=position=>{
+   for(const divider of dividers.filter(x=>x.before===position)){
+    const band=el('div',undefined,fragments,'ness-appearance-divider');
+    el('span',divider.title,band);
+    if(!editing){
+     const controls=el('div',undefined,band,'ness-appearance-divider-actions');
+     button('↑',controls,()=>moveNormalSection(divider.id,-1),'quiet').title='Сдвинуть разделитель выше';
+     button('↓',controls,()=>moveNormalSection(divider.id,1),'quiet').title='Сдвинуть разделитель ниже';
+    }
+   }
+  };
   for(const [index,fragment] of items.entries()){
+   showDivider(index);
    const {start,end,text}=fragment;
    const marked=visible.some(r=>r.start<end&&start<r.end);
    const chip=el('span',undefined,fragments,'ness-appearance-chip');
@@ -720,6 +752,22 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
     remove.setAttribute('aria-label','Удалить тег '+text);
    }
    if(start===focusStart)part.focus();
+  }
+  showDivider(items.length);
+  if(!editing&&formatMode==='tags'){
+   const controls=el('div',undefined,fragments,'ness-appearance-divider-create');
+   const field=el('input',undefined,controls,'ness-input');
+   field.placeholder='Название разделителя';
+   const add=()=>{
+    if(!canEdit()||!field.value.trim())return;
+    const value=field.value.trim().slice(0,50);
+    const record={id:'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:value,before:items.length};
+    skin.poolSections=[...(skin.poolSections?.length?skin.poolSections:sections),record];
+    sections=normalizeAppearanceSections([...sections,record],base);
+    changed();drawFragments();
+   };
+   field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add();}};
+   button('+ Разделитель',controls,add,'quiet');
   }
   fragments.scrollTop=scroll;
   updateMoves();
