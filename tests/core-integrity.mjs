@@ -96,7 +96,7 @@ test('Duplicate skin divider IDs are normalized without losing selected tags', (
 test('Shared appearance catalogue imports all legacy tags and retains section headings', () => {
  const legacyBase='fair skin, blonde hair, distinct scar;';
  const skin={tags:[{id:'scar',text:'distinct scar'}],sections:[{id:'skin_divider',title:'Отметины',before:0}],selections:{upper_front:['scar']}};
- const nsfw={nudeUpper:'small bust, pale pink nipples,\\n old scar;',nudeLower:'rounded hips'};
+ const nsfw={nudeUpper:'small bust, pale pink nipples,\n old scar;',nudeLower:'rounded hips'};
  const catalog=normalizeAppearanceCatalog(null,legacyBase,skin,nsfw,[{id:'face_divider',title:'Лицо',before:0}]);
  for(const tag of ['fair skin','blonde hair','distinct scar','small bust','pale pink nipples','old scar','rounded hips'])
   assert.ok(catalog.tags.some(t=>t.text===tag),'Missing shared tag '+tag);
@@ -108,11 +108,11 @@ test('Shared appearance catalogue imports all legacy tags and retains section he
 });
 
 test('NSFW tag assignment preserves byte-for-byte legacy descriptions after unassign', () => {
- const original='small bust, pale pink nipples,\\n old scar;';
+ const original='small bust, pale pink nipples,\n old scar;';
  const assigned=appendNsfwTag(original,'blonde hair');
- assert.equal(assigned,'small bust, pale pink nipples,\\n old scar, blonde hair;');
+ assert.equal(assigned,'small bust, pale pink nipples,\n old scar, blonde hair;');
  assert.equal(editNsfwTag(assigned,'blonde hair'),original);
- assert.equal(editNsfwTag(original,'old scar','old healed scar'),'small bust, pale pink nipples,\\n old healed scar;');
+ assert.equal(editNsfwTag(original,'old scar','old healed scar'),'small bust, pale pink nipples,\n old healed scar;');
 });
 
 test('Tag reordering preserves existing selected offsets and ownership', () => {
