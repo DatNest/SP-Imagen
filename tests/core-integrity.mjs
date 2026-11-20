@@ -146,18 +146,18 @@ test('Legacy additional rules migrate without replacing copied directors', () =>
 });
 
 test('Comic post-character bubbles respect configurable line limit without touching artwork or notes', () => {
-  const picture = '1girl, 3 panels, ornate page borders | girl, Ji, long tail; Speech bubble 1: oval, saying "Привет!"; Speech bubble 2: small, saying "Пока!"\\n\\nText: Привет!\\n\\nЗАПИСКА\\n\\nПока!';
+  const picture = '1girl, 3 panels, ornate page borders | girl, Ji, long tail; Speech bubble 1: oval, saying "Привет!"; Speech bubble 2: small, saying "Пока!"\n\nText: Привет!\n\nЗАПИСКА\n\nПока!';
   const result = limitComicDialogue(picture,'comic',{dialogue:{comicLines:1,comicWords:7}});
   assert.match(result, /ornate page borders/);
   assert.match(result, /girl, Ji, long tail/);
   assert.match(result, /Speech bubble 1: oval, saying "Привет!"/);
   assert.doesNotMatch(result, /Speech bubble 2:|Пока!/);
-  assert.match(result, /Text: Привет!\\n\\nЗАПИСКА$/);
+  assert.match(result, /Text: Привет!\n\nЗАПИСКА$/);
 });
 
 test('Story Page and older pre-character bubble syntax both preserve their lettering contracts', () => {
-  const after='1girl, watercolor inset | girl, Ji, tail; Speech bubble 1: oval, saying "Да!"; Speech bubble 2: oval, saying "Нет!"\\n\\nText: Да!\\n\\nНет!';
-  const before='1girl; Speech bubble 1: oval, saying "Да!"; Speech bubble 2: oval, saying "Нет!" | girl, Ji, tail\\n\\nText: Да!\\n\\nНет!';
+  const after='1girl, watercolor inset | girl, Ji, tail; Speech bubble 1: oval, saying "Да!"; Speech bubble 2: oval, saying "Нет!"\n\nText: Да!\n\nНет!';
+  const before='1girl; Speech bubble 1: oval, saying "Да!"; Speech bubble 2: oval, saying "Нет!" | girl, Ji, tail\n\nText: Да!\n\nНет!';
   for(const source of [after,before]){
     const result=limitComicDialogue(source,'story_page',{dialogue:{storyLines:1,storyWords:10}});
     assert.match(result,/Speech bubble 1:/);
@@ -169,8 +169,8 @@ test('Story Page and older pre-character bubble syntax both preserve their lette
 test('Direct streaming accepts SSE event separators split across transport chunks', {concurrency:false}, async () => {
   const previous=globalThis.fetch;
   const parts=[
-    'data: {"choices":[{"delta":{"content":"ok"}}]}\\r', '\\n', '\\r', '\\n',
-    'data: [DONE]\\r', '\\n', '\\r', '\\n',
+    'data: {"choices":[{"delta":{"content":"ok"}}]}\r', '\n', '\r', '\n',
+    'data: [DONE]\r', '\n', '\r', '\n',
   ];
   let cursor=0;
   const encoder=new TextEncoder();
