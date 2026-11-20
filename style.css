@@ -215,3 +215,25 @@
 .spi-generation-progress-actions button[hidden] {display:none;}
 .spi-generation-failed {border-inline-start: 3px solid #cd7777;}
 @media (max-width: 620px) {.spi-generation-progress {right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: min(320px, calc(100vw - 16px)); padding: 12px;}}
+
+/* Compact, accessible confirmation before discarding a per-post generation draft. */
+.ness-save-confirm {
+  display: grid; gap: 10px; min-width: 0; margin: 12px 0 0;
+  padding: 13px 15px; border: 1px solid var(--SmartThemeBorderColor, #8d8290);
+  border-radius: 12px; background: var(--SmartThemeBlurTintColor, #29252c);
+  color: var(--SmartThemeBodyColor, #f5edf1); line-height: 1.5;
+}
+.ness-save-confirm strong { font-size: 14px; overflow-wrap: anywhere; }
+.ness-save-confirm p { margin: 0; font-size: 12px; opacity: .88; overflow-wrap: anywhere; }
+.ness-save-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.ness-save-confirm-actions .ness-button {
+  min-height: 38px; padding: 7px 12px; border-radius: 9px;
+  border: 1px solid var(--SmartThemeBorderColor, #8d8290); color: inherit;
+  background: transparent; cursor: pointer;
+}
+.ness-save-confirm-actions .ness-button:first-child { border-color: var(--SmartThemeQuoteColor, #ba97b7); font-weight: 650; }
+.ness-save-confirm-actions .ness-button:focus-visible { outline: 2px solid var(--SmartThemeQuoteColor, #ba97b7); outline-offset: 2px; }
+@media (max-width: 620px) {
+  .ness-save-confirm { padding: 11px; }
+  .ness-save-confirm-actions .ness-button { flex: 1 1 auto; min-width: 0; }
+}
