@@ -299,13 +299,19 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
    const blocks=el('div',undefined,content,'ness-tagboard-columns');
    const left=el('section',undefined,blocks,'ness-tagboard-column'),right=el('section',undefined,blocks,'ness-tagboard-column');
    function drawColumns(){
+    const baseCurrent=mode==='base'?baseSelected(preset):[];
+    const baseAlways=mode==='base'?baseSelected(NESS_APPEARANCE_ALWAYS):[];
+    const skinCurrent=mode==='skin'?new Set(skin.selections[preset]||[]):null;
+    const skinAlways=mode==='skin'?new Set(skin.selections.always||[]):null;
+    const chosenNow=t=>mode==='skin'?skinCurrent.has(t.id):baseCurrent.some(r=>r.start<t.end&&t.start<r.end);
+    const inAlways=t=>mode==='skin'?skinAlways.has(t.id):baseAlways.some(r=>r.start<t.end&&t.start<r.end);
     clear(left);clear(right);
     el('strong','Все теги · доступные',left);
     const groupBar=el('div',undefined,left,'ness-row');
     const groupInput=el('input',undefined,groupBar,'ness-input');groupInput.placeholder='Название раздела';groupInput.setAttribute('data-group-name','');
     button('+ Раздел',groupBar,addGroup,'quiet');
     for(const group of groups()){
-     const tags=group.tags.filter(t=>!isChosen(t,preset)&&!(preset!==SKIN_ALWAYS&&isChosen(t,SKIN_ALWAYS))&&norm(t.text).includes(norm(filter)));
+     const tags=group.tags.filter(t=>!chosenNow(t)&&!(preset!==SKIN_ALWAYS&&inAlways(t))&&norm(t.text).includes(norm(filter)));
      if(!tags.length&&group.id==='')continue;
      const section=el('div',undefined,left,'ness-tagboard-group');
      const head=el('div',undefined,section,'ness-tagboard-grouphead');
@@ -333,7 +339,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
      }
     }
     el('strong',headings[preset]+' · выбранные',right);
-    const selectedList=items().filter(t=>isChosen(t,preset)&&norm(t.text).includes(norm(filter)));
+    const selectedList=items().filter(t=>chosenNow(t)&&norm(t.text).includes(norm(filter)));
     const list=el('div',undefined,right,'ness-tagboard-selected');
     for(const tag of selectedList){const item=el('div',undefined,list,'ness-tagboard-item');
      item.draggable=true;
@@ -353,7 +359,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
      checkbox.onchange=()=>{const k=mode==='base'?tag.start:tag.id;if(checkbox.checked)checked.add(k);else checked.delete(k);};
     }
     if(preset!==SKIN_ALWAYS){
-     const common=items().filter(t=>isChosen(t,SKIN_ALWAYS));
+     const common=items().filter(inAlways);
      if(common.length){const band=el('div',undefined,right,'ness-tagboard-always');
       el('span','✦ Показывать всегда',band);
       for(const tag of common)el('span',tag.text,band,'ness-tagboard-always-chip');
