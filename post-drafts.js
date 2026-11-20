@@ -14,27 +14,32 @@ export function postFingerprint(message) {
     }
     return (hash >>> 0).toString(36);
 }
-function storageKey(chatId) { return STORAGE_PREFIX + encodeURIComponent(String(chatId || '')); }
-function readActive() {
-    try { return JSON.parse(localStorage.getItem(ACTIVE_KEY) || 'null'); } catch { return null; }
+// A draft belongs to one concrete post, not to the currently active chat tab.
+// Legacy one-per-chat backups can still be read if their stored fingerprint matches.
+function storageKey(chatId, index, message) {
+    const chat = encodeURIComponent(String(chatId || ''));
+    return STORAGE_PREFIX + chat + ':' + index + ':' + postFingerprint(message);
 }
-function setActive(ctx, index) {
-    try { localStorage.setItem(ACTIVE_KEY, JSON.stringify({ chatId: String(ctx.chatId || ''), index })); } catch {}
-}
-function isOtherPost(ctx, index) {
-    const active = readActive();
-    return active && (active.chatId !== String(ctx.chatId || '') || active.index !== index);
-}
-function localDraft(chatId) {
+function legacyStorageKey(chatId){ return STORAGE_PREFIX + encodeURIComponent(String(chatId || '')); }
+function localDraft(chatId, index, message) {
     try {
-        const value = localStorage.getItem(storageKey(chatId));
-        return value ? JSON.parse(value) : null;
+        const primary = localStorage.getItem(storageKey(chatId,index,message));
+        const fallback = primary || localStorage.getItem(legacyStorageKey(chatId));
+        return fallback ? JSON.parse(fallback) : null;
     } catch { return null; }
 }
-function keepLocal(chatId, draft) {
+function keepLocal(chatId, index, message, draft) {
     try {
-        if (draft) localStorage.setItem(storageKey(chatId), JSON.stringify(draft));
-        else localStorage.removeItem(storageKey(chatId));
+        const key = storageKey(chatId,index,message);
+        if (draft) localStorage.setItem(key, JSON.stringify(draft));
+        else localStorage.removeItem(key);
+        // Remove the legacy backup only when it belongs to this exact post.
+        const old=localStorage.getItem(legacyStorageKey(chatId));
+        if (old) {
+            let stored=null;try{stored=JSON.parse(old)}catch{}
+            if (stored?.index===index && stored.fingerprint===postFingerprint(message))
+                localStorage.removeItem(legacyStorageKey(chatId));
+        }
     } catch (error) { console.warn('[SP Imagen] Не удалось сохранить резервный черновик в браузере', error); }
 }
 function validDraft(draft, message, index) {
@@ -45,17 +50,8 @@ function validDraft(draft, message, index) {
 export function readPostDraft(ctx, index) {
     const message = ctx?.chat?.[index];
     if (!message) return null;
-    if (isOtherPost(ctx, index)) {
-        if (message.extra?.[DRAFT_FIELD]) {
-            delete message.extra[DRAFT_FIELD];
-            saveChatSoon(ctx);
-        }
-        const stale = localDraft(ctx.chatId);
-        if (stale?.index === index) keepLocal(ctx.chatId, null);
-        return null;
-    }
     const stored = message.extra?.[DRAFT_FIELD];
-    const browser = localDraft(ctx.chatId);
+    const browser = localDraft(ctx.chatId,index,message);
     const validStored = validDraft(stored, message, index) ? stored : null;
     const validBrowser = validDraft(browser, message, index) ? browser : null;
     const draft = validBrowser && (!validStored || Number(validBrowser.updatedAt) > Number(validStored.updatedAt))
@@ -63,7 +59,7 @@ export function readPostDraft(ctx, index) {
     if (draft && draft !== stored) {
         message.extra ||= {};
         message.extra[DRAFT_FIELD] = draft;
-        saveChatSoon(ctx); // Restore the browser backup into the chat when connectivity returns.
+        saveChatSoon(ctx);
     }
     return draft || null;
 }
@@ -95,8 +91,7 @@ export function savePostDraft(ctx, index, changes, { replace = false } = {}) {
     if (!['snapshot', 'comic', 'story_page'].includes(draft.kind)) throw new Error('Неизвестный тип черновика.');
     message.extra ||= {};
     message.extra[DRAFT_FIELD] = draft;
-    setActive(ctx, index);
-    keepLocal(ctx.chatId, draft);
+    keepLocal(ctx.chatId,index,message,draft);
     saveChatSoon(ctx);
     refreshGallery();
     return draft;
@@ -105,23 +100,10 @@ export function discardPostDraft(ctx, index) {
     const message = ctx?.chat?.[index];
     if (!message) return;
     if (message.extra) delete message.extra[DRAFT_FIELD];
-    const browser = localDraft(ctx.chatId);
-    if (browser?.index === index) keepLocal(ctx.chatId, null);
+    keepLocal(ctx.chatId,index,message,null);
     saveChatSoon(ctx);
     refreshGallery();
 }
-export function clearDraftsForOtherPost(ctx, index) {
-    const chat = ctx?.chat;
-    if (!Array.isArray(chat)) return;
-    setActive(ctx, index);
-    let changed = false;
-    for (let i = 0; i < chat.length; i++) {
-        if (i !== index && chat[i]?.extra?.[DRAFT_FIELD]) {
-            delete chat[i].extra[DRAFT_FIELD];
-            changed = true;
-        }
-    }
-    const browser = localDraft(ctx.chatId);
-    if (browser && browser.index !== index) { keepLocal(ctx.chatId, null); changed = true; }
-    if (changed) { saveChatSoon(ctx); refreshGallery(); }
+export function clearDraftsForOtherPost(_ctx,_index) {
+    // No-op for compatibility: switching RP posts must never delete a saved draft.
 }
