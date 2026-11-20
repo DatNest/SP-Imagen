@@ -46,7 +46,7 @@ export async function installSpImagenMediaSlots(options) {
     if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
     if (create) {
       for (const kind of KINDS) {
-        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0 };
+        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0, collapsed: true };
       }
     }
     for (const kind of KINDS) {
@@ -56,6 +56,7 @@ export async function installSpImagenMediaSlots(options) {
         slot.versions = slot.versions.filter(item => safeUrl(item?.src));
       }
       slot.selected = Math.max(0, Math.min(Math.trunc(Number(slot.selected)) || 0, Math.max(0, slot.versions.length - 1)));
+      slot.collapsed = slot.collapsed !== false;
     }
     return slots;
   }
@@ -64,6 +65,7 @@ export async function installSpImagenMediaSlots(options) {
     if (!slot || !safeUrl(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
     slot.versions.push({ src: item.src, config: item.config || null, at: Number(item.at) || Date.now() });
     slot.selected = slot.versions.length - 1;
+    slot.collapsed = false; // Show a newly generated image until the reader folds it.
     return true;
   }
 
@@ -257,7 +259,12 @@ export async function installSpImagenMediaSlots(options) {
         background: color-mix(in srgb, currentColor 12%, transparent);
       }
     }
-    .gallery { display: grid; gap: .65em; margin-block: .25em .65em; }
+    .gallery { display: grid; gap: .4em; margin-block: .25em .65em; }
+    .card[data-collapsed="true"] { padding-block: .18em; }
+    .heading { display:flex; width:100%; justify-content:space-between; align-items:center; gap:.6em; border-radius:.35em; padding:.35em .45em; font-weight:600; }
+    .heading-meta { display:flex; gap:.65em; align-items:center; font-size:.9em; opacity:.85; }
+    .heading-chevron { min-inline-size:1.1em; text-align:center; }
+    .frame[hidden], .bar[hidden], .draft-status[hidden], .draft-icon[hidden] { display:none !important; }
     .card {
       min-inline-size: 0;
       padding: .45em;
@@ -266,7 +273,6 @@ export async function installSpImagenMediaSlots(options) {
       background: color-mix(in srgb, var(--ms-panel) 35%, transparent);
       font-size: .9em;
     }
-    .heading { padding: .15em .3em .45em; font-weight: 600; }
     .frame {
       display: grid;
       inline-size: 100%;
@@ -647,8 +653,20 @@ export async function installSpImagenMediaSlots(options) {
     const selected = slot.selected;
     const item = slot.versions[selected];
     const section = element('section', 'card');
-    const heading = element('div', 'heading', LABEL[kind]);
+    const collapsed = slot.collapsed !== false;
+    section.dataset.collapsed = String(collapsed);
+    const heading = element('button', 'heading');
+    heading.title = collapsed ? 'Развернуть изображение' : 'Свернуть изображение';
+    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${LABEL[kind]}`);
+    heading.setAttribute('aria-expanded', String(!collapsed));
+    const name = element('span', 'heading-title', LABEL[kind]);
+    const meta = element('span', 'heading-meta');
+    meta.append(element('span','heading-count',`${selected+1} / ${slot.versions.length}`),
+        element('span','heading-chevron',collapsed ? '▸' : '▾'));
+    heading.append(name,meta);
+    heading.addEventListener('click', () => void runAction(() => toggleCollapse(index,kind)));
     const frame = element('button', 'frame');
+    frame.hidden = collapsed;
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
     const image = element('img');
     image.src = item.src;
@@ -658,6 +676,7 @@ export async function installSpImagenMediaSlots(options) {
     frame.append(image);
 
     const bar = element('div', 'bar');
+    bar.hidden = collapsed;
     const navigation = element('div', 'actions');
     const actions = element('div', 'actions');
     navigation.append(
@@ -727,14 +746,14 @@ export async function installSpImagenMediaSlots(options) {
       }
       const locked = busy.has(`${chatId}|${view.index}|${kind}`);
       const count = slot.versions.length;
-      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked) continue;
+      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked && previous.collapsed === (slot.collapsed!==false)) continue;
       const node = card(view.index, kind, slot, locked);
       if (previous) previous.node.replaceWith(node);
       else {
         const nextKind = KINDS.slice(KINDS.indexOf(kind) + 1).find(key => view.cards.has(key));
         view.gallery.insertBefore(node, view.cards.get(nextKind)?.node ?? null);
       }
-      view.cards.set(kind, { node, item, selected: slot.selected, count, locked });
+      view.cards.set(kind, { node, item, selected: slot.selected, count, locked, collapsed: slot.collapsed!==false });
     }
     view.gallery.hidden = !view.cards.size;
     view.node.hidden = view.tools.hidden && view.gallery.hidden;
@@ -995,6 +1014,17 @@ export async function installSpImagenMediaSlots(options) {
     catch (error) { slot.selected = before; paint(); throw error; }
   }
 
+  async function toggleCollapse(index,kind) {
+    const current = context();
+    const slot = slotsOf(current.chat?.[index],false)?.[kind];
+    if(!slot) return;
+    const before=slot.collapsed!==false;
+    slot.collapsed=!before;
+    paint();
+    try{ await current.saveChat(); }
+    catch(error){ slot.collapsed=before; paint(); throw error; }
+  }
+
   async function deleteSelected(index, kind) {
     const current = context();
     const slot = slotsOf(current.chat?.[index], false)?.[kind];
@@ -1171,8 +1201,8 @@ export async function installSpImagenMediaSlots(options) {
 
   const manager = {
     installed: true,
-    version: 62,
-    controlsRevision: 24,
+    version: 63,
+    controlsRevision: 25,
     guideStep,
     endGuideDemo,
     supportedKinds: KINDS,
