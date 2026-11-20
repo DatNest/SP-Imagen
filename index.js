@@ -1125,7 +1125,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     const style = snapshot?.style || activeStyle(saved) || { id: '', name: 'Без стиля', value: '' };
     const profile = activeProfile(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
     const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
-    if (profile?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
+    if (!snapshot && profile?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
