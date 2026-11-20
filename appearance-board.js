@@ -377,7 +377,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     },'quiet');
     const copyFrom=el('select',undefined,actions,'ness-input');
     const empty=el('option','Копировать из…',copyFrom);empty.value='';
-    for(const [id,label] of Object.entries(headings))if(id!==preset){
+    for(const [id,label] of Object.entries(headings))if(id!==preset&&id!==SKIN_ALWAYS){
      const o=el('option',label,copyFrom);o.value=id;
     }
     button('Копировать',actions,()=>{
