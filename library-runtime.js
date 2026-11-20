@@ -567,18 +567,41 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  pencil.setAttribute('aria-label','Разметить видимую внешность');
  pencil.setAttribute('aria-pressed','false');
  const box=el('div',undefined,wrap.parentNode,'ness-appearance-tools');
+ const categoryTabs=el('div',undefined,box,'ness-context-tab-strip'),categoryPanels=new Map(),categoryButtons=new Map();
+ categoryTabs.setAttribute('role','tablist');categoryTabs.setAttribute('aria-label','Разделы тегов');
+ for(const [key,label] of [['views','Ракурсы'],['skin','Метки одежды'],['nsfw','NSFW описания']]){
+  const tab=button(label,categoryTabs,()=>activateCategory(key),'quiet ness-context-tab');
+  tab.setAttribute('role','tab');tab.id='ness-context-'+key;tab.setAttribute('aria-controls','ness-context-panel-'+key);
+  const pane=el('section',undefined,box,'ness-context-tab-content');
+  pane.id='ness-context-panel-'+key;pane.setAttribute('role','tabpanel');pane.setAttribute('aria-labelledby',tab.id);
+  categoryPanels.set(key,pane);categoryButtons.set(key,tab);
+ }
+ function activateCategory(active,focus=false){
+  for(const [key,pane] of categoryPanels){
+   const tab=categoryButtons.get(key),selected=key===active;
+   pane.hidden=!selected;tab.tabIndex=selected?0:-1;tab.setAttribute('aria-selected',String(selected));
+  }
+  if(focus)categoryButtons.get(active)?.focus();
+ }
+ const order=['views','skin','nsfw'];
+ for(const [index,key] of order.entries())categoryButtons.get(key).onkeydown=event=>{
+  const next={ArrowLeft:order[(index+2)%3],ArrowRight:order[(index+1)%3],Home:'views',End:'nsfw'}[event.key];
+  if(next){event.preventDefault();activateCategory(next,true);}
+ };
+ activateCategory('views');
+ const viewsPanel=categoryPanels.get('views');
  const editHelp='Enter добавляет тег. Для перестановки потяни за ⠿ или нажми на тег и выбери «Раньше» или «Позже».';
- const message=el('p',editHelp,box,'ness-note');
+ const message=el('p',editHelp,viewsPanel,'ness-note');
  message.setAttribute('aria-live','polite');
- const presets=el('div',undefined,box,'ness-appearance-presets');
+ const presets=el('div',undefined,viewsPanel,'ness-appearance-presets');
  presets.setAttribute('role','group');presets.setAttribute('aria-label','Ракурсы внешности');
  const presetButtons=new Map();
- const copyToggle=button('Добавить из ракурса',box,()=>{
+ const copyToggle=button('Добавить из ракурса',viewsPanel,()=>{
   if(!editing||transitioning||!canEdit())return;
   if(copyPanel.hidden)openCopyPanel();else closeCopyPanel();
  },'quiet');
  copyToggle.hidden=true;copyToggle.setAttribute('aria-expanded','false');
- const copyPanel=el('div',undefined,box,'ness-appearance-copy');copyPanel.hidden=true;
+ const copyPanel=el('div',undefined,viewsPanel,'ness-appearance-copy');copyPanel.hidden=true;
  let base=area.value;
  let ranges=normalizeAppearanceRanges(base,initial.appearanceRanges);
  let selections=normalizeAppearanceSelections(base,initial.appearanceSelections);
