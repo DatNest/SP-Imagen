@@ -238,34 +238,30 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   after();
  }
  
- const sectionsForMode=()=>mode==='base'?sections:skin.sections;
+ const sectionsForMode=()=>catalog.sections;
  function orderedSequence(){
-  const all=items(),headings=sectionsForMode(),sequence=[];
+  const all=items(),sequence=[];
   for(let i=0;i<=all.length;i++){
-   for(const divider of headings)if(divider.before===i)sequence.push({kind:'divider',id:divider.id,section:divider});
-   if(i<all.length)sequence.push({kind:'tag',id:mode==='base'?'base:'+all[i].start:all[i].id,tag:all[i]});
+   for(const divider of catalog.sections)if(divider.before===i)sequence.push({kind:'divider',id:divider.id,section:divider});
+   if(i<all.length)sequence.push({kind:'tag',id:all[i].id,tag:all[i]});
   }
   return sequence;
  }
  function applySequence(sequence){
   if(readOnly())return;
   record();
-  const sorted=sequence.filter(t=>t.kind==='tag').map(t=>t.tag),beforeState=mode==='base'?baseState():null;
-  const movedSections=[];
+  const sorted=sequence.filter(t=>t.kind==='tag').map(t=>t.tag),movedSections=[];
   let index=0;
   for(const token of sequence){
    if(token.kind==='tag')index++;
    else movedSections.push({id:token.id,title:token.section.title,before:index});
   }
-  if(mode==='base'){
-   sections=movedSections;
-   const existing=parseBaseTags(beforeState.base);
-   const same=existing.length===sorted.length&&existing.every((t,i)=>t.start===sorted[i].start&&t.text===sorted[i].text);
-   if(!same)writeBaseState(reorderBaseTags(beforeState,sorted));
-  }else{
-   skin.tags=sorted.map(t=>({...t}));
-   skin.sections=movedSections;
-  }
+  const base=baseState(),existing=parseBaseTags(base.base);
+  const reordered=sorted.map(tag=>existing.find(x=>norm(x.text)===norm(tag.text))).filter(Boolean);
+  catalog={tags:sorted.map(x=>({...x})),sections:movedSections};
+  if(reordered.length===existing.length&&!reordered.every((x,i)=>x.start===existing[i].start))
+   writeBaseState(reorderBaseTags(base,reordered));
+  skin.tags=sorted.map(t=>skinTag(t)).filter(Boolean);
   after();
  }
  function moveSequenceToken(token,target,afterTarget=false){
@@ -283,19 +279,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  function reposition(tag,delta){
   if(readOnly())return;
-  const sequence=orderedSequence(),from=sequence.findIndex(t=>t.kind==='tag'&&t.id===(mode==='base'?'base:'+tag.start:tag.id)),to=from+delta;
+  const sequence=orderedSequence(),from=sequence.findIndex(t=>t.kind==='tag'&&t.id===tag.id),to=from+delta;
   if(from<0||to<0||to>=sequence.length)return;
   moveSequenceToken(sequence[from],sequence[to],delta>0);
  }
- function changeTagList(changedItems){
-  if(readOnly())return;
-  const old=items(),survivors=new Set(changedItems.filter(t=>Number.isInteger(t.start)).map(t=>t.start));
-  const anchored=sections.map(d=>({...d,before:old.slice(0,d.before).filter(t=>survivors.has(t.start)).length}));
-  record();
-  const state=reorderBaseTags(baseState(),changedItems);
-  writeBaseState(state);
-  sections=normalizeAppearanceSections(anchored,state.base);
-  after();
+ function cleanNsfwTags(state,changed,rename=''){
+  const result={...state};
+  for(const key of Object.keys(NSFW_PRESETS)){
+   const list=parseBaseTags(result[key]||'');
+   if(list.some(t=>norm(t.text)===norm(changed)))
+    result[key]=list.map(t=>norm(t.text)===norm(changed)?rename:t.text).filter(Boolean).join(', ');
+  }
+  return result;
  }
  function addGroup(){
   if(readOnly())return;
@@ -315,44 +310,52 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function deleteGroup(id){
   if(readOnly()||!id)return;
   record();
-  if(mode==='base')sections=sections.filter(x=>x.id!==id);
-  else skin.sections=skin.sections.filter(x=>x.id!==id);
+  catalog.sections=catalog.sections.filter(x=>x.id!==id);
   after();
  }
  function addTag(value){
-  const tag=String(value||'').trim().replace(/[;,\s]+$/,'').trim();
-  if(!tag||readOnly())return;
-  if(/[,\r\n]/.test(tag)){warn('Добавляй по одному тегу. Запятая используется только как разделитель при сборке промпта.');return;}
+  const text=String(value||'').trim().replace(/[;,\s]+$/,'').trim();
+  if(!text||readOnly())return;
+  if(/[,\r\n]/.test(text)){warn('Добавляй по одному тегу.');return;}
+  const existing=items().find(x=>norm(x.text)===norm(text));
+  if(existing){toggle(existing,true);return;}
   warn('');
-  if(mode==='skin'){
-   if(skin.tags.some(x=>norm(x.text)===norm(tag)))return;
-   record();const id='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-   skin.tags.push({id,text:tag,section:''});
-   setSkinSelection(preset,[...(skin.selections[preset]||[]),id]);after();
-  }else{
-   if(items().some(x=>norm(x.text)===norm(tag)))return;
-   const list=items();changeTagList([...list,{text:tag}]);
-   const added=items().find(x=>x.text===tag);
-   if(added)toggle(added,true);
-  }
+  record();
+  const id='t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const tag={id,text};catalog.tags.push(tag);
+  changeMany([tag],true);
  }
  function removeTag(tag){
   if(readOnly())return;
-  if(!confirm('Удалить тег из библиотеки целиком? Это снимет его со всех ракурсов.'))return;
-  if(mode==='skin'){
-   record();skin.tags=skin.tags.filter(x=>x.id!==tag.id);
-   for(const id of Object.keys(skin.selections))skin.selections[id]=skin.selections[id].filter(x=>x!==tag.id);
-   after();
-  }else changeTagList(items().filter(x=>x.start!==tag.start));
+  if(!confirm('Удалить тег из общей библиотеки? Он исчезнет из всех ракурсов, кожи и NSFW.'))return;
+  const all=items(),at=all.indexOf(tag),source=parseBaseTags(baseState().base);
+  const existing=source.find(x=>norm(x.text)===norm(tag.text));
+  if(existing&&source.length===1){warn('Нельзя удалить последний тег основы: постоянная внешность должна быть заполнена.');return;}
+  record();
+  catalog.tags=catalog.tags.filter(x=>x.id!==tag.id);
+  catalog.sections=catalog.sections.map(x=>({...x,before:Math.max(0,x.before-(at<x.before?1:0))}));
+  if(existing)writeBaseState(reorderBaseTags(baseState(),source.filter(x=>x.start!==existing.start)));
+  const st=skinTag(tag);
+  if(st){
+   skin.tags=skin.tags.filter(x=>x.id!==st.id);
+   for(const id of Object.keys(skin.selections))skin.selections[id]=skin.selections[id].filter(x=>x!==st.id);
+  }
+  writeNsfwState(cleanNsfwTags(readNsfwState(),tag.text));
+  after();
  }
  function renameTag(tag,next){
   const text=String(next||'').trim().replace(/[,;]+$/,'').trim();
   if(!text||text===tag.text||readOnly())return;
-  if(/[,\r\n]/.test(text)){warn('В одном теге нельзя использовать запятую: она разделяет разные теги.');return;}
-  warn('');
+  if(/[,\r\n]/.test(text)){warn('В одном теге нельзя использовать запятую.');return;}
   if(items().some(x=>x!==tag&&norm(x.text)===norm(text)))return;
-  if(mode==='skin'){record();skin.tags.find(x=>x.id===tag.id).text=text;after();}
-  else changeTagList(items().map(x=>x.start===tag.start?{...x,text}:x));
+  record();
+  const previous=tag.text,source=parseBaseTags(baseState().base);
+  const existing=source.find(x=>norm(x.text)===norm(previous));
+  if(existing)writeBaseState(reorderBaseTags(baseState(),source.map(x=>x.start===existing.start?{...x,text}:x)));
+  const st=skinTag(tag);
+  if(st)st.text=text;
+  writeNsfwState(cleanNsfwTags(readNsfwState(),previous,text));
+  tag.text=text;after();
  }
  function preview(){
   if(mode==='skin'){
