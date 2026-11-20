@@ -780,7 +780,9 @@ function openNovelAISettings({ back = false } = {}) {
     const sampler = select(NOVELAI_SAMPLERS, draft.sampler); formField(grid, 'Sampler', sampler);
     const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
     const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
-    formField(grid, 'Негативный промпт', negative, 'Для V5 Medium используется обязательный негативный промпт модели.');
+    const negativeField=formField(grid, 'Негативный промпт', negative, 'Настраивается для Full/Curated; в V5 Full Medium NovelAI использует собственный фиксированный Undesired Content.');
+    const updateModelFields=()=>{negativeField.parentElement.hidden=model.value==='nai-diffusion-5-full-medium';};
+    model.addEventListener('change',updateModelFields);updateModelFields();
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: enabled.checked, neverSpendAnlas: neverSpend.checked,
         apiKey: token.value, endpoint: endpoint.value, model: model.value, resolution: resolution.value,
