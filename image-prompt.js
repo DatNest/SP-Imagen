@@ -75,52 +75,68 @@ export function limitComicDialogue(prompt, kind, settings) {
     if (!Number.isInteger(maxLines) || !Number.isInteger(maxWords)) return String(prompt || '');
 
     const full = String(prompt || '');
-    const markers = [...full.matchAll(textEnd)];
-    const last = markers.at(-1);
+    const last = [...full.matchAll(textEnd)].at(-1);
     const visual = last ? full.slice(0, last.index) : full;
     const tail = last ? full.slice(last.index + last[0].length) : '';
     const firstCharacter = visual.search(/\s\|\s*(?:girl|boy|cat|other)\s*,/iu);
     const base = firstCharacter < 0 ? visual : visual.slice(0, firstCharacter);
     const actors = firstCharacter < 0 ? '' : visual.slice(firstCharacter);
     const parsed = parseBubbles(base);
-    const bubbles = parsed?.entries || [];
-    const candidates = bubbles.length
-        ? bubbles.map(b => ({ words: b.words, description: b.description }))
-        : tail.split(/\r?\n\s*\r?\n/).filter(Boolean).map(words => ({ words, description: '' }));
-
-    // Never destroy otherwise valid lettering to satisfy a word limit.
-    // The director may place bubbles after character sections, use an alternate
-    // bubble syntax, or write a complete line longer than the selected cap.
-    // In those cases retain the original result for review instead of removing
-    // all bubble instructions and the terminal Text: block.
-    if (maxLines > 0) {
-        const bubbleMarkers = [...base.matchAll(/Speech bubble\s+\d+\s*:/giu)].length;
-        const unparsedBubbles = parsed && parsed.entries.length !== bubbleMarkers;
-        const bubblesAfterCast = /Speech bubble\s+\d+\s*:/iu.test(actors);
-        const unshortenable = candidates.some(item =>
-            String(item.words || '').trim() && !wholeShortPhrase(item.words, maxWords));
-        if (unparsedBubbles || bubblesAfterCast || unshortenable) {
-            console.warn('[SP Imagen] Dialogue preserved: automatic limits would lose or desynchronize speech bubbles. Review Text: before generating.');
+    const foundMarkers = [...base.matchAll(/Speech bubble\s+\d+\s*:/giu)].length;
+    if (!foundMarkers) return full; // Object lettering is not spoken dialogue.
+    if (!parsed || parsed.entries.length !== foundMarkers ||
+        /Speech bubble\s+\d+\s*:/iu.test(actors) || !last) {
+        console.warn('[SP Imagen] Dialogue limits skipped: bubble format or location is ambiguous. Review Text:.');
+        return full;
+    }
+    const bubbles = parsed.entries, replacements = [];
+    for (let index = 0; index < bubbles.length; index++) {
+        const b = bubbles[index];
+        const shortened = wholeShortPhrase(b.words, maxWords);
+        if (maxLines > 0 && !shortened) {
+            console.warn('[SP Imagen] Dialogue limits skipped: a line cannot be shortened without changing the words.');
             return full;
         }
+        replacements.push(index < maxLines ? shortened : null);
     }
+    if (replacements.every((words, i) => words === bubbles[i].words)) return full;
 
-    const selected = [];
-    for (const item of candidates) {
-        if (selected.length >= maxLines) break;
-        const words = wholeShortPhrase(item.words, maxWords);
-        if (words) selected.push({ ...item, words });
+    // Preserve other printed text fragments verbatim, in their original positions.
+    // If bubble-to-Text matching is ambiguous, never delete anything.
+    const fragments = tail.split(/\r?\n\s*\r?\n/u).map(s => s.trim()).filter(Boolean);
+    const values = bubbles.map(x => x.words.trim());
+    const frequencies = new Map(), expected = new Map();
+    for (const line of fragments) frequencies.set(line, (frequencies.get(line) || 0) + 1);
+    for (const line of values) expected.set(line, (expected.get(line) || 0) + 1);
+    if (values.some(line => frequencies.get(line) !== expected.get(line))) {
+        console.warn('[SP Imagen] Dialogue limits skipped: Text: fragments cannot be matched unambiguously.');
+        return full;
     }
-    let nextBase = base.trimEnd();
-    if (parsed) {
-        nextBase = parsed.prefix;
-        if (selected.length) {
-            const speech = selected.map((item, i) =>
-                `Speech bubble ${i + 1}: ${item.description}, containing exactly ${JSON.stringify(item.words)} inside the outlined balloon`);
-            nextBase += '; ' + speech.join('; ');
-            nextBase += '; all speech bubble text inside bubble outlines, no floating text or captions outside the balloons';
+    let bubbleIndex = 0;
+    const printed = [];
+    for (const line of fragments) {
+        if (bubbleIndex < bubbles.length && line === values[bubbleIndex]) {
+            const replacementText = replacements[bubbleIndex++];
+            if (replacementText) printed.push(replacementText);
+        } else if (values.includes(line)) {
+            console.warn('[SP Imagen] Dialogue limits skipped: speech bubble order is ambiguous.');
+            return full;
+        } else {
+            printed.push(line);
         }
     }
-    const nextVisual = (nextBase + actors).trimEnd();
-    return selected.length ? nextVisual + '\n\nText: ' + selected.map(x => x.words).join('\n\n') : nextVisual;
+    if (bubbleIndex !== bubbles.length) return full;
+    let resultBase = parsed.prefix;
+    const selected = bubbles.flatMap((b, index) => {
+        const words = replacements[index];
+        return words ? [{...b, words}] : [];
+    });
+    if (selected.length) {
+        const serialized = selected.map((b, index) =>
+            'Speech bubble ' + (index + 1) + ': ' +
+            b.description.replace(/[;, \t]+$/u, '') + ', saying ' + JSON.stringify(b.words));
+        resultBase += '; ' + serialized.join('; ');
+    }
+    const result = (resultBase + actors).trimEnd();
+    return printed.length ? result + '\n\nText: ' + printed.join('\n\n') : result;
 }
