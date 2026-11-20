@@ -806,3 +806,44 @@
  opacity:1!important;font-size:11px!important;
  line-height:1.3;overflow-wrap:anywhere;white-space:normal;
 }
+
+/* Fold infrequent maintenance actions away from the profile selection UI. */
+.spi-prompt-center>.spi-profile-maintenance{
+ display:block;flex:0 0 auto;min-width:0;
+ margin:0 0 10px;padding:0 10px;
+ border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor,#777) 65%,transparent);
+ border-radius:10px;
+ background:color-mix(in srgb,var(--SmartThemeBodyColor,#eee) 2%,transparent);
+}
+.spi-prompt-center>.spi-profile-maintenance>summary{
+ display:list-item;cursor:pointer;
+ padding:9px 3px;min-height:34px;
+ color:var(--SmartThemeEmColor,#aaa);
+ font-size:12px;font-weight:600;line-height:1.35;
+}
+.spi-prompt-center>.spi-profile-maintenance[open]>summary{
+ margin-bottom:6px;border-bottom:1px solid
+ color-mix(in srgb,var(--SmartThemeBorderColor,#777) 40%,transparent);
+ color:var(--SmartThemeBodyColor,#eee);
+}
+.spi-prompt-center>.spi-profile-maintenance>.spi-dialog-actions{
+ display:flex;justify-content:flex-start;flex-wrap:wrap;
+ gap:6px;min-width:0;margin:6px 0 8px!important;
+}
+.spi-prompt-center>.spi-profile-maintenance .menu_button{
+ flex:0 1 auto;max-width:100%;
+ min-height:31px!important;padding:5px 9px!important;
+ border-radius:8px!important;
+ border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor,#777) 80%,transparent)!important;
+ background:transparent!important;
+ color:var(--SmartThemeBodyColor,#eee)!important;
+ box-shadow:none!important;text-shadow:none!important;
+ font-size:11px!important;font-weight:500!important;
+ white-space:normal;overflow-wrap:anywhere;text-align:center;
+}
+.spi-prompt-center>.spi-profile-maintenance>.spi-status{
+ display:block;margin:4px 0 10px;
+ min-height:0;font-size:11px;line-height:1.45;
+ color:var(--SmartThemeEmColor,#aaa);
+}
+.spi-prompt-center>.spi-profile-maintenance>.spi-status:empty{display:none;}
