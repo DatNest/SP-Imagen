@@ -356,15 +356,17 @@ function openPromptJsonTransfer() {
             if (sample) throw new Error('Шаблон с test нельзя включать в генерацию. Сначала заполни все три инструкции.');
             if (!confirm('Создать три пользовательские копии из JSON? Официальные режиссёры не изменятся. Новые копии нужно включить в «Мои промпты».')) return;
             const state = settings();
-            for (const key of SP_IMAGEN_PROMPT_JSON_KEYS) {
+            const importedCopies = SP_IMAGEN_PROMPT_JSON_KEYS.map(key => {
                 const kind = key.replace(/^sp_ness_(snapshot|comic|story_page)_director$/, '$1');
                 const profile = normalizeProfile({
                     id:'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,9),
                     name:'Импорт · '+PROFILE_LABELS[key],kind, prompt:'',directorPrompt:imported[key],options:{}
                 });
                 if(!profile||!profile.directorPrompt.trim())throw new Error('Неверная инструкция '+PROFILE_LABELS[key]);
-                state.customProfiles.push(profile);
-            }
+                return profile;
+            });
+            // Commit all three at once: malformed third item must not leave partial copies.
+            state.customProfiles.push(...importedCopies);
             saveSettings();
             status.textContent = 'Созданы три пользовательские копии. Встроенные промпты не изменены. Открой «Мои промпты» и включи нужную копию.';
             refreshNewIndicators();
@@ -571,11 +573,10 @@ function openCustomProfileEditor(existing,refresh=()=>{},template=null) {
         const state=settings();const at=state.customProfiles.findIndex(item=>item.id===profile.id);
         if(at>=0)state.customProfiles[at]=profile;else state.customProfiles.push(profile);
         for(const format of ['snapshot','comic','story_page'])if(state.activeProfiles[format]===profile.id&&profile.kind!=='all'&&profile.kind!==format)state.activeProfiles[format]='';
-        // A new director copy affects only its original format. Existing personal
-        // supplemental prompts retain their previous all-formats activation.
-        if(!existing){
-            const targets=profile.kind==='all'?['snapshot','comic','story_page']:[profile.kind];
-            for(const format of targets)state.activeProfiles[format]=profile.id;
+        // Creating a copy NEVER switches the live director without an explicit
+        // click on "Использовать". Preserve the legacy Add Prompt behavior only.
+        if(!existing&&!template){
+            for(const format of ['snapshot','comic','story_page'])state.activeProfiles[format]=profile.id;
         }
         saveSettings();close();refresh();
     },true);
