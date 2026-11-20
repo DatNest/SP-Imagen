@@ -1795,17 +1795,43 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
   // Не вызывать клавиатуру и скачок прокрутки сразу при открытии на телефоне.
   if (!(window.matchMedia && window.matchMedia('(max-width: 767px), (pointer: coarse)').matches)) sceneEl.focus();
   return await new Promise(resolve=>{
-    const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close('cancelled');}};
+    let asking=false;
+    const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();void askCancel();}};
     const close=(status,force=false)=>{
       if(done||(committing&&!force))return;done=true;castManager.dispose();
       document.removeEventListener('keydown',onKey,true);
       stopViewportTracking();overlay.remove();previousFocus?.focus?.();resolve(status);
     };
+    const reviewSnapshot=()=>({
+      scene:sceneEl.value,outfits:outfEl.value,composition:compEl.value,
+      npc:npcEl.value,castIds:castChecks.filter(x=>x.cb.checked).map(x=>x.id),
+      manualMode
+    });
+    const askCancel=async()=>{
+      if(done||committing||asking)return;
+      const live=SillyTavern.getContext(),index=activePostIndex(live);
+      if(index<0||live.chat!==startChat||live.chatId!==startId){close('cancelled');return;}
+      asking=true;
+      try{
+        const keep=await confirmKeepingDraft(panel,panel.querySelector('[data-review-actions]'),'данные подготовки');
+        if(keep===null)return;
+        if(SillyTavern.getContext().chat===startChat&&SillyTavern.getContext().chatId===startId){
+          if(keep)savePostDraft(live,index,{
+            kind:v.sp_imagen_active_kind||'snapshot',stage:'reviewed',
+            parser:parserDraftFromVariables(v),review:reviewSnapshot()
+          });
+          else discardPostDraft(live,index);
+          getMediaSlots?.()?.refresh?.();
+        }
+        delete v.sp_imagen_resume_review;
+        close('cancelled');
+      }finally{asking=false;}
+    };
     onChatSwitch=()=>close('cancelled',true);
     document.addEventListener('keydown',onKey,true);
-    cancel.onclick=()=>close('cancelled');
+    cancel.onclick=()=>void askCancel();
     panel.querySelector('.ness-close-dialog').onclick=()=>cancel.click();
-    overlay.onclick=e=>{if(e.target===overlay)close('cancelled');};
+    overlay.onclick=e=>{if(e.target===overlay)void askCancel();};
     next.onclick=async()=>{
       if(done||next.disabled)return;
       errEl.style.display='none';
@@ -1834,6 +1860,12 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
         vars.sp_imagen_prepared_ticket='';
         vars.sp_imagen_structured_library='';
         vars.sp_imagen_preview_status='approved';
+        const index=activePostIndex(now);
+        if(index>=0)savePostDraft(now,index,{
+          kind:vars.sp_imagen_active_kind||'snapshot',stage:'reviewed',
+          parser:parserDraftFromVariables(vars),review:reviewSnapshot()
+        });
+        delete vars.sp_imagen_resume_review;
         if (typeof now.saveMetadata==='function') await now.saveMetadata();
         committing=false;close('approved');
       }catch(e){
