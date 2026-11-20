@@ -464,3 +464,18 @@
  .spi-prompt-center .spi-profile-help-row{width:auto;max-width:100%;}
  .spi-prompt-center .spi-profile-help-row>.menu_button{flex:1 1 auto;}
 }
+
+/* Independent profile choices and universal director-rule toggles. */
+.spi-profile-visible{display:inline-flex;align-items:center;gap:6px;
+ padding:3px 7px;border-radius:7px;border:1px solid var(--SmartThemeBorderColor,#777);
+ font-size:12px;font-weight:500;white-space:normal;min-width:0;cursor:pointer;}
+.spi-profile-visible input{width:17px;height:17px;flex:none;accent-color:var(--SmartThemeQuoteColor,#b796d7);}
+.spi-prompt-center .spi-prompt-row>strong{flex-wrap:wrap;}
+.spi-extra-rules-list{display:grid;gap:8px;min-width:0;}
+.spi-prompt-center .spi-extra-rules-list .spi-prompt-row{grid-template-columns:minmax(0,1fr);}
+.spi-custom-profile-editor .spi-director-prompt{min-height:270px;}
+.spi-custom-profile-editor .spi-profile-advanced{display:block;min-width:0;max-width:100%;}
+.spi-custom-profile-editor .spi-profile-advanced>.spi-field{margin-top:12px;}
+.spi-custom-profile-editor .spi-profile-advanced .spi-custom-prompt{min-height:125px;}
+.spi-prompt-center .spi-create-custom-profile{white-space:normal;}
+@media(max-width:620px){.spi-prompt-center .spi-profile-visible{font-size:12px;}}

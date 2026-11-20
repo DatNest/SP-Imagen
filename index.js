@@ -1,5 +1,5 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
-import { PROFILE_SWITCHES, normalizeProfile, normalizeProfileStore, activeProfile } from './profiles.js';
+import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
 import { eventSource, event_types } from '../../../../script.js';
@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.6';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.7';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -92,6 +92,8 @@ function settings() {
     value.codePrompts ??= {};
     value.customProfiles ??= [];
     value.activeProfiles ??= {};
+    const migrated=migrateLegacyProfiles(value);
+    if(migrated)context().saveSettingsDebounced?.();
     return value;
 }
 
@@ -323,7 +325,7 @@ function downloadPromptJson(filename, data) {
 function openPromptJsonTransfer() {
     const { dialog, close } = shell('SP Imagen · JSON промптов', 'spi-prompt-json');
     const intro = document.createElement('p');
-    intro.textContent = 'Импорт создаёт три ЛИЧНЫЕ копии режиссёров, не перезаписывая штатные инструкции. Копии можно включить отдельно для каждого формата.';
+    intro.textContent = 'Импорт создаёт три самостоятельных профиля на основе режиссёров Snapshot, Comic и Story Page. Встроенные инструкции остаются неизменными. Импортированные профили можно показывать по ✧ или скрывать.';
     const upload = document.createElement('input');
     upload.type = 'file';
     upload.accept = '.json,application/json';
@@ -421,73 +423,91 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         onClose: reason => { promptCenterOpen = false; refreshNewIndicators(); if (backToHub && reason !== 'chat') openHub(); },
     });
     const copy = document.createElement('p');
-    copy.textContent = 'Промпты обновлены. Выберите версию.';
-    const list = document.createElement('div');
-    list.className = 'spi-prompt-list';
-    for (const [name, label] of Object.entries(PROFILE_LABELS)) {
-        const row = document.createElement('div');
-        row.className = `spi-prompt-row${pending.has(name) ? ' spi-conflict' : ''}`;
-        const title = document.createElement('strong');
-        title.textContent = label;
-        if (pending.has(name)) {
-            const badge = document.createElement('span');
-            badge.className = 'spi-new'; badge.textContent = 'NEW!'; title.append(badge);
-        }
-        const actions = document.createElement('div');
-        actions.className = 'spi-dialog-actions';
-        button('Посмотреть', actions, () => openPromptWindow(name));
-        const copyHelp=document.createElement('div');copyHelp.className='spi-profile-help-row';
-        actions.append(copyHelp);
-        button('Создать копию', copyHelp, () => {
-            const kind = name.replace(/^sp_ness_(snapshot|comic|story_page)_director$/, '$1');
-            openCustomProfileEditor(null, renderCustom, {
-                name: 'Копия · '+label, kind, directorPrompt: settings().prompts[name] || shippedPrompt(name), prompt: '',
-            });
-        }, true);
-        addFieldHelp(copyHelp,'Копия профиля '+label,
-            '«Создать копию» сохраняет полный текст встроенного режиссёра '+label+' как независимый личный профиль. Оригинал не изменится.\n\nПосле сохранения выбери у копии «Использовать»: только тогда она заменит встроенного режиссёра для этого формата. Копия Snapshot не изменяет Comic и Story Page.\n\nНажми «Изменить», чтобы переписать инструкции копии: например, изменить правила ракурсов, количества планов или композиции. Следующая генерация этого формата будет опираться на новый текст. Сохраняй обязательный формат HTML/JSON, разделение персонажей, Text: и NSFW-блоки, иначе генерация может сломаться.\n\nДля небольшой дополнительной рекомендации без замены всей инструкции лучше «Добавить промпт».');
-        row.append(title, actions); list.append(row);
+    copy.textContent = 'Встроенные инструкции обновлены. Твои профили остаются отдельными.';
+    const scroll=document.createElement('div');scroll.className='spi-profile-scroll';
+    const heading=(title,parent)=>{const h=document.createElement('h3');h.textContent=title;parent.append(h);return h;};
+    const helpButton=(holder,title,description)=>{
+        holder.classList.add('spi-profile-help-row');
+        return addFieldHelp(holder,title,description);
+    };
+    heading('Встроенные профили',scroll);
+    const list=document.createElement('div');list.className='spi-prompt-list';
+    for (const [key,label] of Object.entries(PROFILE_LABELS)) {
+        const kind=key.replace(/^sp_ness_(snapshot|comic|story_page)_director$/,'$1');
+        const row=document.createElement('div');row.className='spi-prompt-row'+(pending.has(key)?' spi-conflict':'');
+        const title=document.createElement('strong');title.textContent=label;
+        const visible=document.createElement('label');visible.className='spi-profile-visible';
+        const check=document.createElement('input');check.type='checkbox';check.checked=settings().visibleBuiltIns?.[kind]!==false;
+        const span=document.createElement('span');span.textContent='Показывать по ✧';
+        visible.append(check,span);
+        check.onchange=()=>{settings().visibleBuiltIns[kind]=check.checked;saveSettings();mediaSlots?.refresh?.();};
+        title.append(visible);
+        const actions=document.createElement('div');actions.className='spi-dialog-actions';
+        button('Посмотреть',actions,()=>openPromptWindow(key));
+        const copyHelp=document.createElement('div');actions.append(copyHelp);
+        button('Создать копию',copyHelp,()=>openCustomProfileEditor(null,renderCustom,{
+            name:'Копия · '+label,kind,directorPrompt:settings().prompts[key]||shippedPrompt(key),
+            visible:true,parser:{posts:null,instructions:'',options:{}},
+        }),true);
+        helpButton(copyHelp,'Самостоятельная копия '+label,
+            'Создаётся НОВЫЙ независимый профиль, который не заменяет '+label+'. Он получит собственную строку в выборе по звёздочке и отдельную галерею.\n\nИзмени скопированную инструкцию и сохрани. Сразу после сохранения новый профиль доступен для генерации, если включено «Показывать по ✧». Исходный '+label+' продолжает работать без изменений. У копии можно отдельно задать число RP-постов, передаваемые источники и правила разбора.\n\nОбязательные HTML/JSON-маркеры, секции персонажей и Text: лучше сохранять, иначе режиссёр может вернуть непригодный формат.');
+        row.append(title,actions);list.append(row);
     }
-    // Built-in formats are already present above. Personal prompts are optional additions;
-    // no second format picker or three independent assignments are exposed.
-    const customTitle=document.createElement('h3'); customTitle.textContent='Мои промпты';
-    const customHint=document.createElement('p'); customHint.className='spi-profile-hint';
-    customHint.textContent='Свои правила направляют режиссёра при составлении промпта, но не копируются дословно в NAI5. Для готовых тегов и стилевых префиксов используй «Настройки → Стили».';
-    const customList=document.createElement('div'); customList.className='spi-custom-profile-list';
-    const addProfile=document.createElement('div'); addProfile.className='spi-dialog-actions';
-    const addHelp=document.createElement('div');addHelp.className='spi-profile-help-row';addProfile.append(addHelp);
-    const addButton=button('＋ Добавить промпт',addHelp,()=>openCustomProfileEditor(null,renderCustom),true);
+    scroll.append(list);
+    heading('Собственные профили генерации',scroll);
+    const profileHint=document.createElement('p');profileHint.className='spi-profile-hint';
+    profileHint.textContent='Каждый профиль — отдельная кнопка в меню ✧, собственные инструкции режиссёра, разбор данных и галерея. Галочка определяет, виден ли он при генерации.';
+    scroll.append(profileHint);
+    const customList=document.createElement('div');customList.className='spi-custom-profile-list';scroll.append(customList);
+    const createActions=document.createElement('div');createActions.className='spi-dialog-actions';
+    const profileCreate=button('＋ Создать свой профиль',createActions,()=>openCustomProfileEditor(null,renderCustom),true);
+    profileCreate.classList.add('spi-create-custom-profile');
+    const profileHelp=document.createElement('div');createActions.append(profileHelp);
+    helpButton(profileHelp,'Создать собственный профиль',
+        'Это отдельный режим генерации с собственным именем и полным промптом режиссёра. Можно начать с одного из встроенных шаблонов и переписать его целиком.\n\nВ «Настройке разбора» задаются число читаемых RP-постов, источники (сцена, библиотека, одежда, композиция) и дополнительные указания по разбору. Эти параметры используются только при выборе этого профиля. Галочка возле него показывает или скрывает профиль в меню ✧; сохранённые изображения не удаляются.');
+    scroll.append(createActions);
+    heading('Дополнительные правила для всех профилей',scroll);
+    const rulesHint=document.createElement('p');rulesHint.className='spi-profile-hint';
+    rulesHint.textContent='Здесь обычные инструкции, которые дословно добавляются в системный промпт режиссёра при любом выбранном профиле. Это не новые режимы генерации и не префиксы NAI5.';
+    scroll.append(rulesHint);
+    const rulesList=document.createElement('div');rulesList.className='spi-extra-rules-list';scroll.append(rulesList);
+    const addActions=document.createElement('div');addActions.className='spi-dialog-actions';
+    const addRow=document.createElement('div');addActions.append(addRow);
+    const addButton=button('＋ Добавить промпт',addRow,()=>openExtraRuleEditor(null,renderCustom),true);
     addButton.classList.add('spi-prompt-add');
-    addFieldHelp(addHelp,'Как работает «Добавить промпт»',
-        'Это короткие дополнительные правила для режиссёра, а не готовый промпт для NovelAI. Пример: «Выбирай крупный или средний план; показывай эмоции и руки». Режиссёр учитывает пожелание при написании описания, но НЕ копирует эту инструкцию дословно в картинку.\n\nНазови промпт, впиши правила и сохрани. Новый промпт автоматически станет активным для Snapshot, Comic и Story Page. В каждом формате одновременно активен только один личный профиль; позже можно выбрать «Использовать» у другого или выключить этот. При этом штатные инструкции режиссёра не меняются.\n\nВ «Изменить» можно переписать эти правила: следующий запуск активного профиля использует новый вариант. Чтобы менять саму логику одного формата, создай копию его встроенного профиля и редактируй полную инструкцию.');
+    helpButton(addRow,'Добавить дополнительный промпт',
+        'Впиши название и текст правила. После сохранения оно будет добавляться ДОСЛОВНО в инструкции режиссёра для Snapshot, Comic, Story Page и всех собственных профилей.\n\nНапример: «Framing: always use a close or medium shot». Режиссёр получит эту инструкцию как написано и будет применять её к описанию сцены. Сам текст НЕ вставляется механически перед тегами 1girl/1boy в финальный промпт NAI5.\n\nМожно создавать несколько правил: все включённые работают вместе. Галочка возле каждого правила управляет его применением. «Изменить» меняет текст для следующих генераций; исходные режиссёры от этого не переписываются.');
+    scroll.append(addActions);
     const renderCustom=()=>{
         const store=normalizeProfileStore(settings());
-        customList.replaceChildren();
-        if(!store.profiles.length){
-            const empty=document.createElement('p');empty.className='spi-status';
-            empty.textContent='Здесь появятся твои собственные промпты.';customList.append(empty);
-        }
+        customList.replaceChildren();rulesList.replaceChildren();
+        if(!store.profiles.length){const p=document.createElement('p');p.className='spi-status';p.textContent='Пока нет личных режимов генерации.';customList.append(p);}
         for(const profile of store.profiles){
             const row=document.createElement('div');row.className='spi-prompt-row';
-            const title=document.createElement('strong');title.textContent=profile.name;
+            const title=document.createElement('strong');title.append(document.createTextNode(profile.name));
+            const meta=document.createElement('small');meta.textContent=' · '+PROFILE_KINDS[profile.kind]+' · свой режиссёр';title.append(meta);
+            const toggle=document.createElement('label');toggle.className='spi-profile-visible';
+            const check=document.createElement('input');check.type='checkbox';check.checked=profile.visible;
+            toggle.append(check,document.createTextNode('Показывать по ✧'));title.append(toggle);
+            check.onchange=()=>{const target=settings().customProfiles.find(p=>p.id===profile.id);if(target){target.visible=check.checked;saveSettings();mediaSlots?.refresh?.();}};
             const actions=document.createElement('div');actions.className='spi-dialog-actions';
-            const formats=profile.kind==='all'?['snapshot','comic','story_page']:[profile.kind];
-            const isActive=formats.every(format=>store.activeProfiles[format]===profile.id);
-            const formatLabel=profile.kind==='all'?'все три':PROFILE_LABELS['sp_ness_'+profile.kind+'_director'];
-            const subtitle=document.createElement('small');subtitle.textContent=profile.directorPrompt?' · копия режиссёра '+formatLabel:' · дополнительные инструкции режиссёру';title.append(subtitle);
-            const toggle=button(isActive?'✓ Используется':'Использовать · '+formatLabel,actions,()=>{
-                const state=settings();
-                for(const format of formats)state.activeProfiles[format]=isActive?'':profile.id;
-                saveSettings();renderCustom();
-            });
-            toggle.setAttribute('aria-pressed',String(isActive));
             button('Изменить',actions,()=>openCustomProfileEditor(profile,renderCustom));
-            const personalCopyHelp=document.createElement('div');personalCopyHelp.className='spi-profile-help-row';
-            actions.append(personalCopyHelp);
-            button('Создать копию',personalCopyHelp,()=>openCustomProfileEditor(null,renderCustom,{...profile,id:'',name:'Копия · '+profile.name}));
-            addFieldHelp(personalCopyHelp,'Копия личного профиля',
-                'Создаёт независимую копию с тем же текстом и настройками. Можешь изменить её правила, не затрагивая оригинал. Сохранённая копия не включается сама: для генерации нажми у неё «Использовать». В каждом формате может быть активен только один личный профиль.');
+            const dup=document.createElement('div');actions.append(dup);
+            button('Создать копию',dup,()=>openCustomProfileEditor(null,renderCustom,{...profile,id:'',name:'Копия · '+profile.name}));
+            helpButton(dup,'Копия личного профиля','Создаёт НОВЫЙ независимый профиль на основе этой инструкции. Его можно изменить и показывать отдельно в меню ✧. Исходный профиль не изменяется, галереи у них раздельные.');
             row.append(title,actions);customList.append(row);
+        }
+        if(!store.rules.length){const p=document.createElement('p');p.className='spi-status';p.textContent='Пока нет общих дополнительных правил.';rulesList.append(p);}
+        for(const rule of store.rules){
+            const row=document.createElement('div');row.className='spi-prompt-row';
+            const title=document.createElement('strong');title.append(document.createTextNode(rule.name));
+            const active=document.createElement('label');active.className='spi-profile-visible';
+            const check=document.createElement('input');check.type='checkbox';check.checked=rule.enabled;
+            active.append(check,document.createTextNode('Применять'));title.append(active);
+            check.onchange=()=>{const r=settings().extraPrompts.find(x=>x.id===rule.id);if(r){r.enabled=check.checked;saveSettings();}};
+            const actions=document.createElement('div');actions.className='spi-dialog-actions';
+            button('Изменить',actions,()=>openExtraRuleEditor(rule,renderCustom));
+            row.append(title,actions);rulesList.append(row);
         }
     };
     renderCustom();
@@ -532,71 +552,94 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         autoSwap.disabled = !validPromptSnapshot(slots.automatic);
     }
     syncBackupButtons();
-    const scroll=document.createElement('div');scroll.className='spi-profile-scroll';
-    scroll.append(list, customTitle, customHint, customList, addProfile);
-    if (pending.size) dialog.append(copy);
-    dialog.append(transfer, backups, backupInfo, scroll, footer);
-    if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
+
+    if(pending.size)dialog.append(copy);
+    dialog.append(transfer,backups,backupInfo,scroll,footer);
     return closed;
 }
-
-function openCustomProfileEditor(existing,refresh=()=>{},template=null) {
-    const seed=existing||template||{};
-    const copiedDirector=Boolean(seed.directorPrompt)&&['snapshot','comic','story_page'].includes(seed.kind);
-    const { dialog,close }=shell(`SP Imagen · ${existing ? 'Изменить профиль' : copiedDirector?'Копия режиссёра':'Новый профиль'}`, 'spi-prompt-window spi-custom-profile-editor');
+function openExtraRuleEditor(existing=null,refresh=()=>{}){
+    const {dialog,close}=shell(existing?'SP Imagen · Изменить правило':'SP Imagen · Новый дополнительный промпт','spi-prompt-window spi-custom-profile-editor');
     const form=document.createElement('div');form.className='spi-custom-profile-form';
-    const name=document.createElement('input');name.type='text';name.maxLength=100;name.value=seed.name||'';
-    name.placeholder='Например, Мои акварельные иллюстрации';
-    formField(form,'Название',name,'Чтобы быстро найти этот профиль.');
-    const prompt=document.createElement('textarea');prompt.className='spi-custom-prompt';prompt.value=seed.prompt||'';
-    prompt.placeholder='Например: Framing: prefer a close or medium shot with expressive gestures and visible faces.';prompt.maxLength=20000;
-    let directorField=null;
-    if(copiedDirector){
-        directorField=document.createElement('textarea');
-        directorField.className='spi-custom-prompt';
-        directorField.maxLength=100000;
-        directorField.value=seed.directorPrompt;
-        directorField.spellcheck=false;
-        formField(form,'Копия инструкции режиссёра · '+PROFILE_LABELS['sp_ness_'+seed.kind+'_director'],directorField,'Заменяет встроенного режиссёра только после «Использовать». Меняй правила построения сцен, не нарушая обязательный HTML/JSON-формат, макросы, Text: и NSFW-блоки. Оригинал не изменится.');
-        formField(form,'Дополнительные инструкции режиссёру · необязательно',prompt,'Режиссёр учитывает эти правила, но не копирует их дословно в NAI5.');
-    }else formField(form,'Твои правила для режиссёра',prompt,'Например: выбирать крупные ракурсы. Правила влияют на описание картинки, но сами не попадают в итоговый промпт NAI5.');
-    const advanced=document.createElement('details');advanced.className='spi-profile-advanced';const summary=document.createElement('summary');summary.textContent='Что использовать из чата · необязательно';advanced.append(summary);
-    const checks=document.createElement('fieldset');checks.className='spi-profile-checks';
-    const legend=document.createElement('legend');legend.textContent='Что учитывать при генерации';checks.append(legend);
-    const values={};
-    for(const [key,[label,help]] of Object.entries(PROFILE_SWITCHES)) {
+    const name=document.createElement('input');name.type='text';name.maxLength=100;name.value=existing?.name||'';name.placeholder='Например, Ракурсы';
+    formField(form,'Название правила',name,'Видно только в списке правил; не добавляется в инструкции режиссёра.');
+    const prompt=document.createElement('textarea');prompt.className='spi-custom-prompt';prompt.maxLength=20000;prompt.value=existing?.prompt||'';prompt.spellcheck=false;
+    formField(form,'Дополнительный промпт · дословно',prompt,'Весь текст без перефразирования передаётся режиссёру при каждом активном формате. Сам по себе он не вставляется в начало NAI5.');
+    const enabled=document.createElement('input');enabled.type='checkbox';enabled.checked=existing?.enabled!==false;
+    formField(form,'Применять ко всем профилям',enabled,'Сними галочку, чтобы сохранить правило, не передавая его режиссёру.');
+    const status=document.createElement('p');status.className='spi-status';status.setAttribute('role','status');
+    const actions=document.createElement('div');actions.className='spi-dialog-actions';
+    if(existing)button('Удалить правило',actions,()=>{if(!confirm('Удалить дополнительное правило «'+existing.name+'»?'))return;settings().extraPrompts=settings().extraPrompts.filter(x=>x.id!==existing.id);saveSettings();close();refresh();});
+    button('Отмена',actions,close);
+    button('Сохранить',actions,()=>{
+        const rule=normalizeExtraRule({id:existing?.id||'rule_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),name:name.value,prompt:prompt.value,enabled:enabled.checked});
+        if(!rule){status.textContent='Заполни название и текст правила.';return;}
+        const store=settings(),at=store.extraPrompts.findIndex(x=>x.id===rule.id);
+        if(at>=0)store.extraPrompts[at]=rule;else store.extraPrompts.push(rule);
+        saveSettings();close();refresh();
+    },true);
+    dialog.append(form,status,actions);
+    if(!window.matchMedia?.('(pointer:coarse)').matches)name.focus({preventScroll:true});
+}
+function openCustomProfileEditor(existing=null,refresh=()=>{},template=null){
+    const seed=existing||template||{},created=!existing;
+    const {dialog,close}=shell(created?'SP Imagen · Новый профиль':'SP Imagen · Редактировать профиль','spi-prompt-window spi-custom-profile-editor');
+    const form=document.createElement('div');form.className='spi-custom-profile-form';
+    const name=document.createElement('input');name.type='text';name.maxLength=100;name.value=seed.name||'';name.placeholder='Например, Портрет в диалоге';
+    formField(form,'Название профиля',name,'Так он будет называться в меню генерации и галерее.');
+    const kind=select(PROFILE_KINDS,seed.kind||'snapshot');
+    formField(form,'Базовый тип разбора',kind,'Определяет стандартное число постов и доступные настройки Comic/Story Page. Полная инструкция ниже — твоя собственная.');
+    const field=document.createElement('textarea');field.className='spi-custom-prompt spi-director-prompt';field.maxLength=100000;field.spellcheck=false;
+    field.value=seed.directorPrompt||'';
+    const getTemplate=()=>settings().prompts['sp_ness_'+kind.value+'_director']||shippedPrompt('sp_ness_'+kind.value+'_director');
+    if(!field.value)field.value=getTemplate();
+    const templateActions=document.createElement('div');templateActions.className='spi-dialog-actions';
+    button('Взять шаблон выбранного типа',templateActions,()=>{if(field.value.trim()&&!confirm('Заменить введённый текст промпта шаблоном '+PROFILE_KINDS[kind.value]+'?'))return;field.value=getTemplate();});
+    button('Начать с чистого листа',templateActions,()=>{if(field.value.trim()&&!confirm('Очистить весь текст собственной инструкции режиссёра?'))return;field.value='';field.focus();});
+    form.append(templateActions);
+    formField(form,'Полная инструкция собственного режиссёра',field,'Можно редактировать всё. Не удаляй обязательный HTML/JSON-формат, Text: и разделители персонажей, иначе финальный промпт может не обработаться.');
+    const visible=document.createElement('input');visible.type='checkbox';visible.checked=seed.visible!==false;
+    formField(form,'Показывать по ✧',visible,'Когда галочка выключена, профиль скрыт из меню генерации, но его прежние картинки сохраняются.');
+    const advanced=document.createElement('details');advanced.className='spi-profile-advanced';advanced.open=false;
+    const summary=document.createElement('summary');summary.textContent='Для опытных · настройка сбора и разбора данных';advanced.append(summary);
+    const posts=document.createElement('input');posts.type='number';posts.min=1;posts.max=20;posts.step=1;posts.value=seed.parser?.posts??'';
+    posts.placeholder='По общим настройкам';
+    formField(advanced,'Сколько RP-постов читать · 1–20',posts,'Пусто — брать число из обычных настроек выбранного типа. Меняет реальное количество считываемых постов.');
+    const parser=document.createElement('textarea');parser.className='spi-custom-prompt';parser.maxLength=10000;parser.value=seed.parser?.instructions||'';
+    parser.placeholder='Например: выделяй жесты и текущее положение предметов; игнорируй пересказ прошлых событий.';
+    formField(advanced,'Дополнительные инструкции разбору сцены',parser,'Этот текст дословно получает режиссёр. Он направляет извлечение деталей из уже собранных постов; механический сбор и очистка сохраняют настройки SP Imagen.');
+    const fieldset=document.createElement('fieldset');fieldset.className='spi-profile-checks';
+    const legend=document.createElement('legend');legend.textContent='Какие источники и настройки передавать';fieldset.append(legend);
+    const switches={};
+    for(const [key,[label,help]] of Object.entries(PROFILE_SWITCHES)){
         const row=document.createElement('label');row.className='spi-profile-check';
-        const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=seed.options?.[key]!==false;
-        const title=document.createElement('span');title.textContent=label;
-        row.append(checkbox,title);addFieldHelp(row,label,help);checks.append(row);values[key]=checkbox;
+        const check=document.createElement('input');check.type='checkbox';check.checked=seed.parser?.options?.[key]!==false&&seed.options?.[key]!==false;
+        const span=document.createElement('span');span.textContent=label;
+        row.append(check,span);addFieldHelp(row,label,help);fieldset.append(row);switches[key]=check;
     }
-    advanced.append(checks);form.append(advanced);
+    advanced.append(fieldset);form.append(advanced);
     const status=document.createElement('p');status.className='spi-status';status.setAttribute('role','status');
     const actions=document.createElement('div');actions.className='spi-dialog-actions';
     if(existing)button('Удалить профиль',actions,()=>{
-        if(!confirm(`Удалить профиль «${existing.name}»? Встроенные профили не затронутся.`))return;
-        const state=settings();state.customProfiles=state.customProfiles.filter(p=>p.id!==existing.id);
-        for(const key of ['snapshot','comic','story_page'])if(state.activeProfiles[key]===existing.id)state.activeProfiles[key]='';
-        saveSettings();close();refresh();
+        if(!confirm('Удалить профиль «'+existing.name+'»? Его старые изображения останутся в галерее.'))return;
+        settings().customProfiles=settings().customProfiles.filter(x=>x.id!==existing.id);saveSettings();mediaSlots?.refresh?.();close();refresh();
     });
     button('Отмена',actions,close);
     button('Сохранить',actions,()=>{
-        if(directorField&&!directorField.value.trim()){status.textContent='Инструкция копии режиссёра не может быть пустой.';return;}
-        const profile=normalizeProfile({id:existing?.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),name:name.value,kind:seed.kind||'all',prompt:prompt.value,directorPrompt:directorField?.value||'',options:Object.fromEntries(Object.entries(values).map(([key,node])=>[key,node.checked]))});
-        if(!profile){status.textContent='Сначала введи название профиля.';return;}
-        const state=settings();const at=state.customProfiles.findIndex(item=>item.id===profile.id);
-        if(at>=0)state.customProfiles[at]=profile;else state.customProfiles.push(profile);
-        for(const format of ['snapshot','comic','story_page'])if(state.activeProfiles[format]===profile.id&&profile.kind!=='all'&&profile.kind!==format)state.activeProfiles[format]='';
-        // Creating a copy NEVER switches the live director without an explicit
-        // click on "Использовать". Preserve the legacy Add Prompt behavior only.
-        if(!existing&&!template){
-            for(const format of ['snapshot','comic','story_page'])state.activeProfiles[format]=profile.id;
-        }
-        saveSettings();close();refresh();
+        const postsValue=posts.value.trim(),number=postsValue===''?null:Number(postsValue);
+        if(number!==null&&(!Number.isInteger(number)||number<1||number>20)){status.textContent='Количество постов: от 1 до 20.';return;}
+        const profile=normalizeProfile({
+            id:existing?.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),
+            name:name.value,kind:kind.value,directorPrompt:field.value,visible:visible.checked,
+            parser:{posts:number,instructions:parser.value,options:Object.fromEntries(Object.entries(switches).map(([k,el])=>[k,el.checked]))}
+        });
+        if(!profile){status.textContent='Заполни название и инструкцию режиссёра.';return;}
+        const store=settings(),at=store.customProfiles.findIndex(x=>x.id===profile.id);
+        if(at>=0)store.customProfiles[at]=profile;else store.customProfiles.push(profile);
+        saveSettings();mediaSlots?.refresh?.();close();refresh();
     },true);
-    dialog.append(form,status,actions);name.focus({preventScroll:true});
+    dialog.append(form,status,actions);
+    if(!window.matchMedia?.('(pointer:coarse)').matches)name.focus({preventScroll:true});
 }
-
 function openAllCodePrompts() {
     const {dialog,close}=shell('SP Imagen · Все системные промпты','spi-all-code-prompts');
     const intro=document.createElement('p');intro.textContent='Здесь все остальные системные инструкции, кроме профилей Snapshot, Comic и Story Page. Изменения действуют только внутри SP Imagen. Каждый текст можно вернуть к исходному.';
@@ -1113,13 +1156,11 @@ function openLastPrompt() {
 }
 
 function getDirector(kind) {
-    const name = `sp_ness_${kind}_director`;
-    const personal = activeProfile(settings(),kind);
-    if(personal?.directorPrompt?.trim()&&personal.kind===kind){
-        return {name: personal.name, prompt:personal.directorPrompt, source:'user-copy'};
-    }
-    const prompt = settings().prompts[name];
-    return typeof prompt === 'string' && prompt.trim() ? { name, prompt, source:'bundled' } : null;
+    const personal=profileById(settings(),kind);
+    if(personal)return {name:personal.name,prompt:personal.directorPrompt,source:'custom',baseKind:personal.kind};
+    if(!Object.hasOwn(PROFILE_KINDS,kind))return null;
+    const name='sp_ness_'+kind+'_director',prompt=settings().prompts[name];
+    return typeof prompt==='string'&&prompt.trim()?{name,prompt,source:'bundled',baseKind:kind}:null;
 }
 
 async function generateText(_kind, messages, signal) {
@@ -1166,9 +1207,9 @@ function snapshotGenerationConfig(config, kind='snapshot') {
     const saved=settings().novelai;
     // Preserve settings necessary for a resumed request, but NEVER store credentials.
     const {apiKey, endpoint, enabled, styles, activeStyleId, ...publicSettings}=saved;
-    const profile=activeProfile(settings(),kind);
-    if(profile?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
-    const style=profile?.options?.useArtStyle===false
+    const profile=profileById(settings(),kind);
+    if(profile?.parser?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
+    const style=profile?.parser?.options?.useArtStyle===false
         ? {id:'',name:'Без стиля',value:''}
         : clone(activeStyle(saved)||{id:'',name:'Без стиля',value:''});
     return {
@@ -1182,13 +1223,13 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
     const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
     const style = snapshot?.style || activeStyle(saved) || { id: '', name: 'Без стиля', value: '' };
-    const profile = activeProfile(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
+    const profile = profileById(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
     const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
-    if (!snapshot && profile?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
+    if (!snapshot && profile?.parser?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
-        style: snapshot?.style ? style.value : (profile?.options?.useArtStyle === false ? '' : style.value),
+        style: snapshot?.style ? style.value : (profile?.parser?.options?.useArtStyle === false ? '' : style.value),
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
     });
@@ -1204,7 +1245,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         src: result.src,
         config: {
             ...config,
-            spImagenDirect: { version: 1, provider: 'novelai', style: snapshot?.style ? clone(style) : (profile?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style)), settings: publicSettings, generatedSeed: result.seed },
+            spImagenDirect: { version: 1, provider: 'novelai', style: snapshot?.style ? clone(style) : (profile?.parser?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style)), settings: publicSettings, generatedSeed: result.seed },
         },
     };
 }
@@ -1295,7 +1336,12 @@ const extensionApi = {
     listImageStyles,
     saveImageStyle,
     getDirector,
-    getActiveProfile: kind => activeProfile(settings(),kind),
+    getActiveProfile: kind => profileById(settings(),kind),
+    getProfileBaseKind: kind => baseKindFor(settings(),kind),
+    getGenerationProfiles: () => generationFormats(settings()),
+    getVisibleGenerationProfiles: () => generationFormats(settings(),{visibleOnly:true}),
+    getGenerationProfileLabel: kind => generationFormats(settings()).find(p=>p.id===kind)?.name||'Свой профиль',
+    getGlobalDirectorRules: () => normalizeProfileStore(settings()).rules.filter(r=>r.enabled),
     getCodePrompt: key => resolveCodePrompt(settings().codePrompts,key),
     generateText,
 };

@@ -12,8 +12,16 @@ export async function installSpImagenMediaSlots(options) {
   const doc = document;
   const context = () => host.SillyTavern.getContext();
   const STORE = 'ness_media_slots_v2';
-  const KINDS = Object.freeze(['snapshot', 'comic', 'story_page']);
-  const LABEL = Object.freeze({ snapshot: 'Snapshot', comic: 'Comic', story_page: 'Story Page' });
+  const KINDS = Object.freeze(['snapshot','comic','story_page']); // Permanent built-in slots.
+  const LABEL = new Proxy({snapshot:'Snapshot',comic:'Comic',story_page:'Story Page'},{
+    get: (base,kind)=> typeof kind==='string'
+      ? (getExtension?.()?.getGenerationProfileLabel?.(kind)||base[kind]||kind)
+      : base[kind],
+  });
+  const validCustomId=id=>/^custom_[a-z0-9_-]{3,75}$/i.test(String(id||''));
+  const generationProfiles=()=>getExtension?.()?.getGenerationProfiles?.()||KINDS.map(k=>({id:k,name:LABEL[k],visible:true}));
+  const availableKinds=slots=>[...new Set([...KINDS,...generationProfiles().map(x=>x.id).filter(validCustomId),...Object.keys(slots||{}).filter(validCustomId)])];
+  const validKind=id=>KINDS.includes(id)||generationProfiles().some(x=>x.id===id&&validCustomId(id));
   const LIMIT = 10;
   const CLEANUP_KEY = '__spImagenOwnedMediaSlotsCleanup';
   const mounted = new Map();
@@ -46,11 +54,13 @@ export async function installSpImagenMediaSlots(options) {
     }
     if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
     if (create) {
+      // Do not allocate empty custom slots for every RP post. Create a custom
+      // slot only when that profile actually publishes an image.
       for (const kind of KINDS) {
         if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0, collapsed: true };
       }
     }
-    for (const kind of KINDS) {
+    for (const kind of availableKinds(slots)) {
       const slot = slots[kind];
       if (!slot || !Array.isArray(slot.versions)) continue;
       if (slot.versions.some(item => !safeUrl(item?.src))) {
@@ -117,7 +127,7 @@ export async function installSpImagenMediaSlots(options) {
       position: fixed !important;
       inset: var(--ms-top, 0px) auto auto var(--ms-left, 0px) !important;
       z-index: 2147482000 !important;
-      inline-size: min(12em, var(--ms-max-width));
+      inline-size: min(15em, var(--ms-max-width));
       max-block-size: var(--ms-max-height);
       overflow: auto;
       overscroll-behavior: contain;
@@ -245,14 +255,15 @@ export async function installSpImagenMediaSlots(options) {
     .generate { opacity: .8; font-size: 1.25em; }
     .generate[aria-expanded="true"], .generate:focus-visible { opacity: 1; }
     .generate, .tool { min-inline-size: 32px; min-block-size: 32px; text-align: center; }
+    .menu-empty {font-size:12px;line-height:1.45;opacity:.85;padding:8px;}
     .option {
       display: block;
       inline-size: 100%;
       min-block-size: 36px;
       padding: .45em .65em;
       text-align: start;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
+      white-space: normal;
     }
     @media (hover: hover) {
       .generate:hover { opacity: 1; }
@@ -598,8 +609,12 @@ export async function installSpImagenMediaSlots(options) {
     }
 
     const { node, root } = component('floating');
-    for (const kind of KINDS) {
-      const option = element('button', 'option', LABEL[kind]);
+    const available=getExtension?.()?.getVisibleGenerationProfiles?.()||KINDS.map(id=>({id,name:LABEL[id]}));
+    if(!available.length){const note=element('div','menu-empty','Включи хотя бы один профиль в настройках SP Imagen.');root.append(note);}
+    for (const item of available) {
+      const kind=item.id;
+      if(!validKind(kind))continue;
+      const option = element('button', 'option', item.name||LABEL[kind]);
       option.addEventListener('click', () => {
         closeToolsMenu(true);
         // Training uses the REAL profile menu but never runs a model or saves chat data.
@@ -653,14 +668,15 @@ export async function installSpImagenMediaSlots(options) {
   function card(index, kind, slot, locked) {
     const selected = slot.selected;
     const item = slot.versions[selected];
+    const displayName=generationProfiles().find(p=>p.id===kind)?.name||slot.label||item?.config?.profileName||LABEL[kind];
     const section = element('section', 'card');
     const collapsed = slot.collapsed !== false;
     section.dataset.collapsed = String(collapsed);
     const heading = element('button', 'heading');
     heading.title = collapsed ? 'Развернуть изображение' : 'Свернуть изображение';
-    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${LABEL[kind]}`);
+    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${displayName}`);
     heading.setAttribute('aria-expanded', String(!collapsed));
-    const name = element('span', 'heading-title', LABEL[kind]);
+    const name = element('span', 'heading-title', displayName);
     const meta = element('span', 'heading-meta');
     meta.append(element('span','heading-count',`${selected+1} / ${slot.versions.length}`),
         element('span','heading-chevron',collapsed ? '▸' : '▾'));
@@ -671,7 +687,7 @@ export async function installSpImagenMediaSlots(options) {
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
     const image = element('img');
     image.src = item.src;
-    image.alt = `${LABEL[kind]} · версия ${selected + 1}`;
+    image.alt = `${displayName} · версия ${selected + 1}`;
     image.loading = 'lazy';
     frame.addEventListener('click', () => host.open(item.src, '_blank', 'noopener'));
     frame.append(image);
@@ -703,7 +719,7 @@ export async function installSpImagenMediaSlots(options) {
 
   function newestSavedPrompt(slots) {
     let latest = null;
-    for (const kind of KINDS) {
+    for (const kind of availableKinds(slots)) {
       for (const version of slots?.[kind]?.versions || []) {
         if (typeof version.config?.prompt !== 'string' || !version.config.prompt.trim()) continue;
         if (!latest || Number(version.at || 0) > Number(latest.at || 0)) latest = { ...version, kind };
@@ -769,7 +785,7 @@ export async function installSpImagenMediaSlots(options) {
     view.tools.hidden = !eligible(view.message);
     updatePostPromptIcon(view, slots);
     updatePostDraftControls(view);
-    for (const kind of KINDS) {
+    for (const kind of availableKinds(slots)) {
       const slot = slots?.[kind];
       const item = slot?.versions?.[slot.selected];
       const previous = view.cards.get(kind);
@@ -784,7 +800,7 @@ export async function installSpImagenMediaSlots(options) {
       const node = card(view.index, kind, slot, locked);
       if (previous) previous.node.replaceWith(node);
       else {
-        const nextKind = KINDS.slice(KINDS.indexOf(kind) + 1).find(key => view.cards.has(key));
+        const order=availableKinds(slots),nextKind=order.slice(order.indexOf(kind)+1).find(key=>view.cards.has(key));
         view.gallery.insertBefore(node, view.cards.get(nextKind)?.node ?? null);
       }
       view.cards.set(kind, { node, item, selected: slot.selected, count, locked, collapsed: slot.collapsed!==false });
@@ -824,7 +840,7 @@ export async function installSpImagenMediaSlots(options) {
         view = null;
       }
       if (!view) {
-        if (!eligible(message) && !KINDS.some(kind => slots?.[kind]?.versions?.length)) continue;
+        if (!eligible(message) && !availableKinds(slots).some(kind => slots?.[kind]?.versions?.length)) continue;
         view = mountPost(anchor, index, message);
         mounted.set(index, view);
       }
@@ -966,7 +982,7 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   async function publish(index, kind, item) {
-    if (!KINDS.includes(kind) || !safeUrl(item?.src)) throw new Error('Неверный слот или адрес изображения.');
+    if (!(validKind(kind)||validCustomId(kind)) || !safeUrl(item?.src)) throw new Error('Неверный слот или адрес изображения.');
     const current = context();
     const originalChat = current.chat, originalId = current.chatId;
     const message = originalChat?.[index];
@@ -993,6 +1009,9 @@ export async function installSpImagenMediaSlots(options) {
     try {
       migrateMessage(message);
       const slots = slotsOf(message, true);
+      if(!slots[kind]||!Array.isArray(slots[kind].versions))
+        slots[kind]={versions:[],selected:0,collapsed:true};
+      slots[kind].label=String(item?.config?.profileName||slots[kind].label||LABEL[kind]).slice(0,100);
       addVersion(slots[kind], storedItem);
       paint();
       // A chat-save timeout is NOT proof of failure: the host's save promise
@@ -1237,10 +1256,10 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 27,
-    bundleVersion: '2.9.6',
+    bundleVersion: '2.9.7',
     guideStep,
     endGuideDemo,
-    supportedKinds: KINDS,
+    get supportedKinds(){return availableKinds();},
     publish,
     focus,
     refresh: paint,
