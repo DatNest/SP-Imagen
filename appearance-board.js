@@ -189,9 +189,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
    else movedSections.push({id:token.id,title:token.section.title,before:index});
   }
   if(mode==='base'){
-   const next=reorderBaseTags(beforeState,sorted);
    sections=movedSections;
-   writeBaseState(next);
+   const existing=parseBaseTags(beforeState.base);
+   const same=existing.length===sorted.length&&existing.every((t,i)=>t.start===sorted[i].start&&t.text===sorted[i].text);
+   if(!same)writeBaseState(reorderBaseTags(beforeState,sorted));
   }else{
    skin.tags=sorted.map(t=>({...t}));
    skin.sections=movedSections;
