@@ -10,6 +10,7 @@ import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KE
 import { parseImageHtml } from './image-transport.js';
 import { normalizeImagePrompt, limitComicDialogue } from './image-prompt.js';
 import { createSpImagenProgress } from './progress-ui.js';
+import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
 export function createSpImagenRuntime({ getExtension, getMediaSlots } = {}){
@@ -971,6 +972,55 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
  return {element,checks,flush:()=>pending,dispose(){disposed=true;if(timer!==null)clearTimeout(timer);addBox.ontoggle=null;search.oninput=null;list.dispose();},get rosterIds(){return ids.slice();}};
 }
 
+// The previous release offered this in-place save choice at both interruption points.
+// Keep it inside the current modal so there is no additional focus trap.
+function confirmKeepingDraft(panel, actions, what='черновик') {
+ return new Promise(resolve=>{
+  actions.hidden=true;
+  const box=document.createElement('div');box.className='ness-save-confirm';
+  const title=document.createElement('strong');title.textContent='Сохранить '+what+' до возвращения?';
+  const note=document.createElement('p');note.textContent='Черновик привязан к этому посту. Новая генерация на другом посте удалит его.';
+  const buttons=document.createElement('div');buttons.className='ness-save-confirm-actions';
+  let settled=false;
+  function choose(label,value) {
+   const b=document.createElement('button');b.type='button';b.className='ness-button';b.textContent=label;
+   b.onclick=()=>{if(settled)return;settled=true;box.remove();actions.hidden=false;resolve(value);};
+   buttons.append(b);
+  }
+  choose('Сохранить',true);choose('Не сохранять',false);choose('Назад',null);
+  box.append(title,note,buttons);panel.append(box);
+ });
+}
+function activePostIndex(ctx) {
+ const selected=nessGenerationTargets.get(ctx.chat);
+ return selected&&selected.chatId===ctx.chatId&&ctx.chat?.[selected.index]===selected.message?selected.index:-1;
+}
+function parserDraftFromVariables(v) {
+ return {
+  parsedScene:String(v.sp_imagen_parsed_scene||''),
+  rpOutfits:String(v.sp_imagen_rp_outfits||''),
+  parserWarning:String(v.sp_imagen_parser_warning||''),
+  npcDraft:String(v.sp_imagen_npc_draft||''),
+  npcStatus:String(v.sp_imagen_npc_status||''),
+  sourceCount:String(v.sp_imagen_rp_source_count||'')
+ };
+}
+function restoreParserToVariables(v,draft){
+ const parsed=draft?.parser||{};
+ v.sp_imagen_parsed_scene=String(parsed.parsedScene||'');
+ v.sp_imagen_rp_outfits=String(parsed.rpOutfits||'');
+ v.sp_imagen_parser_warning=String(parsed.parserWarning||'');
+ v.sp_imagen_npc_draft=String(parsed.npcDraft||'');
+ v.sp_imagen_npc_status=String(parsed.npcStatus||'');
+ v.sp_imagen_rp_source_count=String(parsed.sourceCount||'');
+ v.sp_imagen_active_kind=draft.kind;
+ v.sp_imagen_manual_mode=draft.review?.manualMode===true;
+ v.sp_imagen_preview_status='cancelled';
+ v.sp_imagen_run_ticket='';
+ v.sp_imagen_prepared_ticket='';
+ v.sp_imagen_structured_library='';
+ v.sp_imagen_resume_review=draft.review||null;
+}
 // Module: dialogs
 function createDialogShell(kind='review'){
  return createOwnedDialogShell(kind,{loadTheme:loadNessTheme,applyTheme:applyNessTheme});
@@ -988,37 +1038,70 @@ async function previewFinalPrompt(config, origin) {
  const field=ui.area('');field.setAttribute('data-final-prompt','');field.setAttribute('aria-label','Итоговый промпт');ui.field(scroll,'Итоговый промпт',field);
  const actions=ui.el('footer',undefined,panel);actions.setAttribute('data-review-actions','');
  const error=ui.el('p','',actions,'ness-error');error.setAttribute('data-error','');error.style.display='none';
- const cancel=ui.button('Отмена',actions),send=ui.button('Отправить в NAI5',actions,undefined,'primary');cancel.setAttribute('data-preview-cancel','');send.setAttribute('data-preview-send','');
- field.value=config.prompt;const updateCount=()=>{counter.textContent=field.value.length.toLocaleString('ru-RU')+' / 45 000 знаков';};field.oninput=updateCount;updateCount();
+ const cancel=ui.button('Отмена',actions),send=ui.button('Отправить в NAI5',actions,undefined,'primary');
+ cancel.setAttribute('data-preview-cancel','');send.setAttribute('data-preview-send','');
+ field.value=config.prompt;const updateCount=()=>{counter.textContent=field.value.length.toLocaleString('ru-RU')+' / 45 000 знаков';};
  const previousFocus=document.activeElement;
- let onChatSwitch=()=>{};
+ let onChatSwitch=()=>{},editTimer=null,closed=false,asking=false;
+ const saveEdit=()=>{
+  if(editTimer!==null){clearTimeout(editTimer);editTimer=null;}
+  const now=SillyTavern.getContext(),edited=field.value.trim();
+  if(!closed&&edited&&edited.length<=45000&&now.chat===origin.chat&&now.chatId===origin.id&&now.chat[origin.index])
+   savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify({...config,prompt:edited}))}});
+ };
+ field.oninput=()=>{updateCount();if(editTimer!==null)clearTimeout(editTimer);editTimer=setTimeout(saveEdit,650);};
+ window.addEventListener('pagehide',saveEdit);
+ updateCount();
  const cleanupViewport=mountDialog(overlay,()=>onChatSwitch());
  return await new Promise(resolve=>{
-  let closed=false;
   const close=result=>{
    if(closed)return;closed=true;
    document.removeEventListener('keydown',onKey,true);
+   window.removeEventListener('pagehide',saveEdit);
+   if(editTimer!==null)clearTimeout(editTimer);
    cleanupViewport();overlay.remove();previousFocus?.focus?.();resolve(result);
   };
   onChatSwitch=()=>close(false);
-  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close(false);}};
+  const askCancel=async()=>{
+   if(closed||asking)return;asking=true;
+   try{
+    const keep=await confirmKeepingDraft(panel,actions,'готовый промпт');
+    if(keep===null)return;
+    const now=SillyTavern.getContext();
+    if(now.chat===origin.chat&&now.chatId===origin.id&&now.chat[origin.index]){
+     if(keep){
+      const edited=field.value.trim();
+      if(!edited||edited.length>45000){
+       error.textContent='Сохраняемый промпт должен содержать от 1 до 45 000 символов.';
+       error.style.display='block';return;
+      }
+      config.prompt=edited;
+      savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
+     }else discardPostDraft(now,origin.index);
+     getMediaSlots?.()?.refresh?.();
+    }
+    close(false);
+   }finally{asking=false;}
+  };
+  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();void askCancel();}};
   document.addEventListener('keydown',onKey,true);
-  cancel.onclick=()=>close(false);
+  cancel.onclick=()=>void askCancel();
   panel.querySelector('.ness-close-dialog').onclick=()=>cancel.click();
-  overlay.onclick=e=>{if(e.target===overlay)close(false);};
+  overlay.onclick=e=>{if(e.target===overlay)void askCancel();};
   send.onclick=()=>{
-   if(closed)return;
+   if(closed||asking)return;
    error.style.display='none';
    const now=SillyTavern.getContext();
-   if(now.chat!==origin.chat||now.chatId!==origin.id||now.chat.length!==origin.count){error.textContent='Чат изменился. Отмени отправку и запусти профиль заново.';error.style.display='block';return;}
+   if(now.chat!==origin.chat||now.chatId!==origin.id||now.chat.length!==origin.count||now.chat[origin.index]!==origin.message){error.textContent='Чат или целевой пост изменился. Отмени отправку и запусти профиль заново.';error.style.display='block';return;}
    const edited=field.value.trim();
    if(!edited||edited.length>45000){error.textContent=!edited?'Промпт не может быть пустым.':'Промпт длиннее 45 000 символов.';error.style.display='block';return;}
    config.prompt=edited;
+   savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
+   getMediaSlots?.()?.refresh?.();
    close(true);
   };
  });
 }
-
 
 // Module: review_view
 function createReviewView({kind,manualMode,postCount}){
@@ -1411,6 +1494,7 @@ validateKind(kind);
   v.sp_imagen_composition_proposal = '';
   v.sp_imagen_rp_outfits = '';
   v.sp_imagen_parser_warning = '';
+  delete v.sp_imagen_resume_review;
 
   if(targetIndex===null)nessGenerationTargets.delete(chat);
   else nessGenerationTargets.set(chat,{index:targetIndex,message:chat[targetIndex],text:chat[targetIndex].mes,chatId:id});
@@ -1433,6 +1517,10 @@ validateKind(kind);
 
   if(SillyTavern.getContext().chat!==chat||SillyTavern.getContext().chatId!==id)throw Error('Чат изменился во время подготовки.');
   v.sp_imagen_rp_source_count=String(recent.length);
+  // Store the processed scene before opening the review window; no extra LLM call.
+  if(targetIndex!==null)savePostDraft(st,targetIndex,{
+   kind,stage:'parsed',parser:parserDraftFromVariables(v)
+  },{replace:true});
   if(typeof st.saveMetadata==='function')await st.saveMetadata();
   return 'RP-постов подготовлено: '+recent.length;
   }finally{preparationLocks.delete(chat);}
@@ -1545,6 +1633,7 @@ async function reviewSceneDialog(providedProgress=null){
   if (typeof st.saveMetadata === 'function') await st.saveMetadata();
   const startChat = st.chat, startId = st.chatId;
   const scene = String(v.sp_imagen_parsed_scene || '');
+  const resumeReview=v.sp_imagen_resume_review&&typeof v.sp_imagen_resume_review==='object'?v.sp_imagen_resume_review:null;
   if(!masterLibraryRaw())throw Error('Открой «Библиотека» и сохрани записи персонажей.');
   const master=loadMasterLibrary();let done=false,committing=false;
   let defaultComposition='', compositionExtra='', compositionCatalog={}, compositionMood='', compositionWarning='';
@@ -1559,7 +1648,7 @@ async function reviewSceneDialog(providedProgress=null){
       compositionCatalog=settings.catalogs?.[kind]||{};
       if(!compositionCatalog||typeof compositionCatalog!=='object'||Array.isArray(compositionCatalog)||Object.values(compositionCatalog).some(x=>typeof x!=='string'))throw Error('Неверный каталог композиций '+kind);
       // Restore automatic composition selection; keep the manual fallback unchanged.
-      if(Object.keys(compositionCatalog).length){
+      if(!resumeReview&&Object.keys(compositionCatalog).length){
         providedProgress?.set('Подбор композиции', 'Подбираю композиционные приёмы к сцене; это отдельный запрос к текстовой модели.',{stoppable:false});
         const result=await selectComposition(compositionCatalog,kind,scene);
         if(SillyTavern.getContext().chat!==startChat||SillyTavern.getContext().chatId!==startId)throw Error('Чат изменился при подборе композиции.');
@@ -1655,7 +1744,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
   const view=createReviewView({kind:v.sp_imagen_active_kind||'snapshot',manualMode,postCount:v.sp_imagen_rp_source_count||loadGen2Settings().posts[v.sp_imagen_active_kind||'snapshot']});
   const {overlay,panel,sceneEl,outfEl,compEl,errEl,cancel,next}=view;
   const ui=createUiKit(document);
-  sceneEl.value=scene;outfEl.value=outfits;compEl.value=suggestion;
+  sceneEl.value=resumeReview?.scene??scene;outfEl.value=resumeReview?.outfits??outfits;compEl.value=resumeReview?.composition??suggestion;
   panel.querySelector('[data-wardrobe-info]').textContent = manualMode ? 'Ручной режим' : wardrobeStatus;
   if (v.sp_imagen_parser_warning) {const w=panel.querySelector('[data-warning]');w.textContent=v.sp_imagen_parser_warning;w.style.display='block';}
 
@@ -1667,7 +1756,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
     let at=sourceText.indexOf(token);
     while(at>=0){if(!/[\p{L}\p{N}_]/u.test(sourceText[at-1]||'')&&!/[\p{L}\p{N}_]/u.test(sourceText[at+token.length]||''))return true;at=sourceText.indexOf(token,at+1);}return false;
   })).map(([id])=>id);
-  const initialRoster=Array.isArray(v.sp_imagen_chat_cast_ids)?v.sp_imagen_chat_cast_ids:[...new Set([...(Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[]),...mentioned])];
+  const initialRoster=Array.isArray(resumeReview?.castIds)?resumeReview.castIds:Array.isArray(v.sp_imagen_chat_cast_ids)?v.sp_imagen_chat_cast_ids:[...new Set([...(Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[]),...mentioned])];
   const persistRoster=async ids=>{
     const now=SillyTavern.getContext();if(now.chat!==startChat||now.chatId!==startId)throw Error('Чат изменился');
     const vars=now.chatMetadata.variables||={},previous=vars.sp_imagen_chat_cast_ids;
@@ -1680,7 +1769,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
   view.castSlot.appendChild(castManager.element);
 
   const npcInfo=ui.note(view.npcSlot,manualMode?'Впиши NPC вручную или предложи по постам.':String(v.sp_imagen_npc_status||'Проверь предложения NPC.'));
-  const npcEl=createNpcCards(document);npcEl.value=manualMode?'':String(v.sp_imagen_npc_draft||'');view.npcSlot.appendChild(npcEl.element);
+  const npcEl=createNpcCards(document);npcEl.value=resumeReview?.npc??(manualMode?'':String(v.sp_imagen_npc_draft||''));view.npcSlot.appendChild(npcEl.element);
   const npcActions=ui.row(view.npcSlot);
   const npcAdd=ui.button('+ NPC',npcActions,()=>npcEl.add('','',true));
   const npcSuggest=ui.button('Предложить NPC по постам',npcActions);
@@ -1740,17 +1829,43 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
   // Не вызывать клавиатуру и скачок прокрутки сразу при открытии на телефоне.
   if (!(window.matchMedia && window.matchMedia('(max-width: 767px), (pointer: coarse)').matches)) sceneEl.focus();
   return await new Promise(resolve=>{
-    const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close('cancelled');}};
+    let asking=false;
+    const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();void askCancel();}};
     const close=(status,force=false)=>{
       if(done||(committing&&!force))return;done=true;castManager.dispose();
       document.removeEventListener('keydown',onKey,true);
       stopViewportTracking();overlay.remove();previousFocus?.focus?.();resolve(status);
     };
+    const reviewSnapshot=()=>({
+      scene:sceneEl.value,outfits:outfEl.value,composition:compEl.value,
+      npc:npcEl.value,castIds:castChecks.filter(x=>x.cb.checked).map(x=>x.id),
+      manualMode
+    });
+    const askCancel=async()=>{
+      if(done||committing||asking)return;
+      const live=SillyTavern.getContext(),index=activePostIndex(live);
+      if(index<0||live.chat!==startChat||live.chatId!==startId){close('cancelled');return;}
+      asking=true;
+      try{
+        const keep=await confirmKeepingDraft(panel,panel.querySelector('[data-review-actions]'),'данные подготовки');
+        if(keep===null)return;
+        if(SillyTavern.getContext().chat===startChat&&SillyTavern.getContext().chatId===startId){
+          if(keep)savePostDraft(live,index,{
+            kind:v.sp_imagen_active_kind||'snapshot',stage:'reviewed',
+            parser:parserDraftFromVariables(v),review:reviewSnapshot()
+          });
+          else discardPostDraft(live,index);
+          getMediaSlots?.()?.refresh?.();
+        }
+        delete v.sp_imagen_resume_review;
+        close('cancelled');
+      }finally{asking=false;}
+    };
     onChatSwitch=()=>close('cancelled',true);
     document.addEventListener('keydown',onKey,true);
-    cancel.onclick=()=>close('cancelled');
+    cancel.onclick=()=>void askCancel();
     panel.querySelector('.ness-close-dialog').onclick=()=>cancel.click();
-    overlay.onclick=e=>{if(e.target===overlay)close('cancelled');};
+    overlay.onclick=e=>{if(e.target===overlay)void askCancel();};
     next.onclick=async()=>{
       if(done||next.disabled)return;
       errEl.style.display='none';
@@ -1779,6 +1894,12 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
         vars.sp_imagen_prepared_ticket='';
         vars.sp_imagen_structured_library='';
         vars.sp_imagen_preview_status='approved';
+        const index=activePostIndex(now);
+        if(index>=0)savePostDraft(now,index,{
+          kind:vars.sp_imagen_active_kind||'snapshot',stage:'reviewed',
+          parser:parserDraftFromVariables(vars),review:reviewSnapshot()
+        });
+        delete vars.sp_imagen_resume_review;
         if (typeof now.saveMetadata==='function') await now.saveMetadata();
         committing=false;close('approved');
       }catch(e){
@@ -2061,12 +2182,25 @@ if(npcLanguage){
 if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
 if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,runtimeSettings);
+const snapshot=spImagenExtension().snapshotGenerationConfig?.(config,kind);
+if(snapshot?.spImagenDirect)config.spImagenDirect=snapshot.spImagenDirect;
+requireOrigin();
+const selected=nessGenerationTargets.get(beforeChat);
+if(selected&&(selected.chatId!==beforeId||beforeChat[selected.index]!==selected.message||selected.message.mes!==selected.text))throw Error('Выбранный пост изменился. Подготовь картинку заново.');
+const targetIndex=selected?selected.index:await lastRpIndex(beforeChat);
+if(targetIndex<0)throw Error('Imagen: настоящий RP-пост не найден');
+const target=beforeChat[targetIndex];
+// Save before preview or paid request; an aborted preparation is recoverable
+// without spending a second director call.
+savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
+getMediaSlots?.()?.refresh?.();
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
  progress.set('Проверка перед NovelAI', 'Подтверди готовый промпт. Пока запрос NovelAI не отправлен.');
- const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
+ const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount,index:targetIndex,kind,message:target});
  if(!accepted){finished=true;progress.close();return 'Отправка в NAI5 отменена';}
 }
 const imagePrompt=config.prompt,cast=Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[];
+savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
 const live = SillyTavern.getContext();
   if (live.chatId !== beforeId || live.chat !== beforeChat || live.chat.length !== beforeCount)
     throw new Error('Imagen: чат изменился во время подготовки');
@@ -2076,11 +2210,7 @@ const live = SillyTavern.getContext();
   requireOrigin();
   // The last REAL roleplay message may be either authored by the user or the character.
   // Never attach imagery to hidden GlassPhone entries, meta or a prior IIG-only post.
-  const selected=nessGenerationTargets.get(live.chat);
-  if(selected&&(selected.chatId!==live.chatId||live.chat[selected.index]!==selected.message||selected.message.mes!==selected.text))throw Error("Выбранный пост изменился. Подготовь картинку заново.");
-  const targetIndex=selected?selected.index:await lastRpIndex(live.chat);
-  if (targetIndex < 0) throw new Error('Imagen: настоящий RP-пост не найден');
-  const target = live.chat[targetIndex];
+  if(live.chat[targetIndex]!==target)throw Error('Выбранный RP-пост изменился.');
   // SP Imagen owns the complete image request and publishes to its own gallery.
   const directExtension=spImagenExtension();
   if(!directExtension.directGenerationEnabled?.()){
@@ -2124,12 +2254,92 @@ const live = SillyTavern.getContext();
 
 }
 
+// Module: resume_post
+// Resume exactly the stored post. A saved final prompt goes directly to the NAI
+// preview; never make another director or composition model request.
+async function resumePost(request=null) {
+ const st=SillyTavern.getContext();
+ if(!request||request.chat!==st.chat||request.chatId!==st.chatId||st.chat?.[request.index]!==request.message)
+   throw Error('Чат или RP-пост изменился. Нажми «Продолжить» у сохранённого поста заново.');
+ const draft=readPostDraft(st,request.index);
+ if(!draft)throw Error('У этого RP-поста нет сохранённого черновика.');
+ const kind=draft.kind;
+ validateKind(kind);
+ const originalChat=st.chat,originalId=st.chatId,post=st.chat[request.index];
+ const ensureOrigin=()=>{
+  const now=SillyTavern.getContext();
+  if(now.chat!==originalChat||now.chatId!==originalId||now.chat?.[request.index]!==post)
+    throw Error('Чат или исходный пост изменился; черновик сохранён, отправка отменена.');
+ };
+ const progress=createSpImagenProgress();
+ try{
+  const finalConfig=draft.final?.config;
+  if(finalConfig?.prompt?.trim()){
+   if(generationLocks.has(originalChat)||preparationLocks.has(originalChat))throw Error('Генерация или подготовка уже выполняется.');
+   if(!getMediaSlots?.()?.installed)throw Error('Галерея SP Imagen не готова. Обнови страницу.');
+   generationLocks.add(originalChat);
+   try{
+    const config=JSON.parse(JSON.stringify(finalConfig));
+    if(config.spImagenDirect?.settings?.apiKey || config.spImagenDirect?.settings?.endpoint)
+      throw Error('Черновик содержит параметры подключения, которые нельзя хранить в чате. Сохрани новый черновик без API-ключа.');
+    if(!spImagenExtension().directGenerationEnabled?.())throw Error('Включи прямую генерацию NovelAI в SP Imagen.');
+    progress.set('Сохранённый промпт', 'Проверь сохранённый текст; режиссёр не вызывается.',{stoppable:false});
+    const accepted=await previewFinalPrompt(config,{
+     chat:originalChat,id:originalId,count:originalChat.length,index:request.index,kind,message:post
+    });
+    if(!accepted){progress.close();return 'Черновик оставлен на посте без отправки в NovelAI.';}
+    ensureOrigin();
+    if(progress.signal.aborted)throw Error('Отменено пользователем. Черновик сохранён.');
+    st.chatMetadata.variables ||= {};
+    st.chatMetadata.variables.sp_imagen_last_final_image_prompt=config.prompt;
+    await saveNessGenerationMetadata(st,'восстановленный финальный промпт');
+    ensureOrigin();
+    progress.submitted();
+    const output=await spImagenExtension().generateImage(config,{reuseSnapshot:true,signal:progress.signal});
+    ensureOrigin();
+    progress.set('Сохранение изображения','Добавляю новую версию к исходному RP-посту.',{stoppable:false});
+    const manager=getMediaSlots();
+    const stored=await manager.publish(request.index,kind,output);
+    ensureOrigin();
+    const versions=post.extra?.ness_media_slots_v2?.[kind]?.versions;
+    if(!Array.isArray(versions)||!versions.some(x=>x.src===stored?.src))
+      throw Error('Изображение не подтверждено галереей. Черновик сохранён.');
+    discardPostDraft(st,request.index);
+    try{await manager.focus(request.index,kind,true);}catch(error){console.warn('[SP Imagen] Could not focus saved image',error);}
+    progress.complete('Изображение готово','Сохранено без повторного запроса режиссёру.');
+    return 'SP Imagen: восстановленная генерация сохранена в RP-посте #'+request.index;
+   }finally{generationLocks.delete(originalChat);}
+  }
+  if(!draft.parser?.parsedScene)throw Error('Сохранённый черновик не содержит данных сцены. Не удаляй его до проверки.');
+  if(preparationLocks.has(originalChat)||generationLocks.has(originalChat))throw Error('Подготовка или генерация уже выполняется.');
+  nessGenerationTargets.set(originalChat,{index:request.index,message:post,text:post.mes,chatId:originalId});
+  st.chatMetadata.variables ||= {};
+  restoreParserToVariables(st.chatMetadata.variables,draft);
+  progress.set('Сохранённая сцена','Проверь сохранённые детали и персонажей — повторного сбора постов нет.',{stoppable:false});
+  await reviewScene(progress);
+  ensureOrigin();
+  if(st.chatMetadata.variables.sp_imagen_preview_status!=='approved'){
+   progress.close();
+   return 'Подготовка остановлена; черновик сохранён.';
+  }
+  progress.set('Подготовка библиотеки','Подставляю актуальные описания из библиотеки.');
+  await prepareLibrary();
+  ensureOrigin();
+  return await renderImage(kind,progress);
+ }catch(error){progress.fail(error);throw error;}
+}
+
 // Module: generate_at
 // One entry point for post buttons. The request is ephemeral, never stored in chat metadata.
 async function generateAt(request=null){
  const st=SillyTavern.getContext();
  if(!request||request.chat!==st.chat||request.chatId!==st.chatId||st.chat[request.index]!==request.message)throw Error('Выбранный пост или чат изменился. Нажми кнопку на посте заново.');
  validateKind(request.kind);
+ const existing=readPostDraft(st,request.index);
+ if(existing){
+   if(!window.confirm('У этого поста есть сохранённый черновик. Начать новую генерацию и заменить его? Чтобы продолжить старую, нажми «Продолжить» под постом.'))return 'Черновик сохранён без изменений.';
+   discardPostDraft(st,request.index);
+ }
  const progress=createSpImagenProgress();
  const checkStopped=()=>{if(progress.signal.aborted)throw Error('Генерация остановлена пользователем.');};
  try{
@@ -2156,6 +2366,6 @@ async function generateAt(request=null){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,resumePost,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }

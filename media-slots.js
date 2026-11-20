@@ -1,5 +1,6 @@
 // Generated from modules/media_slots.js.
 import { withOperationDeadline } from './operation-timeout.js';
+import { readPostDraft, discardPostDraft } from './post-drafts.js';
 export async function installSpImagenMediaSlots(options) {
   'use strict';
   const { getExtension } = options || {};
@@ -46,7 +47,7 @@ export async function installSpImagenMediaSlots(options) {
     if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
     if (create) {
       for (const kind of KINDS) {
-        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0 };
+        if (!slots[kind] || !Array.isArray(slots[kind].versions)) slots[kind] = { versions: [], selected: 0, collapsed: true };
       }
     }
     for (const kind of KINDS) {
@@ -56,6 +57,7 @@ export async function installSpImagenMediaSlots(options) {
         slot.versions = slot.versions.filter(item => safeUrl(item?.src));
       }
       slot.selected = Math.max(0, Math.min(Math.trunc(Number(slot.selected)) || 0, Math.max(0, slot.versions.length - 1)));
+      slot.collapsed = slot.collapsed !== false;
     }
     return slots;
   }
@@ -64,6 +66,7 @@ export async function installSpImagenMediaSlots(options) {
     if (!slot || !safeUrl(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
     slot.versions.push({ src: item.src, config: item.config || null, at: Number(item.at) || Date.now() });
     slot.selected = slot.versions.length - 1;
+    slot.collapsed = false; // Show a newly generated image until the reader folds it.
     return true;
   }
 
@@ -257,7 +260,12 @@ export async function installSpImagenMediaSlots(options) {
         background: color-mix(in srgb, currentColor 12%, transparent);
       }
     }
-    .gallery { display: grid; gap: .65em; margin-block: .25em .65em; }
+    .gallery { display: grid; gap: .4em; margin-block: .25em .65em; }
+    .card[data-collapsed="true"] { padding-block: .18em; }
+    .heading { display:flex; width:100%; justify-content:space-between; align-items:center; gap:.6em; border-radius:.35em; padding:.35em .45em; font-weight:600; }
+    .heading-meta { display:flex; gap:.65em; align-items:center; font-size:.9em; opacity:.85; }
+    .heading-chevron { min-inline-size:1.1em; text-align:center; }
+    .frame[hidden], .bar[hidden], .draft-status[hidden], .draft-icon[hidden] { display:none !important; }
     .card {
       min-inline-size: 0;
       padding: .45em;
@@ -266,7 +274,6 @@ export async function installSpImagenMediaSlots(options) {
       background: color-mix(in srgb, var(--ms-panel) 35%, transparent);
       font-size: .9em;
     }
-    .heading { padding: .15em .3em .45em; font-weight: 600; }
     .frame {
       display: grid;
       inline-size: 100%;
@@ -626,7 +633,7 @@ export async function installSpImagenMediaSlots(options) {
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-expanded', 'false');
     const gallery = element('div', 'gallery');
-    const view = { node, root, anchor, index, message, tools, toggle, gallery, promptButton: null, cards: new Map() };
+    const view = { node, root, anchor, index, message, tools, toggle, gallery, promptButton: null, draftButton:null, discardDraftButton:null, cards: new Map() };
     toggle.addEventListener('click', () => toggleToolsMenu(view));
     tools.append(toggle);
     root.append(tools, gallery);
@@ -647,8 +654,20 @@ export async function installSpImagenMediaSlots(options) {
     const selected = slot.selected;
     const item = slot.versions[selected];
     const section = element('section', 'card');
-    const heading = element('div', 'heading', LABEL[kind]);
+    const collapsed = slot.collapsed !== false;
+    section.dataset.collapsed = String(collapsed);
+    const heading = element('button', 'heading');
+    heading.title = collapsed ? 'Развернуть изображение' : 'Свернуть изображение';
+    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${LABEL[kind]}`);
+    heading.setAttribute('aria-expanded', String(!collapsed));
+    const name = element('span', 'heading-title', LABEL[kind]);
+    const meta = element('span', 'heading-meta');
+    meta.append(element('span','heading-count',`${selected+1} / ${slot.versions.length}`),
+        element('span','heading-chevron',collapsed ? '▸' : '▾'));
+    heading.append(name,meta);
+    heading.addEventListener('click', () => void runAction(() => toggleCollapse(index,kind)));
     const frame = element('button', 'frame');
+    frame.hidden = collapsed;
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
     const image = element('img');
     image.src = item.src;
@@ -658,6 +677,7 @@ export async function installSpImagenMediaSlots(options) {
     frame.append(image);
 
     const bar = element('div', 'bar');
+    bar.hidden = collapsed;
     const navigation = element('div', 'actions');
     const actions = element('div', 'actions');
     navigation.append(
@@ -713,9 +733,42 @@ export async function installSpImagenMediaSlots(options) {
     }
   }
 
+  function updatePostDraftControls(view) {
+    const current=context();
+    const draft=eligible(view.message) ? readPostDraft(current,view.index) : null;
+    if(!draft){
+      view.draftButton?.remove();view.draftButton=null;
+      view.discardDraftButton?.remove();view.discardDraftButton=null;
+      return;
+    }
+    const stage=draft.final?.config?.prompt?'готовый промпт':draft.review?'сцена и персонажи':'сбор сцены';
+    if(!view.draftButton){
+      const button=element('button','tool draft-resume');
+      button.addEventListener('click',()=>void executeCommand('sp_ness_resume_post',view));
+      view.tools.append(button);view.draftButton=button;
+    }
+    view.draftButton.textContent='↪ Продолжить · '+stage;
+    view.draftButton.title='Продолжить сохранённый черновик без лишней генерации текста';
+    view.draftButton.setAttribute('aria-label',view.draftButton.title);
+    if(!view.discardDraftButton){
+      const button=element('button','tool draft-discard','×');
+      button.title='Удалить черновик этого RP-поста';
+      button.setAttribute('aria-label',button.title);
+      button.addEventListener('click',()=>void runAction(async()=>{
+        const live=context();
+        if(live.chat?.[view.index]!==view.message)return;
+        if(!host.confirm('Удалить сохранённый черновик этого поста? Картинки в галерее останутся.'))return;
+        discardPostDraft(live,view.index);
+        paint();
+      }));
+      view.tools.append(button);view.discardDraftButton=button;
+    }
+  }
+
   function updatePost(view, slots, chatId) {
     view.tools.hidden = !eligible(view.message);
     updatePostPromptIcon(view, slots);
+    updatePostDraftControls(view);
     for (const kind of KINDS) {
       const slot = slots?.[kind];
       const item = slot?.versions?.[slot.selected];
@@ -727,14 +780,14 @@ export async function installSpImagenMediaSlots(options) {
       }
       const locked = busy.has(`${chatId}|${view.index}|${kind}`);
       const count = slot.versions.length;
-      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked) continue;
+      if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked && previous.collapsed === (slot.collapsed!==false)) continue;
       const node = card(view.index, kind, slot, locked);
       if (previous) previous.node.replaceWith(node);
       else {
         const nextKind = KINDS.slice(KINDS.indexOf(kind) + 1).find(key => view.cards.has(key));
         view.gallery.insertBefore(node, view.cards.get(nextKind)?.node ?? null);
       }
-      view.cards.set(kind, { node, item, selected: slot.selected, count, locked });
+      view.cards.set(kind, { node, item, selected: slot.selected, count, locked, collapsed: slot.collapsed!==false });
     }
     view.gallery.hidden = !view.cards.size;
     view.node.hidden = view.tools.hidden && view.gallery.hidden;
@@ -995,6 +1048,17 @@ export async function installSpImagenMediaSlots(options) {
     catch (error) { slot.selected = before; paint(); throw error; }
   }
 
+  async function toggleCollapse(index,kind) {
+    const current = context();
+    const slot = slotsOf(current.chat?.[index],false)?.[kind];
+    if(!slot) return;
+    const before=slot.collapsed!==false;
+    slot.collapsed=!before;
+    paint();
+    try{ await current.saveChat(); }
+    catch(error){ slot.collapsed=before; paint(); throw error; }
+  }
+
   async function deleteSelected(index, kind) {
     const current = context();
     const slot = slotsOf(current.chat?.[index], false)?.[kind];
@@ -1081,7 +1145,7 @@ export async function installSpImagenMediaSlots(options) {
       host.toastr?.error?.('SP Imagen не загружен.', 'SP Imagen');
       return;
     }
-    const generationChat = command === 'sp_ness_generate_at' ? current.chat : null;
+    const generationChat = ['sp_ness_generate_at','sp_ness_resume_post'].includes(command) ? current.chat : null;
     if (generationChat && pendingGenerationClicks.has(generationChat)) return;
     if (generationChat) pendingGenerationClicks.add(generationChat);
     try { await runAction(() => extension.run(command, kind, request)); }
@@ -1171,8 +1235,9 @@ export async function installSpImagenMediaSlots(options) {
 
   const manager = {
     installed: true,
-    version: 62,
-    controlsRevision: 24,
+    version: 64,
+    controlsRevision: 26,
+    bundleVersion: '2.9.4',
     guideStep,
     endGuideDemo,
     supportedKinds: KINDS,

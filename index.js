@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.3';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.4';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -144,37 +144,35 @@ function resetAllBundledPrompts() {
 }
 async function synchronizePrompts() {
     const state = settings();
-    // The signature changes for BOTH upgrades and downgrades. User edits within one build persist.
+    // All bundled director AND service instructions are version-owned, not
+    // user-owned: no saved setting is allowed to shadow the shipped originals.
+    // Only customProfiles from "Создать профиль" may persist across updates.
     const signature = SP_IMAGEN_BUNDLE_VERSION + ':'
         + await hash(JSON.stringify(SP_IMAGEN_PROMPTS) + '\n' + JSON.stringify(CODE_PROMPT_DEFAULTS));
-    if (state.appliedBundleSignature === signature) {
-        // Repair missing shipped keys without overwriting deliberate edits made in this build.
-        let missing = false;
-        for (const [name, shipped] of Object.entries(SP_IMAGEN_PROMPTS)) {
-            if (typeof state.prompts[name] !== 'string' || !state.prompts[name].trim()) {
-                state.prompts[name] = shipped; missing = true;
-            }
-        }
-        if (missing) saveSettings();
-        return;
-    }
+    const shippedNames = Object.keys(SP_IMAGEN_PROMPTS);
+    const exactDirectors = Object.keys(state.prompts).length === shippedNames.length
+        && shippedNames.every(name => state.prompts[name] === SP_IMAGEN_PROMPTS[name]);
+    const oldOverrides = Object.keys(state.codePrompts).length > 0;
+    if (state.appliedBundleSignature === signature && exactDirectors && !oldOverrides) return;
     const alreadyInstalled = Object.keys(state.prompts).length || Object.keys(state.codePrompts).length;
     state.promptBackups ??= {};
-    // Before replacing originals on an update, keep the previous full set. Never lose user profiles.
     if (alreadyInstalled) state.promptBackups.automatic = snapshotBundledPrompts(state);
     state.prompts = { ...SP_IMAGEN_PROMPTS };
+    // Service prompts always resolve directly from this release.
     state.codePrompts = {};
     state.promptBases = Object.fromEntries(await Promise.all(
         Object.entries(SP_IMAGEN_PROMPTS).map(async ([key, value]) => [key, await hash(value)])));
     state.pendingPrompts = {};
     state.seenRelease = SP_IMAGEN_RELEASE;
     state.appliedBundleSignature = signature;
-    // Save immediately via the host save function; a later page load must not re-run migration.
     await Promise.resolve(context().saveSettingsDebounced?.());
 }
 
 async function getRuntime() {
-    return runtime ??= createSpImagenRuntime({ getExtension: () => extensionApi, getMediaSlots: () => mediaSlots });
+    const loaded = runtime ??= createSpImagenRuntime({ getExtension: () => extensionApi, getMediaSlots: () => mediaSlots });
+    if (typeof loaded.resumePost !== 'function' || typeof loaded.generateAt !== 'function')
+        throw new Error('SP Imagen: модули обновились не полностью. Останови генерацию, обнови расширение целиком и перезагрузи страницу без кэша.');
+    return loaded;
 }
 
 async function getLibraryRuntime() {
@@ -490,7 +488,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     backups.style.flexWrap = 'wrap';
     const backupInfo = document.createElement('p'); backupInfo.className = 'spi-status';
     backupInfo.style.flexBasis = '100%';
-    backupInfo.textContent = 'Обновления заменяют встроенные инструкции; личные профили сохраняются. Перед обновлением старая версия копируется автоматически.';
+    backupInfo.textContent = 'При каждом запуске встроенные инструкции сверяются с текущей версией и восстанавливаются автоматически. Копии доступны для обмена вручную до перезагрузки; личные профили сохраняются.';
     const backupButton = button('◇ Сделать резервную копию промптов', backups, () => {
         try { saveManualPromptBackup(); backupInfo.textContent = 'Копия сохранена. Кнопка обмена меняет старые и текущие промпты местами.'; syncBackupButtons(); }
         catch (error) { backupInfo.textContent = String(error?.message || error); }
@@ -1105,6 +1103,21 @@ function saveImageStyle({name, value}) {
     return {...style};
 }
 
+function snapshotGenerationConfig(config, kind='snapshot') {
+    const saved=settings().novelai;
+    // Preserve settings necessary for a resumed request, but NEVER store credentials.
+    const {apiKey, endpoint, enabled, styles, activeStyleId, ...publicSettings}=saved;
+    const profile=activeProfile(settings(),kind);
+    if(profile?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
+    const style=profile?.options?.useArtStyle===false
+        ? {id:'',name:'Без стиля',value:''}
+        : clone(activeStyle(saved)||{id:'',name:'Без стиля',value:''});
+    return {
+        ...clone(config), kind,
+        spImagenDirect: {version:1,provider:'novelai',style,settings:clone(publicSettings)}
+    };
+}
+
 async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     const saved = settings().novelai;
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
@@ -1112,7 +1125,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     const style = snapshot?.style || activeStyle(saved) || { id: '', name: 'Без стиля', value: '' };
     const profile = activeProfile(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
     const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
-    if (profile?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
+    if (!snapshot && profile?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
@@ -1145,6 +1158,7 @@ async function run(command, kind, request = null) {
         sp_imagen_menu: () => openHub(),
         sp_imagen_quick_guide: () => launchQuickGuide(),
         sp_ness_generate_at: () => api.generateAt(request),
+        sp_ness_resume_post: () => api.resumePost(request),
         sp_ness_settings: () => api.openSettings(),
         sp_ness_library_editor: () => openLibrary(),
         sp_ness_prompt_editor: () => openPromptCenter(),
@@ -1187,6 +1201,10 @@ async function initialize() {
     try {
         await synchronizePrompts();
         mediaSlots = await installSpImagenMediaSlots({ getExtension: () => extensionApi });
+        if (mediaSlots?.bundleVersion !== SP_IMAGEN_BUNDLE_VERSION) {
+            mediaSlots?.dispose?.();
+            throw new Error('SP Imagen: обнаружена смешанная версия файлов галереи. Генерация остановлена. Обнови расширение целиком и перезагрузи страницу с отключённым кэшем.');
+        }
         settingsPanel();
         refreshNewIndicators();
         initialized = true;
@@ -1215,6 +1233,7 @@ const extensionApi = {
     persistImageSource,
     directGenerationEnabled,
     generateImage,
+    snapshotGenerationConfig,
     listImageStyles,
     saveImageStyle,
     getDirector,
