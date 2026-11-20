@@ -134,28 +134,43 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
    for(const key of Object.keys(SKIN_PRESETS))if(skin.selections[key])skin.selections[key]=skin.selections[key].filter(t=>!excluded.has(t));
   }
  }
- function toggle(tag,assign){
-  if(readOnly())return;
+
+ function toggle(tag,assign){changeMany([tag],assign);}
+ function changeMany(tags,assign){
+  if(readOnly()||!tags.length)return;
+  const relevant=tags.filter(t=>isChosen(t,preset)!==assign);
+  if(!relevant.length)return;
   record();
   if(mode==='skin'){
-   const current=skin.selections[preset]||[];
-   setSkinSelection(preset,assign?[...current,tag.id]:current.filter(x=>x!==tag.id));
-   if(preset!==SKIN_ALWAYS&&assign)skin.selections.always=(skin.selections.always||[]).filter(x=>x!==tag.id);
+   const ids=new Set(relevant.map(t=>t.id));
+   const current=new Set(skin.selections[preset]||[]);
+   for(const id of ids)if(assign)current.add(id);else current.delete(id);
+   setSkinSelection(preset,[...current]);
+   if(preset!==SKIN_ALWAYS&&assign)skin.selections.always=(skin.selections.always||[]).filter(x=>!ids.has(x));
   }else{
-   const state=baseState(),raw=state.selections||{},updated={...raw};
-   const current=baseSelected(preset).filter(r=>!(r.start<tag.end&&tag.start<r.end));
-   if(assign)current.push({start:tag.start,end:tag.end,text:tag.text});
+   const state=baseState(),updated={...(state.selections||{})};
+   const overlap=(r,t)=>r.start<t.end&&t.start<r.end;
+   const current=baseSelected(preset).filter(r=>!relevant.some(t=>overlap(r,t)));
+   if(assign)for(const t of relevant)current.push({start:t.start,end:t.end,text:t.text});
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
-   if(preset===NESS_APPEARANCE_ALWAYS){
+   if(preset===NESS_APPEARANCE_ALWAYS&&assign){
     for(const id of Object.keys(NESS_APPEARANCE_PRESETS)){
-     updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!(r.start<tag.end&&tag.start<r.end)),true);
+     updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!relevant.some(t=>overlap(r,t))),true);
     }
-   }else if(assign){
-    updated.always=normalizeAppearanceRanges(state.base,baseSelected(NESS_APPEARANCE_ALWAYS).filter(r=>!(r.start<tag.end&&tag.start<r.end)),true);
+   }else if(preset!==NESS_APPEARANCE_ALWAYS&&assign){
+    updated.always=normalizeAppearanceRanges(state.base,baseSelected(NESS_APPEARANCE_ALWAYS).filter(r=>!relevant.some(t=>overlap(r,t))),true);
    }
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
   after();
+ }
+ function reposition(tag,delta){
+  if(readOnly())return;
+  const list=items(),from=list.findIndex(t=>mode==='base'?t.start===tag.start:t.id===tag.id),to=from+delta;
+  if(from<0||to<0||to>=list.length)return;
+  const moved=[...list],item=moved.splice(from,1)[0];moved.splice(to,0,item);
+  if(mode==='base')changeTagList(moved);
+  else{record();skin.tags=moved;after();}
  }
  function changeTagList(changedItems,oldToNew){
   record();const state=reorderBaseTags(baseState(),changedItems);
@@ -305,7 +320,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     const selectedList=items().filter(t=>isChosen(t,preset)&&norm(t.text).includes(norm(filter)));
     const list=el('div',undefined,right,'ness-tagboard-selected');
     for(const tag of selectedList){const item=el('div',undefined,list,'ness-tagboard-item');
+     item.draggable=true;
+     item.ondragstart=e=>{e.dataTransfer?.setData('text/plain',mode==='base'?String(tag.start):tag.id);e.dataTransfer.effectAllowed='move';};
+     item.ondragover=e=>{e.preventDefault();};
+     item.ondrop=e=>{
+       e.preventDefault();const key=e.dataTransfer?.getData('text/plain'),src=items().find(t=>mode==='base'?String(t.start)===key:t.id===key);
+       if(!src)return;const all=items(),from=all.findIndex(t=>mode==='base'?t.start===src.start:t.id===src.id),to=all.findIndex(t=>mode==='base'?t.start===tag.start:t.id===tag.id);
+       if(from<0||to<0||from===to)return;
+       reposition(src,to-from);
+     };
      const remove=button('← '+tag.text,item,()=>toggle(tag,false),'quiet');remove.title='Снять с выбранного ракурса';
+     const up=button('↑',item,()=>reposition(tag,-1),'quiet');up.title='Поднять тег в общем порядке';
+     const down=button('↓',item,()=>reposition(tag,1),'quiet');down.title='Опустить тег в общем порядке';
      const checkbox=el('input',undefined,item);checkbox.type='checkbox';checkbox.checked=checked.has(mode==='base'?tag.start:tag.id);
      checkbox.setAttribute('aria-label','Выбрать для группового снятия: '+tag.text);
      checkbox.onchange=()=>{const k=mode==='base'?tag.start:tag.id;if(checkbox.checked)checked.add(k);else checked.delete(k);};
@@ -321,11 +347,11 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     button('+ Все видимые',actions,()=>{
      const candidates=items().filter(t=>!isChosen(t,preset)&&!isChosen(t,SKIN_ALWAYS)&&norm(t.text).includes(norm(filter)));
      if(candidates.length>12&&!confirm('Добавить '+candidates.length+' тегов в выбранный набор?'))return;
-     for(const tag of candidates)if(!isChosen(tag,preset))toggle(tag,true);
+     changeMany(candidates,true);
     },'quiet');
     button('− Выбранные',actions,()=>{
      const chosen=items().filter(t=>checked.has(mode==='base'?t.start:t.id)&&isChosen(t,preset));
-     for(const tag of chosen)toggle(tag,false);checked.clear();
+     changeMany(chosen,false);checked.clear();
     },'quiet');
     const copyFrom=el('select',undefined,actions,'ness-input');
     const empty=el('option','Копировать из…',copyFrom);empty.value='';
@@ -336,7 +362,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
      const id=copyFrom.value;
      if(!id)return;
      const list=items().filter(t=>isChosen(t,id)&&!isChosen(t,preset));
-     for(const t of list)toggle(t,true);
+     changeMany(list,true);
     },'quiet');
     const details=el('details',undefined,right,'ness-tagboard-preview');
     el('summary','Предпросмотр итоговой строки',details);
@@ -345,6 +371,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
    drawColumns();
   }
  }
+ frame.tabIndex=-1;
+ frame.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.altKey||readOnly())return;
+  if(e.target.closest?.('input,textarea,select,[contenteditable=true]'))return;
+  const key=e.key.toLowerCase();
+  if(key==='z'&&!e.shiftKey&&undo.length){e.preventDefault();redo.push(snapshot());applySnapshot(undo.pop());}
+  else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();undo.push(snapshot());applySnapshot(redo.pop());}
+ });
  render();
  return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(sections,readBaseState().base),refresh:render,getMode:()=>mode,setAvailableFormat(value){textButton.disabled=false;if(value==='prose'&&mode==='base'){layout='text';render();}}};
 }
