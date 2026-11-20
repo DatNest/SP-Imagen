@@ -1037,37 +1037,70 @@ async function previewFinalPrompt(config, origin) {
  const field=ui.area('');field.setAttribute('data-final-prompt','');field.setAttribute('aria-label','Итоговый промпт');ui.field(scroll,'Итоговый промпт',field);
  const actions=ui.el('footer',undefined,panel);actions.setAttribute('data-review-actions','');
  const error=ui.el('p','',actions,'ness-error');error.setAttribute('data-error','');error.style.display='none';
- const cancel=ui.button('Отмена',actions),send=ui.button('Отправить в NAI5',actions,undefined,'primary');cancel.setAttribute('data-preview-cancel','');send.setAttribute('data-preview-send','');
- field.value=config.prompt;const updateCount=()=>{counter.textContent=field.value.length.toLocaleString('ru-RU')+' / 45 000 знаков';};field.oninput=updateCount;updateCount();
+ const cancel=ui.button('Отмена',actions),send=ui.button('Отправить в NAI5',actions,undefined,'primary');
+ cancel.setAttribute('data-preview-cancel','');send.setAttribute('data-preview-send','');
+ field.value=config.prompt;const updateCount=()=>{counter.textContent=field.value.length.toLocaleString('ru-RU')+' / 45 000 знаков';};
  const previousFocus=document.activeElement;
- let onChatSwitch=()=>{};
+ let onChatSwitch=()=>{},editTimer=null,closed=false,asking=false;
+ const saveEdit=()=>{
+  if(editTimer!==null){clearTimeout(editTimer);editTimer=null;}
+  const now=SillyTavern.getContext(),edited=field.value.trim();
+  if(!closed&&edited&&edited.length<=45000&&now.chat===origin.chat&&now.chatId===origin.id&&now.chat[origin.index])
+   savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify({...config,prompt:edited}))}});
+ };
+ field.oninput=()=>{updateCount();if(editTimer!==null)clearTimeout(editTimer);editTimer=setTimeout(saveEdit,650);};
+ window.addEventListener('pagehide',saveEdit);
+ updateCount();
  const cleanupViewport=mountDialog(overlay,()=>onChatSwitch());
  return await new Promise(resolve=>{
-  let closed=false;
   const close=result=>{
    if(closed)return;closed=true;
    document.removeEventListener('keydown',onKey,true);
+   window.removeEventListener('pagehide',saveEdit);
+   if(editTimer!==null)clearTimeout(editTimer);
    cleanupViewport();overlay.remove();previousFocus?.focus?.();resolve(result);
   };
   onChatSwitch=()=>close(false);
-  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close(false);}};
+  const askCancel=async()=>{
+   if(closed||asking)return;asking=true;
+   try{
+    const keep=await confirmKeepingDraft(panel,actions,'готовый промпт');
+    if(keep===null)return;
+    const now=SillyTavern.getContext();
+    if(now.chat===origin.chat&&now.chatId===origin.id&&now.chat[origin.index]){
+     if(keep){
+      const edited=field.value.trim();
+      if(!edited||edited.length>45000){
+       error.textContent='Сохраняемый промпт должен содержать от 1 до 45 000 символов.';
+       error.style.display='block';return;
+      }
+      config.prompt=edited;
+      savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
+     }else discardPostDraft(now,origin.index);
+     getMediaSlots?.()?.refresh?.();
+    }
+    close(false);
+   }finally{asking=false;}
+  };
+  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();void askCancel();}};
   document.addEventListener('keydown',onKey,true);
-  cancel.onclick=()=>close(false);
+  cancel.onclick=()=>void askCancel();
   panel.querySelector('.ness-close-dialog').onclick=()=>cancel.click();
-  overlay.onclick=e=>{if(e.target===overlay)close(false);};
+  overlay.onclick=e=>{if(e.target===overlay)void askCancel();};
   send.onclick=()=>{
-   if(closed)return;
+   if(closed||asking)return;
    error.style.display='none';
    const now=SillyTavern.getContext();
-   if(now.chat!==origin.chat||now.chatId!==origin.id||now.chat.length!==origin.count){error.textContent='Чат изменился. Отмени отправку и запусти профиль заново.';error.style.display='block';return;}
+   if(now.chat!==origin.chat||now.chatId!==origin.id||now.chat.length!==origin.count||now.chat[origin.index]!==origin.message){error.textContent='Чат или целевой пост изменился. Отмени отправку и запусти профиль заново.';error.style.display='block';return;}
    const edited=field.value.trim();
    if(!edited||edited.length>45000){error.textContent=!edited?'Промпт не может быть пустым.':'Промпт длиннее 45 000 символов.';error.style.display='block';return;}
    config.prompt=edited;
+   savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
+   getMediaSlots?.()?.refresh?.();
    close(true);
   };
  });
 }
-
 
 // Module: review_view
 function createReviewView({kind,manualMode,postCount}){
