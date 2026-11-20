@@ -556,15 +556,15 @@ function readNessSettingsProfile(text){
  const keys=(v,allowed,path)=>{object(v,path);const extra=Object.keys(v).find(k=>!allowed.includes(k));if(extra)throw Error('В разделе «'+path+'» найдено незнакомое поле «'+extra+'». Нужен файл настроек, а не профиль расширения.');};
  object(value,'профиль');let settings=value;
  if(Object.hasOwn(value,'format')){if(value.format!==NESS_SETTINGS_PROFILE_FORMAT||value.version!==1)throw Error('Это другой тип или версия профиля. Выбери JSON, выгруженный кнопкой «Экспорт настроек».');keys(value,['format','version','settings'],'профиль');settings=value.settings;}
- keys(settings,['version','wardrobe','posts','cleanup','dialogue','previewEnabled'],'настройки');
- keys(settings.wardrobe,['version','keepDefault','chatTags','sources','card','persona'],'одежда');if(settings.wardrobe.chatTags)keys(settings.wardrobe.chatTags,['mode','namePrefix','nameSuffix','outfitEnd'],'метки одежды в чате');keys(settings.posts,['snapshot','comic','story_page'],'последние посты');keys(settings.cleanup,['serviceTags','comments','html','mawsFooter','customPatterns','exceptions'],'очистка');keys(settings.dialogue,['comicLines','comicWords','storyLines','storyWords'],'текст на картинке');
+ keys(settings,['version','wardrobe','posts','cleanup','dialogue','aspectRatio','previewEnabled'],'настройки');
+ keys(settings.wardrobe,['version','keepDefault','chatTags','sources','card','persona'],'одежда');if(settings.wardrobe.chatTags)keys(settings.wardrobe.chatTags,['mode','namePrefix','nameSuffix','outfitEnd'],'метки одежды в чате');keys(settings.posts,['snapshot','comic','story_page'],'последние посты');keys(settings.cleanup,['serviceTags','comments','html','mawsFooter','customPatterns','exceptions'],'очистка');keys(settings.dialogue,['comicLines','comicWords','storyLines','storyWords'],'текст на картинке');if(settings.aspectRatio!==undefined)keys(settings.aspectRatio,['snapshot','comic','story_page'],'формат изображения');
  if(Array.isArray(settings.wardrobe.sources))for(const r of settings.wardrobe.sources){object(r,'источник одежды');keys(r,['type','enabled',...(r.type==='bounded'?['start','end','syntax','where']:Object.keys(WARDROBE_RULE_DEFAULTS[r.type]||{}))],'источник одежды');}
  if(Array.isArray(settings.cleanup.customPatterns))for(const r of settings.cleanup.customPatterns)keys(r,['pattern','flags','uiBounds'],'правило удаления');
  if(Array.isArray(settings.cleanup.exceptions))for(const r of settings.cleanup.exceptions)keys(r,['pattern','flags','group','label','uiBounds'],'исключение');
  return validateGen2Settings(settings);
 }
 function nessSettingsSummary(settings){
- return 'Одежда: '+settings.wardrobe.sources.length+' своих правил. Удаление вставок: '+settings.cleanup.customPatterns.length+'. Исключения: '+(settings.cleanup.exceptions?.length||0)+'.\nПостов: Snapshot — '+settings.posts.snapshot+', Comic — '+settings.posts.comic+', Story Page — '+settings.posts.story_page+'.\nПроверка задания перед генерацией: '+(settings.previewEnabled?'включена':'выключена')+'.';
+ return 'Формат: Snapshot — '+settings.aspectRatio.snapshot+', Comic — '+settings.aspectRatio.comic+', Story Page — '+settings.aspectRatio.story_page+'.\nОдежда: '+settings.wardrobe.sources.length+' своих правил. Удаление вставок: '+settings.cleanup.customPatterns.length+'. Исключения: '+(settings.cleanup.exceptions?.length||0)+'.\nПостов: Snapshot — '+settings.posts.snapshot+', Comic — '+settings.posts.comic+', Story Page — '+settings.posts.story_page+'.\nПроверка задания перед генерацией: '+(settings.previewEnabled?'включена':'выключена')+'.';
 }
 function makeNessSettingsAiInstruction(profile){
  return codePrompt('settings_export_assistant').replaceAll('{{currentProfile}}',JSON.stringify(profile,null,2));
