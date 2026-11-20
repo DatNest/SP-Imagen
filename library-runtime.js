@@ -851,7 +851,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   ranges=move(ranges,false);
   selections=Object.fromEntries(Object.entries(selections).map(([id,items])=>[id,move(items,true)]));
   if(ranges.length+Object.values(selections).flat().length<previousCount)message.textContent='Метки изменённых фраз сняты. При необходимости отметь их заново.';
-  base=next;updatePresets();
+  base=next;catalog=normalizeAppearanceCatalog(catalog,base,skin,readNsfw(),sections);updatePresets();
  }
  area.oninput=()=>{sync();changed();drawFragments();};
  let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base);
