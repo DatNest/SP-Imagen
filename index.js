@@ -560,9 +560,15 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         autoSwap.disabled = !validPromptSnapshot(slots.automatic);
     }
     syncBackupButtons();
+    // Maintenance controls are available on demand, not a wall of
+    // competing buttons above the actual list of generation profiles.
+    const maintenance=document.createElement('details');maintenance.className='spi-profile-maintenance';
+    const maintenanceTitle=document.createElement('summary');
+    maintenanceTitle.textContent='Управление · импорт и резервные копии';
+    maintenance.append(maintenanceTitle,transfer,backups,backupInfo);
 
     if(pending.size)dialog.append(copy);
-    dialog.append(transfer,backups,backupInfo,scroll,footer);
+    dialog.append(maintenance,scroll,footer);
     return closed;
 }
 function openExtraRuleEditor(existing=null,refresh=()=>{}){
