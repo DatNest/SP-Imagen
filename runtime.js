@@ -270,7 +270,7 @@ async function collectConfiguredRp(kind,settings,options=loadGen2Settings(),endI
 }
 
 // Module: settings
-const GEN2_SETTINGS_DEFAULTS={version:1,wardrobe:{version:1,keepDefault:true,sources:[],card:{...DEFAULT_CARD_WARDROBE},persona:{...DEFAULT_PERSONA_WARDROBE}},posts:{snapshot:2,comic:2,story_page:5},cleanup:{serviceTags:true,comments:true,html:true,mawsFooter:true,customPatterns:[]},dialogue:{comicLines:2,comicWords:7,storyLines:3,storyWords:10},previewEnabled:true};
+const GEN2_SETTINGS_DEFAULTS={version:1,wardrobe:{version:1,keepDefault:true,sources:[],card:{...DEFAULT_CARD_WARDROBE},persona:{...DEFAULT_PERSONA_WARDROBE}},posts:{snapshot:2,comic:2,story_page:5},cleanup:{serviceTags:true,comments:true,html:true,mawsFooter:true,customPatterns:[]},dialogue:{comicLines:2,comicWords:7,storyLines:3,storyWords:10},aspectRatio:{snapshot:'auto',comic:'auto',story_page:'auto'},previewEnabled:true};
 function validateGen2Settings(value){
  const s=JSON.parse(JSON.stringify(value));
  if(s.version!==1)throw Error('Неизвестная версия настроек');
@@ -286,6 +286,8 @@ function validateGen2Settings(value){
   try{Object.assign(r,normalizeNessRegexRule(r));}catch(e){throw Error(where+String(e.message||e));}
  }
  for(const r of s.cleanup.exceptions){if(typeof (r.label??'')!=='string'||String(r.label||'').length>100)throw Error('Подпись исключения — до 100 символов');if(typeof (r.group??'')!=='string'||(r.group&&!/^\d+$|^[A-Za-z_$][\w$]*$/.test(r.group)))throw Error('Группа исключения — номер или имя');}
+ s.aspectRatio={...GEN2_SETTINGS_DEFAULTS.aspectRatio,...(s.aspectRatio&&typeof s.aspectRatio==='object'&&!Array.isArray(s.aspectRatio)?s.aspectRatio:{})};
+ for(const kind of ['snapshot','comic','story_page'])if(!['auto','1:1','2:3','3:2','9:16'].includes(s.aspectRatio[kind]))throw Error('Неверный формат картинки для '+kind);
  for(const key of ['comicLines','storyLines'])if(!Number.isInteger(s.dialogue?.[key])||s.dialogue[key]<0||s.dialogue[key]>8)throw Error('Количество реплик: от 0 до 8');
  for(const key of ['comicWords','storyWords'])if(!Number.isInteger(s.dialogue?.[key])||s.dialogue[key]<1||s.dialogue[key]>40)throw Error('Длина реплики: от 1 до 40 слов');
  if(typeof s.previewEnabled!=='boolean')throw Error('Неверная настройка просмотра');
@@ -311,7 +313,8 @@ function loadGen2Settings(){
    const n=source.dialogue?.[key],min=key.endsWith('Lines')?0:1,max=key.endsWith('Lines')?8:40;
    if(Number.isInteger(n)&&n>=min&&n<=max)cloned.dialogue[key]=n;
   }
-  for(const key of ['serviceTags','comments','html','mawsFooter'])if(typeof source.cleanup?.[key]==='boolean')cloned.cleanup[key]=source.cleanup[key];
+  for(const kind of ['snapshot','comic','story_page'])if(['auto','1:1','2:3','3:2','9:16'].includes(source.aspectRatio?.[kind]))cloned.aspectRatio[kind]=source.aspectRatio[kind];
+   for(const key of ['serviceTags','comments','html','mawsFooter'])if(typeof source.cleanup?.[key]==='boolean')cloned.cleanup[key]=source.cleanup[key];
   cloned.cleanup.exceptions??=[];
   for(const kind of ['customPatterns','exceptions']){
    const list=Array.isArray(source.cleanup?.[kind])?source.cleanup[kind]:[];
@@ -724,6 +727,7 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  // Sections start collapsed. Concise descriptions live in their headers; detailed help is on demand.
  const summaries={
   'Количество постов':'Сколько сообщений учитывать для каждого вида картинки',
+   'Формат изображения':'Авто или фиксированное соотношение сторон отдельно для Snapshot, Comic и Story Page',
   'Текст на картинке':'Сколько реплик брать в комикс и на страницу истории',
   'Предварительный просмотр промпта':'Посмотреть и при необходимости поправить задание',
   'Источники одежды':'Где искать одежду персонажей',
@@ -879,6 +883,15 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  el('p','Сохранит текст между границами и уберёт сами метки. При желании добавь короткую подпись.',exceptionScope,'ness-settings-lead');
  (initial.cleanup.exceptions||[]).forEach(value=>addSimpleRule('preserve',value));
  ui.button('+ Добавить правило',exceptionScope,()=>{const item=addSimpleRule('preserve');if(item){advanced.open=true;onDirty();}},'quiet');
+ const ratioSection=section(left,'▣ Формат изображения','Формат изображения'),aspectFields={};
+ el('p','Авто: режиссёр выбирает соотношение, как раньше. Фиксированный формат применяется к итоговому запросу NovelAI.',ratioSection,'ness-settings-lead');
+ for(const [kind,title] of [['snapshot','Snapshot'],['comic','Comic'],['story_page','Story Page']]){
+   const row=el('div',undefined,ratioSection,'ness-dialogue-row');
+   el('strong',title,row,'ness-dialogue-title');
+   const control=choice([['auto','Авто · выбор режиссёра'],['1:1','1:1 · квадрат'],['2:3','2:3 · вертикальный'],['3:2','3:2 · горизонтальный'],['9:16','9:16 · высокий вертикальный']],initial.aspectRatio?.[kind]||'auto');
+   control.setAttribute('data-setting','aspectRatio.'+kind);
+   aspectFields[kind]=field(row,'Соотношение сторон',control);
+ }
  const dialogue=section(left,'💬 Реплики на картинке','Текст на картинке'),dialogueFields={};
  for(const [mode,title]of [['comic','Комикс'],['story','Страница истории']]){
   const row=el('div',undefined,dialogue,'ness-dialogue-row');el('strong',title,row,'ness-dialogue-title');
@@ -891,10 +904,10 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
  el('p','Показывать готовое описание картинки, чтобы прочитать и при необходимости поправить его до генерации.',previewText,'ness-step-desc');
  const previewToggle=checkbox(previewSection,'Показывать',skipPreview===undefined?initial.previewEnabled:!skipPreview);previewToggle.setAttribute('data-setting','previewEnabled');ui.help(previewText,'Показывать промпт перед отправкой');
  // The cards follow the same learning order on phone and desktop.
- grid.replaceChildren(posts,wardrobe,dialogue,previewSection,cleanup);
+ grid.replaceChildren(posts,ratioSection,wardrobe,dialogue,previewSection,cleanup);
  root.appendChild(advanced);
  const number=e=>e.value.trim()?Number(e.value):NaN;
- function getValue(){return {version:1,wardrobe:{version:1,keepDefault:['default','both'].includes(chatMode.value),chatTags:{mode:chatMode.value,...Object.fromEntries(Object.entries(chatTagFields).map(([k,e])=>[k,e.value]))},sources:sourceRows.map(r=>r.getRule()),card:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.card[k].checked:cardControls.card[k].value])),persona:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.persona[k].checked:cardControls.persona[k].value]))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>r.getRule()),exceptions:exceptionRows.map(r=>r.getRule())},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),previewEnabled:previewToggle.checked};}
+ function getValue(){return {version:1,wardrobe:{version:1,keepDefault:['default','both'].includes(chatMode.value),chatTags:{mode:chatMode.value,...Object.fromEntries(Object.entries(chatTagFields).map(([k,e])=>[k,e.value]))},sources:sourceRows.map(r=>r.getRule()),card:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.card[k].checked:cardControls.card[k].value])),persona:Object.fromEntries(['enabled','start','end'].map(k=>[k,k==='enabled'?cardControls.persona[k].checked:cardControls.persona[k].value]))},posts:Object.fromEntries(Object.entries(postFields).map(([k,e])=>[k,number(e)])),cleanup:{...Object.fromEntries(Object.entries(cleanFields).map(([k,e])=>[k,e.checked])),customPatterns:filterRows.map(r=>r.getRule()),exceptions:exceptionRows.map(r=>r.getRule())},dialogue:Object.fromEntries(Object.entries(dialogueFields).map(([k,e])=>[k,number(e)])),aspectRatio:Object.fromEntries(Object.entries(aspectFields).map(([k,e])=>[k,e.value])),previewEnabled:previewToggle.checked};}
  return {element:root,getValue,scope,dispose:()=>{}};
 }
 
@@ -2011,7 +2024,9 @@ const identityInstruction=/^(?:Prompt name|Subject):/m.test(filteredSource['FIXE
 const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
 const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
-const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile);
+const ratioOverride=runtimeSettings.aspectRatio?.[kind]||'auto';
+const ratioInstruction=ratioOverride==='auto'?'':'\n\nIMAGE RATIO: Set aspect_ratio to '+ratioOverride+' in the required JSON. Keep the original output contract unchanged.';
+const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile)+ratioInstruction;
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 // A fresh director request already includes the complete required format. Never
 // submit the exact same costly request twice blindly after a format mismatch.
@@ -2035,6 +2050,7 @@ progress.set('Проверка промпта', 'Проверяю формат, 
 await saveNessGenerationMetadata(st,'получен ответ режиссёра');
 requireOrigin();
 const config=parsedTransport.config;
+if(ratioOverride!=='auto')config.aspect_ratio=ratioOverride;
 v.sp_imagen_last_transport_repaired=parsedTransport.repaired;
 config.prompt=normalizeImagePrompt(config.prompt);
 if(npcLanguage){
