@@ -127,6 +127,8 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel .ness-body-important strong{display:block;margin:0 0 4px;font-weight:750;letter-spacing:.025em;}
 #sp-imagen-review-panel .ness-body-important p{margin:0!important;}
 #sp-imagen-review-panel .ness-appearance-wrap{position:relative;min-width:0;padding:9px 46px 9px 9px;border:1px solid var(--ness-border);border-radius:10px;background:var(--ness-input);}
+#sp-imagen-review-panel .ness-appearance-wrap[data-format="prose"]{padding:9px;}
+#sp-imagen-review-panel .ness-appearance-wrap[data-format="prose"] textarea.ness-appearance{display:block!important;width:100%!important;min-height:170px;resize:vertical;white-space:pre-wrap;}
 #sp-imagen-review-panel .ness-appearance-wrap[data-marking=true]{background:color-mix(in srgb,var(--ness-appearance-color,var(--ness-accent)) 8%,var(--ness-input));}
 #sp-imagen-review-panel .ness-appearance-wrap .ness-appearance-pencil{position:absolute;top:3px;right:7px;z-index:1;}
 #sp-imagen-review-panel .ness-appearance-fragments{display:flex;flex-wrap:wrap;align-content:flex-start;gap:5px;min-height:105px;max-height:clamp(175px,30dvh,310px);overflow:auto;scrollbar-width:thin;padding:2px;}

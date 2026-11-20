@@ -3,6 +3,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
+import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections } from './appearance-board.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -462,11 +463,14 @@ function validateMasterLibrary(input,{copy=true}={}){
   ids.add(id);
   if(!entry||typeof entry!=='object'||Array.isArray(entry)||typeof entry.name!=='string'||!entry.name.trim()||typeof entry.base!=='string'||!entry.base.trim())throw Error('Заполни имя и постоянную внешность: '+id);
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
+  if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
   }
   if(Object.hasOwn(entry,'appearanceSelections'))entry.appearanceSelections=normalizeAppearanceSelections(entry.base,entry.appearanceSelections);
+  if(Object.hasOwn(entry,'appearanceSections'))entry.appearanceSections=normalizeAppearanceSections(entry.appearanceSections,entry.base);
+  if(Object.hasOwn(entry,'appearanceSkin'))entry.appearanceSkin=normalizeSkinTags(entry.appearanceSkin);
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
  const normalize=s=>s.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
@@ -559,7 +563,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  const pencil=button('✎',wrap,undefined,'icon quiet ness-appearance-pencil');
  pencil.setAttribute('aria-label','Разметить видимую внешность');
  pencil.setAttribute('aria-pressed','false');
- const box=el('div',undefined,form,'ness-appearance-tools');
+ const box=el('div',undefined,wrap.parentNode,'ness-appearance-tools');
  const editHelp='Enter добавляет тег. Для перестановки потяни за ⠿ или нажми на тег и выбери «Раньше» или «Позже».';
  const message=el('p',editHelp,box,'ness-note');
  message.setAttribute('aria-live','polite');
@@ -576,6 +580,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  let ranges=normalizeAppearanceRanges(base,initial.appearanceRanges);
  let selections=normalizeAppearanceSelections(base,initial.appearanceSelections);
  let activePreset='face',editing=false,pending=false,transitioning=false,editingTag=null,draggedStart=null;
+ let formatMode=initial.appearanceFormat==='prose'?'prose':'tags';
 
  const labels=new Map([[NESS_APPEARANCE_ALWAYS,'Вставлять всегда'],...Object.entries(NESS_APPEARANCE_PRESETS).map(([id,preset])=>[id,preset.label])]);
  for(const [id,label] of labels){
@@ -677,7 +682,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  }
  function updateMoves(){
   const items=clauses(),index=items.findIndex(item=>item.start===editingTag?.start);
-  moves.hidden=editing||index<0||items.length<2;
+  moves.hidden=formatMode==='prose'||editing||index<0||items.length<2;
   moveEarlier.disabled=index<=0;moveLater.disabled=index<0||index===items.length-1;
  }
  function moveEditedTag(direction){
@@ -776,7 +781,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  }
  pencil.onclick=async e=>{
   e?.preventDefault();
-  if(transitioning||!canEdit())return;
+  if(formatMode==='prose'||transitioning||!canEdit())return;
   if(editing&&!await savePending())return;
   editing=!editing;
   closeCopyPanel();copyToggle.hidden=!editing;
@@ -809,8 +814,47 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   base=next;updatePresets();
  }
  area.oninput=()=>{sync();changed();drawFragments();};
- updatePresets();drawFragments();
- return {get value(){sync();return {ranges,selections};}};
+ const board=createAppearanceBoard({
+   ui,parent:wrap.parentNode,initialSkin:initial.appearanceSkin,initialSections:initial.appearanceSections,
+   readBaseState:()=>({base,ranges,selections}),
+   writeBaseState:next=>{
+     area.value=base=next.base;
+     ranges=normalizeAppearanceRanges(base,next.ranges);
+     selections=normalizeAppearanceSelections(base,next.selections);
+     changed();updatePresets();drawFragments();
+   },
+   changed,readOnly:()=>!canEdit(),
+   onLayoutChange:(layout,mode)=>{
+     const showLegacy=mode==='base'&&layout==='text';
+     wrap.hidden=!showLegacy;
+     box.hidden=!showLegacy;
+   }
+ });
+ function updateFormat(){
+   const prose=formatMode==='prose';
+   wrap.dataset.format=prose?'prose':'tags';
+   area.hidden=!prose;
+   fragments.hidden=prose;
+   tagInput.hidden=prose||editing;
+   moves.hidden=prose||editing||!editingTag;
+   pencil.hidden=prose;
+   if(!prose){drawFragments();updateMoves();}
+   board.setAvailableFormat(formatMode);
+   board.refresh();
+ }
+ updatePresets();drawFragments();updateFormat();
+ return {
+   setFormat(mode){
+     const next=mode==='prose'?'prose':'tags';
+     if(next===formatMode)return true;
+     if(editing&&pending){message.textContent='Сначала заверши разметку ракурсов и сохрани изменения.';return false;}
+     if(editing){editing=false;wrap.setAttribute('data-marking','false');box.setAttribute('data-marking','false');pencil.setAttribute('aria-pressed','false');}
+     formatMode=next;updateFormat();
+     return true;
+   },
+   get format(){return formatMode;},
+   get value(){sync();return {ranges,selections,skin:board.getSkin(),sections:board.getSections()};}
+ };
 }
 
 // Module: library_editor
@@ -832,9 +876,12 @@ async function openLibraryEditor(){
  const setBusy=value=>{busy=value;for(const tag of ['input','textarea','select','button'])for(const e of panel.querySelectorAll(tag))e.disabled=value;};
  function flushEditor(){
   if(!editor)return;
-  const {id,group,fields,aliases,kind,tagIds,visibility}=editor,entry=cloneLibrary(draft[group][id]);
+  const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
+  entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields))if(e.value!==''||Object.hasOwn(entry,key))entry[key]=e.value;
-  const {ranges,selections}=visibility.value;
+  const {ranges,selections,skin,sections}=visibility.value;
+  if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
+  if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
   if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
   if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
   aliases.commit();const names=aliases.values;
@@ -934,16 +981,27 @@ async function openLibraryEditor(){
   const appearance=tabs.add('Внешность');
   const identity=el('div',undefined,appearance,'ness-grid');fields.name=field(identity,labels.name,input(entry.name));
   const kind=field(identity,'Тип записи',choice([['personas','Персона'],['characters','Персонаж']],group));kind.onchange=()=>{changed(true);};
+  const appearanceFormat=field(appearance,'Формат описания',choice([
+    ['tags','Теги · отдельные признаки через запятую'],
+    ['prose','Обычный текст · предложения и абзацы']
+  ],entry.appearanceFormat||'tags'));
+  el('p','Смена формата не преобразует и не удаляет описание. В тегах используется разделитель «, ». В тексте предложения сохраняются как написаны.',appearance,'ness-note');
   fields.base=field(appearance,labels.base,area(entry.base));fields.base.className+=' ness-appearance';
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
   const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done);
+  visibility.setFormat(appearanceFormat.value);
+  appearanceFormat.onchange=()=>{
+    if(!visibility.setFormat(appearanceFormat.value)){appearanceFormat.value=visibility.format;return;}
+    changed();
+  };
   const aliasesTab=tabs.add('Другие имена'),aliases=createAliasTags(document,entry.aliases||[],()=>changed(true));aliasesTab.appendChild(aliases.element);
   const promptTab=tabs.add('Данные для промпта'),promptGrid=el('div',undefined,promptTab,'ness-grid');
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
-  const body=tabs.add('Отметины и тело');
+  const body=tabs.add('Старые поля отметин');
+  el('p','Старые поля сохранены для совместимости с существующими профилями. Новый конструктор «Кожа и отметины» находится во вкладке «Внешность». Не копируй одни и те же признаки в оба места без необходимости.',body,'ness-note');
   const marks=el('section',undefined,body,'ness-body-section');marks.setAttribute('data-library-body-marks','');
   el('h4','Отметины на коже',marks);
   el('p','Шрамы, татуировки, родинки и другие постоянные отметины. Выбери часть тела и впиши короткие английские теги через запятую. Укажи сторону, если это важно.',marks,'ness-note');
@@ -959,9 +1017,9 @@ async function openLibraryEditor(){
   el('strong','ВАЖНО!',important);
   el('p','Эти детали нужны только тогда, когда соответствующая часть тела открыта, видна в кадре и не закрыта одеждой. Если описать скрытую анатомию слишком подробно, NovelAI может попытаться показать её, оголив персонажа вопреки сцене. Для повседневной внешности используй вкладку «Внешность», а одежду описывай в ролевой или её отдельном источнике.',important);
 
-  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&key!=='aliases'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
+  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
-  editor={id,group,fields,kind,aliases,visibility,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry)};
+  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry)};
   let asked=false;const remove=button('Удалить персонажа',body,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }
@@ -1026,6 +1084,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.5',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }

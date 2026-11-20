@@ -12,6 +12,7 @@ import { normalizeImagePrompt, limitComicDialogue } from './image-prompt.js';
 import { createSpImagenProgress } from './progress-ui.js';
 import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
+import { hasSkinSelections, skinAppearanceInstruction, insertSkinAppearance } from './appearance-board.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
 export function createSpImagenRuntime({ getExtension, getMediaSlots } = {}){
 const codePrompt = key => getExtension?.()?.getCodePrompt?.(key) || CODE_PROMPT_DEFAULTS[key] || '';
@@ -1440,6 +1441,7 @@ function validateMasterLibrary(input,{copy=true}={}){
   ids.add(id);
   if(!entry||typeof entry!=='object'||Array.isArray(entry)||typeof entry.name!=='string'||!entry.name.trim()||typeof entry.base!=='string'||!entry.base.trim())throw Error('Заполни имя и постоянную внешность: '+id);
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
+  if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат описания внешности для '+id);
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
@@ -1929,8 +1931,9 @@ for(const [id,e] of Object.entries({...data.personas,...data.characters})){
  if(typeof e.promptName==='string'&&e.promptName.trim())lines.push('Prompt name: '+e.promptName.trim());
  const subject=typeof e.subject==='string'?e.subject.trim().toLowerCase():'';
  if(['girl','boy','cat','other'].includes(subject))lines.push('Subject: '+subject);
- if(hasConfiguredAppearanceViews(e)){
-  visibility.set(id,{base:e.base,name:e.name,promptName:e.promptName,aliases:e.aliases||[],ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{}});
+ lines.push('Fixed appearance format: '+(e.appearanceFormat==='prose'?'prose description':'comma-separated tags'));
+ if(hasConfiguredAppearanceViews(e)||hasSkinSelections(e.appearanceSkin)){
+  visibility.set(id,{base:e.base,name:e.name,promptName:e.promptName,aliases:e.aliases||[],ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{},appearanceFormat:e.appearanceFormat||'tags',skinTags:e.appearanceSkin||{}});
   lines.push('NESS_VIS character ID: '+id);
  }else lines.push('Fixed appearance: '+e.base);
  for(const [key,label] of [['thighMarks','Thigh marks, only if visible'],['kneeMarks','Knee marks, only if visible'],['shinMarks','Shin marks, only if visible'],['shoulderMarks','Shoulder marks, only if visible'],['forearmMarks','Forearm marks, only if visible'],['nudeUpper','Upper body traits, only if uncovered and visible'],['nudeLower','Lower body traits, only if uncovered and visible']])if(e[key])lines.push(label+': '+e[key]);
@@ -2147,7 +2150,7 @@ const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_la
 const useDialogueSettings=profile?.options?.useDialogueSettings!==false;
 const ratioOverride=runtimeSettings.aspectRatio?.[kind]||'auto';
 const ratioInstruction=ratioOverride==='auto'?'':'\n\nIMAGE RATIO: Set aspect_ratio to '+ratioOverride+' in the required JSON. Keep the original output contract unchanged.';
-const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+npcLanguage+directorProfileGuidance(profile)+ratioInstruction;
+const systemPrompt=configuredDirectorPrompt(director.prompt,kind,runtimeSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+skinAppearanceInstruction(visibility)+npcLanguage+directorProfileGuidance(profile)+ratioInstruction;
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 // A fresh director request already includes the complete required format. Never
 // submit the exact same costly request twice blindly after a format mismatch.
@@ -2179,7 +2182,10 @@ if(npcLanguage){
  config.prompt=await repairNpcPromptLanguage(kind,config.prompt,imageController.signal);
  requireOrigin();
 }
-if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
+if(visibility.size && profile?.options?.includeCharacters!==false){
+ config.prompt=insertVisibleAppearance(config.prompt,visibility);
+ config.prompt=insertSkinAppearance(config.prompt,visibility);
+}
 config.prompt=applyProfileToPrompt(config.prompt,profile);
 if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,runtimeSettings);
 const snapshot=spImagenExtension().snapshotGenerationConfig?.(config,kind);

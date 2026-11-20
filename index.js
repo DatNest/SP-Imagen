@@ -11,11 +11,11 @@ import { installSpImagenMediaSlots } from './media-slots.js';
 import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
 import { decidePromptUpdate } from './update-policy.js';
 import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings } from './novelai.js';
-import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, testSillyTavernProfile, testTextApi } from './text-api.js';
+import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.4';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.5';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -176,7 +176,10 @@ async function getRuntime() {
 }
 
 async function getLibraryRuntime() {
-    return libraryRuntime ??= createSpImagenLibraryRuntime({ getExtension: () => extensionApi });
+    const loaded=libraryRuntime ??= createSpImagenLibraryRuntime({ getExtension: () => extensionApi });
+    if(loaded?.bundleVersion!==SP_IMAGEN_BUNDLE_VERSION)
+        throw new Error('SP Imagen: несовместимая версия библиотеки. Не запускай генерацию и обнови расширение целиком, затем перезагрузи страницу без кэша.');
+    return loaded;
 }
 
 function hasNew() {
@@ -648,13 +651,38 @@ function openTextApiSettings({ back = false } = {}) {
     const tokenControl = formField(grid, 'API-ключ', tokenWrap, 'Не попадает в экспорты SP Imagen.');
     const temperature = input(draft.temperature, 'number'); temperature.min = '0'; temperature.max = '2'; temperature.step = '0.1'; formField(grid, 'Temperature', temperature);
     const maxTokens = input(draft.maxTokens, 'number'); maxTokens.min = '1000'; maxTokens.max = '100000'; maxTokens.step = '1000'; formField(grid, 'Максимум токенов', maxTokens);
-    const readDraft = () => normalizeTextApiSettings({ mode: mode.value, profileId: profile.value, endpoint: endpoint.value, apiKey: token.value, model: model.value, temperature: Number(temperature.value), maxTokens: Number(maxTokens.value) });
+    const streaming=input('','checkbox');streaming.checked=draft.streaming;
+    formField(grid,'Streaming · потоковый ответ',streaming,'Режиссёр получает готовый результат после завершения потока.');
+    const jailbreak=input('','checkbox');jailbreak.checked=draft.jailbreak;
+    formField(grid,'Jailbreak · дополнительная system-инструкция',jailbreak,'Необязательная собственная инструкция. Может повлиять на строгий формат HTML.');
+    const jailbreakText=document.createElement('textarea');jailbreakText.className='spi-short-area';jailbreakText.value=draft.jailbreakText;
+    const jailbreakControl=formField(grid,'Текст Jailbreak',jailbreakText,'Включается только галочкой.');
+    const reasoningMode=select({inherit:'Как в профиле / по умолчанию',off:'Отключить (если модель поддерживает)',effort:'Уровень reasoning',budget:'Бюджет reasoning'},draft.reasoningMode);
+    formField(grid,'Reasoning',reasoningMode);
+    const reasoningProtocol=select({auto:'Определить по провайдеру',openrouter:'OpenRouter',openai:'OpenAI'},draft.reasoningProtocol);
+    const protocolControl=formField(grid,'Протокол reasoning',reasoningProtocol,'Для нестандартного прокси укажи протокол вручную.');
+    const reasoningEffort=select({minimal:'Minimal',low:'Low',medium:'Medium',high:'High',xhigh:'XHigh'},draft.reasoningEffort);
+    const effortControl=formField(grid,'Уровень',reasoningEffort,'Доступные уровни зависят от конкретной модели.');
+    const reasoningBudget=input(draft.reasoningBudget,'number');reasoningBudget.min='128';reasoningBudget.max='100000';reasoningBudget.step='128';
+    const budgetControl=formField(grid,'Бюджет токенов',reasoningBudget,'Только прямой API OpenRouter.');
+    const readDraft = () => normalizeTextApiSettings({
+      ...draft,mode:mode.value,profileId:profile.value,endpoint:endpoint.value,apiKey:token.value,
+      model:model.value,temperature:Number(temperature.value),maxTokens:Number(maxTokens.value),
+      streaming:streaming.checked,jailbreak:jailbreak.checked,jailbreakText:jailbreakText.value,
+      reasoningMode:reasoningMode.value,reasoningProtocol:reasoningProtocol.value,
+      reasoningEffort:reasoningEffort.value,reasoningBudget:Number(reasoningBudget.value)
+    });
     const refreshMode = () => {
         profileControl.parentElement.hidden = mode.value !== 'st';
         refreshProfilesButton.hidden = mode.value !== 'st';
         for (const control of [endpointControl, modelControl, tokenControl]) control.parentElement.hidden = mode.value !== 'direct';
+        temperature.parentElement.hidden=mode.value==='st'||reasoningMode.value!=='inherit';
+        jailbreakControl.parentElement.hidden=!jailbreak.checked;
+        protocolControl.parentElement.hidden=reasoningMode.value==='inherit';
+        effortControl.parentElement.hidden=reasoningMode.value!=='effort';
+        budgetControl.parentElement.hidden=reasoningMode.value!=='budget';
     };
-    mode.addEventListener('change', refreshMode);
+    for(const control of [mode,reasoningMode,jailbreak])control.addEventListener('change',refreshMode);
     const fillProfiles = (profiles, selected) => {
         profile.replaceChildren();
         const option = document.createElement('option'); option.value = ''; option.textContent = 'Выбери профиль'; profile.append(option);
@@ -702,11 +730,27 @@ function openTextApiSettings({ back = false } = {}) {
         } catch (error) { status.textContent = String(error?.message || error); }
         finally { control.disabled = false; }
     });
+    button('Проверить параметры · 1 текстовый запрос',actions,async event=>{
+      const control=event.currentTarget;control.disabled=true;
+      status.textContent='Проверяю настройки реальным запросом к модели. Он может быть платным…';
+      try {
+       const next=readDraft();
+       const response=await generateTextCompletion({...next,maxTokens:Math.max(1000,Math.min(2048,next.maxTokens))},
+         [{role:'system',content:'Answer only OK.'},{role:'user',content:'OK'}],undefined,context());
+       status.textContent='Ответ модели: '+response.slice(0,150);
+      }catch(error){status.textContent='Режим не подтверждён: '+String(error?.message||error);}
+      finally{control.disabled=false;}
+    });
     button('Отмена', actions, close);
     button('Сохранить', actions, () => {
         const next = readDraft();
         if (next.mode === 'st' && !next.profileId) { status.textContent = 'Выбери отдельный профиль SillyTavern.'; return; }
         if (next.mode === 'direct' && (!next.endpoint || !next.apiKey || !next.model)) { status.textContent = 'Заполни endpoint, API-ключ и модель.'; return; }
+        if(next.jailbreak&&!next.jailbreakText.trim()){status.textContent='Jailbreak включён, но текст пуст.';return;}
+        try{
+         const profile=next.mode==='st'?context().ConnectionManagerRequestService?.getProfile?.(next.profileId):null;
+         if(next.reasoningMode!=='inherit')reasoningRequestOptions(next,profile,next.mode==='st');
+        }catch(error){status.textContent=String(error?.message||error);return;}
         settings().textApi = next; saveSettings(); close();
     }, true);
     void closed.then(() => { disposed = true; discoverRun++; });
@@ -739,7 +783,9 @@ function openNovelAISettings({ back = false } = {}) {
     const sampler = select(NOVELAI_SAMPLERS, draft.sampler); formField(grid, 'Sampler', sampler);
     const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
     const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
-    formField(grid, 'Негативный промпт', negative, 'Для V5 Medium используется обязательный негативный промпт модели.');
+    const negativeField=formField(grid, 'Негативный промпт', negative, 'Настраивается для Full/Curated; в V5 Full Medium NovelAI использует собственный фиксированный Undesired Content.');
+    const updateModelFields=()=>{negativeField.parentElement.hidden=model.value==='nai-diffusion-5-full-medium';};
+    model.addEventListener('change',updateModelFields);updateModelFields();
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: enabled.checked, neverSpendAnlas: neverSpend.checked,
         apiKey: token.value, endpoint: endpoint.value, model: model.value, resolution: resolution.value,
@@ -1130,7 +1176,6 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         settings: requestSettings,
         prompt: config.prompt,
         style: snapshot?.style ? style.value : (profile?.options?.useArtStyle === false ? '' : style.value),
-        mediumNegative: resolveCodePrompt(settings().codePrompts,'nai_medium_negative'),
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
     });

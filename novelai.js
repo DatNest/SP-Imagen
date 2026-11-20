@@ -17,7 +17,6 @@ export const NOVELAI_SAMPLERS = Object.freeze({
 });
 
 const MEDIUM_MODEL = 'nai-diffusion-5-full-medium';
-const MEDIUM_NEGATIVE = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page';
 const DIMENSIONS = Object.freeze({
     small: { '1:1': [640, 640], '2:3': [512, 768], '3:2': [768, 512], '9:16': [448, 832], '16:9': [832, 448] },
     normal: { '1:1': [1024, 1024], '2:3': [832, 1216], '3:2': [1216, 832], '9:16': [768, 1344], '16:9': [1344, 768] },
@@ -102,11 +101,13 @@ function validate(settings, aspectRatio) {
     if (errors.length) throw new Error(errors.join(' '));
 }
 
-function buildParameters(settings, prompt, negativePrompt, aspectRatio, mediumNegative = MEDIUM_NEGATIVE) {
+function buildParameters(settings, prompt, negativePrompt, aspectRatio) {
     validate(settings, aspectRatio);
     const positive = splitCharacterPrompts(prompt);
     const medium = settings.model === MEDIUM_MODEL;
-    const negative = splitCharacterPrompts(medium ? mediumNegative : negativePrompt);
+    // V5 Full Medium has fixed Undesired Content in NovelAI itself.
+    // Do not inject custom/Heavy tags such as 'multiple views' in its payload.
+    const negative = splitCharacterPrompts(medium ? '' : negativePrompt);
     const maxCharacters = settings.model.startsWith('nai-diffusion-5-') ? 22 : 6;
     if (Math.max(positive.characters.length, negative.characters.length) > maxCharacters) throw new Error(`Эта модель поддерживает до ${maxCharacters} отдельных секций персонажей.`);
     const caption = (base, characters) => ({
@@ -179,11 +180,11 @@ async function verifyFreeAccess(settings, signal) {
     if (settings.model.startsWith('nai-diffusion-5-') && !regular) throw new Error('Защита Anlas: бесплатный лимит V5 исчерпан или его состояние неизвестно.');
 }
 
-export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', signal, mediumNegative = MEDIUM_NEGATIVE }) {
+export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', signal }) {
     const settings = resolveRequestSettings(input);
     const fullPrompt = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
     if (!fullPrompt) throw new Error('Промпт изображения пуст.');
-    const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio, mediumNegative);
+    const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio);
     if (settings.neverSpendAnlas) await verifyFreeAccess(settings, signal);
     const response = await fetchWithTimeout(requestUrl(settings), {
         method: 'POST',
