@@ -69,7 +69,12 @@ export function reasoningRequestOptions(settings, profile = null, forST = false)
     if (mode === 'budget') throw new Error('OpenAI Chat Completions не поддерживает ручной reasoning budget в этом формате. Используй усилие.');
     // OpenAI's support for "none" and xhigh depends on model version.
     // Pass exact requested effort: the API can reject unsupported values explicitly.
-    return {reasoning_effort:mode === 'off' ? 'none' : settings.reasoningEffort};
+    const effort=mode === 'off' ? 'none' : settings.reasoningEffort;
+    // For OpenAI reasoning chat models the output ceiling is max_completion_tokens.
+    // ST forwards request overrides to its chat-completion backend.
+    return forST
+        ? {reasoning_effort:effort,max_tokens:undefined,max_completion_tokens:settings.maxTokens}
+        : {reasoning_effort:effort};
 }
 
 function withManualJailbreak(settings,messages) {
@@ -193,7 +198,10 @@ export async function generateTextCompletion(input, messages, signal, context = 
     validate(settings);
     const options=reasoningRequestOptions(settings);
     const payload={model:settings.model,messages:withManualJailbreak(settings,messages),
-        max_tokens:settings.maxTokens,stream:settings.streaming,...options};
+        stream:settings.streaming,...options};
+    if(settings.reasoningMode!=='inherit'&&reasoningProtocolFor(settings)==='openai')
+        payload.max_completion_tokens=settings.maxTokens;
+    else payload.max_tokens=settings.maxTokens;
     // Reasoning models may reject temperature even when it is supported by
     // their non-thinking sibling. Only send it without a manual reasoning override.
     if(settings.reasoningMode==='inherit')payload.temperature=settings.temperature;
