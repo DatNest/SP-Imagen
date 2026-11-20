@@ -112,6 +112,27 @@ export function normalizeAppearanceCatalog(raw,base,skin,nsfw={},legacySections=
  }
  return {tags,sections};
 }
+/** Edit legacy NSFW fields without reformatting existing multi-line text. */
+export function editNsfwTag(source,needle,replacement=''){
+ const text=String(source||''),matches=parseBaseTags(text).filter(tag=>norm(tag.text)===norm(needle));
+ let result=text;
+ for(const tag of matches.reverse()){
+  if(replacement){result=result.slice(0,tag.start)+replacement+result.slice(tag.end);continue;}
+  const before=result.slice(0,tag.start),after=result.slice(tag.end);
+  if(/^\s*,/.test(after))result=before+after.replace(/^\s*,[ \t]*/,'');
+  else if(/,[ \t\r\n]*$/.test(before))result=before.replace(/,[ \t\r\n]*$/,'')+after;
+  else result=before+after;
+ }
+ return result;
+}
+export function appendNsfwTag(source,tag){
+ const value=String(source||''),trimmed=value.trimEnd();
+ if(!trimmed)return String(tag||'').trim();
+ const trailing=value.slice(trimmed.length),ends=trimmed.endsWith(';');
+ const core=ends?trimmed.slice(0,-1):trimmed;
+ const separator=/,\s*$/.test(core)?' ':', ';
+ return core+separator+String(tag).trim()+(ends?';':'')+trailing;
+}
 /** Preserve character source ordering, all surviving offsets and selection ownership. */
 export function reorderBaseTags(state,reordered){
  const before=parseBaseTags(state.base),oldRanges=state.ranges||[],oldSelections=state.selections||{};
@@ -209,11 +230,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    setSkinSelection(preset,[...current]);
    if(preset!==SKIN_ALWAYS&&assign)skin.selections.always=(skin.selections.always||[]).filter(x=>!ids.has(x));
   }else if(mode==='nsfw'){
-   const state={...readNsfwState()},existing=parseBaseTags(state[preset]||'').map(x=>x.text);
-   const keys=new Set(relevant.map(t=>norm(t.text)));
-   state[preset]= (assign
-    ?[...existing,...relevant.filter(t=>!existing.some(x=>norm(x)===norm(t.text))).map(t=>t.text)]
-    :existing.filter(t=>!keys.has(norm(t)))).join(', ');
+   const state={...readNsfwState()};
+   for(const tag of relevant)state[preset]=assign?appendNsfwTag(state[preset],tag.text):editNsfwTag(state[preset],tag.text);
    writeNsfwState(state);
   }else{
    let state=baseState();
@@ -285,11 +303,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  function cleanNsfwTags(state,changed,rename=''){
   const result={...state};
-  for(const key of Object.keys(NSFW_PRESETS)){
-   const list=parseBaseTags(result[key]||'');
-   if(list.some(t=>norm(t.text)===norm(changed)))
-    result[key]=list.map(t=>norm(t.text)===norm(changed)?rename:t.text).filter(Boolean).join(', ');
-  }
+  for(const key of Object.keys(NSFW_PRESETS))result[key]=editNsfwTag(result[key],changed,rename);
   return result;
  }
  function addGroup(){
