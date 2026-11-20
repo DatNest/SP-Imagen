@@ -127,7 +127,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    found.add(token);extra.push({id:'n_'+extra.length,text,source:'nsfw',poolKey:token});
   }
   const all=[...base,...extra],sort=new Map(skin.poolOrder.map((key,i)=>[key,i]));
-  return all.sort((a,b)=>(sort.get(a.poolKey)??(100000+all.indexOf(a)))-(sort.get(b.poolKey)??(100000+all.indexOf(b))));
+  const positions=new Map(all.map((tag,i)=>[tag,i]));
+  return all.sort((a,b)=>(sort.get(a.poolKey)??(100000+positions.get(a)))-(sort.get(b.poolKey)??(100000+positions.get(b))));
  };
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Конструктор тегов внешности');
@@ -147,6 +148,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function applySnapshot(s){
   writeBaseState(copy(s.base));
   sections=normalizeAppearanceSections(s.sections,s.base.base);skin=normalizeSkinTags(s.skin);
+  poolSections=copy(skin.poolSections);
   for(const key of Object.keys(nudeFields))if(s.nsfw?.[key]!==undefined)writeNsfw(key,s.nsfw[key]);
   changed();render();
  }
@@ -308,41 +310,60 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!tag||readOnly())return;
   if(/[,\r\n]/.test(tag)){warn('Добавляй по одному тегу. Запятая используется только как разделитель при сборке промпта.');return;}
   warn('');
+  const existing=items().find(x=>x.poolKey===tagKey(tag));
+  if(existing){if(!isChosen(existing,preset))changeMany([existing],true);return;}
   if(mode==='skin'){
-   if(skin.tags.some(x=>norm(x.text)===norm(tag)))return;
    record();const id='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
    skin.tags.push({id,text:tag,section:''});
    setSkinSelection(preset,[...(skin.selections[preset]||[]),id]);after();
+  }else if(mode==='nsfw'){
+   record();writeNsfw(preset,[...nudeSelected(preset),tag].join(', '));after();
   }else{
-   if(items().some(x=>norm(x.text)===norm(tag)))return;
-   const list=items();changeTagList([...list,{text:tag}]);
-   const added=items().find(x=>x.text===tag);
+   changeTagList([...parseBaseTags(baseState().base),{text:tag}]);
+   const added=items().find(x=>x.poolKey===tagKey(tag));
    if(added)toggle(added,true);
   }
  }
  function removeTag(tag){
   if(readOnly())return;
-  if(!confirm('Удалить тег из библиотеки целиком? Это снимет его со всех ракурсов.'))return;
-  if(mode==='skin'){
-   record();skin.tags=skin.tags.filter(x=>x.id!==tag.id);
-   for(const id of Object.keys(skin.selections))skin.selections[id]=skin.selections[id].filter(x=>x!==tag.id);
-   after();
-  }else changeTagList(items().filter(x=>x.start!==tag.start));
+  if(!confirm('Удалить тег из общего пула? Он будет снят со всех ракурсов, меток кожи и NSFW.'))return;
+  record();
+  const key=tag.poolKey;
+  const before=baseState(),kept=parseBaseTags(before.base).filter(x=>tagKey(x.text)!==key);
+  if(kept.length!==parseBaseTags(before.base).length)writeBaseState(reorderBaseTags(before,kept));
+  const skinIds=new Set(skin.tags.filter(x=>tagKey(x.text)===key).map(x=>x.id));
+  skin.tags=skin.tags.filter(x=>!skinIds.has(x.id));
+  for(const id of Object.keys(skin.selections))skin.selections[id]=skin.selections[id].filter(x=>!skinIds.has(x));
+  for(const id of Object.keys(nudeFields)){
+   const old=nudeSelected(id),next=old.filter(x=>tagKey(x)!==key);
+   if(next.length!==old.length)writeNsfw(id,next.join(', '));
+  }
+  skin.poolOrder=skin.poolOrder.filter(x=>x!==key);after();
  }
  function renameTag(tag,next){
   const text=String(next||'').trim().replace(/[,;]+$/,'').trim();
   if(!text||text===tag.text||readOnly())return;
   if(/[,\r\n]/.test(text)){warn('В одном теге нельзя использовать запятую: она разделяет разные теги.');return;}
-  warn('');
-  if(items().some(x=>x!==tag&&norm(x.text)===norm(text)))return;
-  if(mode==='skin'){record();skin.tags.find(x=>x.id===tag.id).text=text;after();}
-  else changeTagList(items().map(x=>x.start===tag.start?{...x,text}:x));
+  const key=tag.poolKey,newKey=tagKey(text);
+  if(items().some(x=>x.poolKey!==key&&x.poolKey===newKey)){warn('Тег с таким названием уже есть в общем пуле.');return;}
+  warn('');record();
+  const before=baseState(),baseTags=parseBaseTags(before.base);
+  if(baseTags.some(x=>tagKey(x.text)===key))
+   writeBaseState(reorderBaseTags(before,baseTags.map(x=>tagKey(x.text)===key?{...x,text}:x)));
+  for(const item of skin.tags)if(tagKey(item.text)===key)item.text=text;
+  for(const id of Object.keys(nudeFields)){
+   const parts=nudeSelected(id);
+   if(parts.some(x=>tagKey(x)===key))writeNsfw(id,parts.map(x=>tagKey(x)===key?text:x).join(', '));
+  }
+  skin.poolOrder=skin.poolOrder.map(x=>x===key?newKey:x);after();
  }
+
  function preview(){
   if(mode==='skin'){
    if(preset==='always')return skin.tags.filter(t=>(skin.selections.always||[]).includes(t.id)).map(t=>t.text).join(', ')||'(нет тегов)';
    return formatSkinParts(skin,[preset])||'(нет тегов)';
   }
+  if(mode==='nsfw')return readNsfw()?.[preset]||'(нет тегов)';
   const state=baseState();
   const configured=hasConfiguredAppearanceViews({appearanceRanges:state.ranges,appearanceSelections:state.selections});
   // Mirror NESS_VIS insertion: an empty preset shows only Always, never the
@@ -355,6 +376,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   onLayoutChange(layout,mode);
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
+  nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
   boardButton.disabled=mode==='base'&&appearanceFormat==='prose';
   boardButton.title=boardButton.disabled?'Для обычного текста используй текстовый редактор; кожа остаётся независимым набором тегов.':'';
   boardButton.setAttribute('aria-pressed',String(layout==='board'));
@@ -373,8 +395,19 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const opt=el('option',name,pick);opt.value=id;
   }
   pick.value=preset;pick.onchange=()=>{preset=pick.value;checked.clear();render();};
+  if(mode==='nsfw'){
+   const panel=el('div',undefined,content,'ness-tagboard-nsfw-fields');
+   for(const [key,label] of Object.entries(nudeFields)){
+    const field=el('label',undefined,panel,'ness-tagboard-nsfw-label');
+    el('span',label,field,'ness-label');
+    const area=el('textarea',undefined,field,'ness-input ness-tagboard-nsfw-input');
+    area.value=readNsfw()?.[key]||'';area.rows=2;area.spellcheck=false;
+    area.oninput=()=>{if(!readOnly()){writeNsfw(key,area.value);changed();}};
+    area.onblur=()=>{if(preset===key)render();};
+   }
+  }
   if(layout==='text'){
-   const note=el('p',mode==='base'?'Исходное описание сохраняет точный текст и разметку тегов. Для редактирования используй текстовое поле внешности в карточке.':'Отдельный набор открытых участков: видимые теги собираются после базовой внешности перед одеждой.',content,'ness-note');
+   const note=el('p',mode==='base'?'Исходное описание сохраняет точный текст и разметку тегов. Для редактирования используй текстовое поле внешности в карточке.':mode==='skin'?'Метки под одеждой зависят от открытых видимых областей.':'NSFW-поля остаются отдельными от обычной внешности.',content,'ness-note');
    if(mode==='skin'){
     const textArea=el('textarea',undefined,content,'ness-input');textArea.value=skin.tags.map(t=>t.text).join(', ');textArea.readOnly=true;
    }
@@ -392,12 +425,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const blocks=el('div',undefined,content,'ness-tagboard-columns');
    const left=el('section',undefined,blocks,'ness-tagboard-column'),right=el('section',undefined,blocks,'ness-tagboard-column');
    function drawColumns(){
-    const baseCurrent=mode==='base'?baseSelected(preset):[];
-    const baseAlways=mode==='base'?baseSelected(NESS_APPEARANCE_ALWAYS):[];
-    const skinCurrent=mode==='skin'?new Set(skin.selections[preset]||[]):null;
-    const skinAlways=mode==='skin'?new Set(skin.selections.always||[]):null;
-    const chosenNow=t=>mode==='skin'?skinCurrent.has(t.id):baseCurrent.some(r=>r.start<t.end&&t.start<r.end);
-    const inAlways=t=>mode==='skin'?skinAlways.has(t.id):baseAlways.some(r=>r.start<t.end&&t.start<r.end);
+    const chosenNow=t=>isChosen(t,preset);
+    const inAlways=t=>mode!=='nsfw'&&isChosen(t,'always');
     clear(left);clear(right);
     el('strong','Все теги',left);
     const groupBar=el('div',undefined,left,'ness-row ness-board-group-create');
@@ -496,14 +525,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     const sourceFlow=el('div',undefined,left,'ness-tagboard-flow');
     for(const token of sequence){
      if(token.kind==='divider'){renderDivider(sourceFlow,token);continue;}
-     if(chosenNow(token.tag)||(preset!==SKIN_ALWAYS&&inAlways(token.tag)))continue;
+     if(chosenNow(token.tag)||(mode!=='nsfw'&&preset!=='always'&&inAlways(token.tag)))continue;
      if(tokenMatches(token))renderSourceTag(sourceFlow,token);
     }
     el('strong',headings[preset]+' · выбранные',right);
 
     // Always-on tags apply to this view without being selected again.
     // Present them as a subtle inline summary, not a separate bulky card.
-    if(preset!==SKIN_ALWAYS){
+    if(mode!=='nsfw'&&preset!=='always'){
      const common=items().filter(inAlways);
      if(common.length){
       const band=el('div',undefined,right,'ness-tagboard-always');
@@ -527,18 +556,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
      const remove=button('← '+tag.text,item,()=>toggle(tag,false),'quiet');
      remove.title='Снять с выбранного ракурса';
      sortable(item,token);
-     const checkbox=el('input',undefined,item);checkbox.type='checkbox';checkbox.checked=checked.has(mode==='base'?tag.start:tag.id);
+     const checkbox=el('input',undefined,item);checkbox.type='checkbox';checkbox.checked=checked.has(tag.poolKey);
      checkbox.setAttribute('aria-label','Отметить для группового снятия: '+tag.text);
-     checkbox.onchange=()=>{const k=mode==='base'?tag.start:tag.id;if(checkbox.checked)checked.add(k);else checked.delete(k);};
+     checkbox.onchange=()=>{const k=tag.poolKey;if(checkbox.checked)checked.add(k);else checked.delete(k);};
     }
     const actions=el('div',undefined,right,'ness-tagboard-bottom');
     button('+ Все видимые',actions,()=>{
-     const candidates=items().filter(t=>!isChosen(t,preset)&&!isChosen(t,SKIN_ALWAYS)&&norm(t.text).includes(norm(filter)));
+     const candidates=items().filter(t=>!isChosen(t,preset)&&(mode==='nsfw'||!isChosen(t,'always'))&&norm(t.text).includes(norm(filter)));
      if(candidates.length>12&&!confirm('Добавить '+candidates.length+' тегов в выбранный набор?'))return;
      changeMany(candidates,true);
     },'quiet');
     button('− Выбранные',actions,()=>{
-     const chosen=items().filter(t=>checked.has(mode==='base'?t.start:t.id)&&isChosen(t,preset));
+     const chosen=items().filter(t=>checked.has(t.poolKey)&&isChosen(t,preset));
      changeMany(chosen,false);checked.clear();
     },'quiet');
     const copyFrom=el('select',undefined,actions,'ness-input');
