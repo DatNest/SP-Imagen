@@ -842,6 +842,32 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  area.oninput=()=>{sync();changed();drawFragments();};
  let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base);
   let catalog=normalizeAppearanceCatalog(initial.appearanceCatalog,base,skin,readNsfw(),sections),board=null;
+ function refreshCategoryPanes(){
+  const skinPanel=categoryPanels.get('skin'),nsfwPanel=categoryPanels.get('nsfw');
+  clear(skinPanel);clear(nsfwPanel);
+  const state=board?board.getSkin():skin;
+  const allParts=[['always','✦ Для всех открытых областей'],...Object.entries(SKIN_PRESETS)];
+  for(const [id,label] of allParts){
+   const row=el('div',undefined,skinPanel,'ness-context-row');
+   const selected=new Set([...(state.selections.always||[]),...(id==='always'?[]:(state.selections[id]||[]))]);
+   const tags=state.tags.filter(tag=>selected.has(tag.id)).map(tag=>tag.text);
+   const open=button(label+(tags.length?' •':''),row,()=>openCategory('skin',id),'quiet ness-context-link');
+   open.title='Настроить теги этого участка в конструкторе';
+   const sample=el('span',tags.join(', ')||'Нет назначенных тегов',row,'ness-context-excerpt');
+   sample.title=tags.join(', ');
+  }
+  for(const [key,label] of Object.entries(NSFW_PRESETS)){
+   const row=el('div',undefined,nsfwPanel,'ness-context-row ness-context-nsfw-row');
+   const top=el('div',undefined,row,'ness-context-row-top');
+   el('strong',label,top);
+   button('↗ Назначить теги',top,()=>openCategory('nsfw',key),'quiet ness-context-link');
+   const value=el('textarea',undefined,row,'ness-input ness-context-nsfw-text');
+   value.value=readNsfw()[key]||'';value.spellcheck=false;
+   value.setAttribute('aria-label',label+' — особенности открытого тела');
+   value.placeholder='Короткие английские теги через запятую';
+   value.oninput=()=>{if(canEdit())writeNsfw({...readNsfw(),[key]:value.value});};
+  }
+ }
  function openBoard(parent,{mode='base',preset}={}){
   sync();
   closeBoard();
@@ -866,6 +892,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   sections=board.getSections();catalog=board.getCatalog();
   board.element.remove();
   board=null;
+  drawFragments();refreshCategoryPanes();
  }
  function updateFormat(){
    const prose=formatMode==='prose';
@@ -878,7 +905,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    if(!prose){drawFragments();updateMoves();}
    if(board)board.setAvailableFormat(formatMode);
  }
- updatePresets();drawFragments();updateFormat();
+ updatePresets();drawFragments();updateFormat();refreshCategoryPanes();
  return {
    setFormat(mode){
      const next=mode==='prose'?'prose':'tags';
