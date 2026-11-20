@@ -518,22 +518,33 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     return closed;
 }
 
-function openCustomProfileEditor(existing,refresh=()=>{}) {
-    const { dialog,close }=shell(`SP Imagen · ${existing ? 'Изменить профиль' : 'Новый профиль'}`, 'spi-prompt-window spi-custom-profile-editor');
+function openCustomProfileEditor(existing,refresh=()=>{},template=null) {
+    const seed=existing||template||{};
+    const copiedDirector=Boolean(seed.directorPrompt)&&['snapshot','comic','story_page'].includes(seed.kind);
+    const { dialog,close }=shell(`SP Imagen · ${existing ? 'Изменить профиль' : copiedDirector?'Копия режиссёра':'Новый профиль'}`, 'spi-prompt-window spi-custom-profile-editor');
     const form=document.createElement('div');form.className='spi-custom-profile-form';
-    const name=document.createElement('input');name.type='text';name.maxLength=100;name.value=existing?.name||'';
+    const name=document.createElement('input');name.type='text';name.maxLength=100;name.value=seed.name||'';
     name.placeholder='Например, Мои акварельные иллюстрации';
     formField(form,'Название',name,'Чтобы быстро найти этот профиль.');
-    const prompt=document.createElement('textarea');prompt.className='spi-custom-prompt';prompt.value=existing?.prompt||'';
+    const prompt=document.createElement('textarea');prompt.className='spi-custom-prompt';prompt.value=seed.prompt||'';
     prompt.placeholder='Например: warm ambient lighting, hand-painted backgrounds, delicate expressions';prompt.maxLength=20000;
-    formField(form,'Твой промпт для картинки',prompt,'Напиши, что художник должен учитывать. Встроенные правила останутся работать как раньше.');
+    let directorField=null;
+    if(copiedDirector){
+        directorField=document.createElement('textarea');
+        directorField.className='spi-custom-prompt';
+        directorField.maxLength=100000;
+        directorField.value=seed.directorPrompt;
+        directorField.spellcheck=false;
+        formField(form,'Копия инструкции режиссёра · '+PROFILE_LABELS['sp_ness_'+seed.kind+'_director'],directorField,'Это независимая копия выбранного формата. Оригинал останется неизменным.');
+        formField(form,'Дополнительные пожелания · необязательно',prompt,'Можно оставить пустым. Это отдельный текст, не заменяющий инструкцию режиссёра.');
+    }else formField(form,'Твой промпт для картинки',prompt,'Дополнительные пожелания к изображению. Встроенные правила работают как прежде.');
     const advanced=document.createElement('details');advanced.className='spi-profile-advanced';const summary=document.createElement('summary');summary.textContent='Что использовать из чата · необязательно';advanced.append(summary);
     const checks=document.createElement('fieldset');checks.className='spi-profile-checks';
     const legend=document.createElement('legend');legend.textContent='Что учитывать при генерации';checks.append(legend);
     const values={};
     for(const [key,[label,help]] of Object.entries(PROFILE_SWITCHES)) {
         const row=document.createElement('label');row.className='spi-profile-check';
-        const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=existing?.options?.[key]!==false;
+        const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=seed.options?.[key]!==false;
         const title=document.createElement('span');title.textContent=label;
         row.append(checkbox,title);addFieldHelp(row,label,help);checks.append(row);values[key]=checkbox;
     }
@@ -548,13 +559,18 @@ function openCustomProfileEditor(existing,refresh=()=>{}) {
     });
     button('Отмена',actions,close);
     button('Сохранить',actions,()=>{
-        const profile=normalizeProfile({id:existing?.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),name:name.value,kind:'all',prompt:prompt.value,options:Object.fromEntries(Object.entries(values).map(([key,node])=>[key,node.checked]))});
+        if(directorField&&!directorField.value.trim()){status.textContent='Инструкция копии режиссёра не может быть пустой.';return;}
+        const profile=normalizeProfile({id:existing?.id||'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),name:name.value,kind:seed.kind||'all',prompt:prompt.value,directorPrompt:directorField?.value||'',options:Object.fromEntries(Object.entries(values).map(([key,node])=>[key,node.checked]))});
         if(!profile){status.textContent='Сначала введи название профиля.';return;}
         const state=settings();const at=state.customProfiles.findIndex(item=>item.id===profile.id);
         if(at>=0)state.customProfiles[at]=profile;else state.customProfiles.push(profile);
         for(const format of ['snapshot','comic','story_page'])if(state.activeProfiles[format]===profile.id&&profile.kind!=='all'&&profile.kind!==format)state.activeProfiles[format]='';
-        // A newly saved personal prompt is immediately active for all built-in formats.
-        if(!existing)for(const format of ['snapshot','comic','story_page'])state.activeProfiles[format]=profile.id;
+        // A new director copy affects only its original format. Existing personal
+        // supplemental prompts retain their previous all-formats activation.
+        if(!existing){
+            const targets=profile.kind==='all'?['snapshot','comic','story_page']:[profile.kind];
+            for(const format of targets)state.activeProfiles[format]=profile.id;
+        }
         saveSettings();close();refresh();
     },true);
     dialog.append(form,status,actions);name.focus({preventScroll:true});
@@ -1034,8 +1050,12 @@ function openLastPrompt() {
 
 function getDirector(kind) {
     const name = `sp_ness_${kind}_director`;
+    const personal = activeProfile(settings(),kind);
+    if(personal?.directorPrompt?.trim()&&personal.kind===kind){
+        return {name: personal.name, prompt:personal.directorPrompt, source:'user-copy'};
+    }
     const prompt = settings().prompts[name];
-    return typeof prompt === 'string' && prompt.trim() ? { name, prompt } : null;
+    return typeof prompt === 'string' && prompt.trim() ? { name, prompt, source:'bundled' } : null;
 }
 
 async function generateText(_kind, messages, signal) {
