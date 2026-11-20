@@ -218,11 +218,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   if(from<0||to<0||to>=sequence.length)return;
   moveSequenceToken(sequence[from],sequence[to],delta>0);
  }
- function changeTagList(changedItems,oldToNew){
+ function changeTagList(changedItems){
+  if(readOnly())return;
+  const old=items(),survivors=new Set(changedItems.filter(t=>Number.isInteger(t.start)).map(t=>t.start));
+  const anchored=sections.map(d=>({...d,before:old.slice(0,d.before).filter(t=>survivors.has(t.start)).length}));
   record();
   const state=reorderBaseTags(baseState(),changedItems);
   writeBaseState(state);
-  sections=normalizeAppearanceSections(sections,state.base);
+  sections=normalizeAppearanceSections(anchored,state.base);
   after();
  }
  function addGroup(){
@@ -280,7 +283,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   warn('');
   if(items().some(x=>x!==tag&&norm(x.text)===norm(text)))return;
   if(mode==='skin'){record();skin.tags.find(x=>x.id===tag.id).text=text;after();}
-  else changeTagList(items().map(x=>x.start===tag.start?{...x,text}:x),{old:tag.text,next:text});
+  else changeTagList(items().map(x=>x.start===tag.start?{...x,text}:x));
  }
  function preview(){
   if(mode==='skin'){
@@ -342,6 +345,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     el('strong','Все теги · доступные',left);
     const groupBar=el('div',undefined,left,'ness-row');
     const groupInput=el('input',undefined,groupBar,'ness-input');groupInput.placeholder='Название раздела';groupInput.setAttribute('data-group-name','');
+    groupInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGroup();}};
     button('+ Разделитель',groupBar,addGroup,'quiet');
 
     const sequence=orderedSequence();
@@ -350,11 +354,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     function sortable(node,token){
      node.setAttribute('data-board-token',token.id);
      node.ondragover=e=>{if(!dragToken||readOnly())return;e.preventDefault();e.dataTransfer.dropEffect='move';};
-     node.ondrop=e=>{if(!dragToken||readOnly())return;e.preventDefault();moveSequenceToken(dragToken,token);dragToken=null;};
+     node.ondrop=e=>{if(!dragToken||readOnly())return;e.preventDefault();const rect=node.getBoundingClientRect();moveSequenceToken(dragToken,token,e.clientY>rect.top+rect.height/2);dragToken=null;};
+     node.dataset.boardKind=token.kind;
      const handle=button('⠿',node,undefined,'quiet ness-tagboard-grip');
      handle.setAttribute('aria-label',token.kind==='divider'?'Переместить разделитель '+token.section.title:'Переместить тег '+token.tag.text);
      handle.title='Перетащить, не назначая тег ракурсу';
      handle.draggable=true;
+     handle.onclick=e=>{e.preventDefault();e.stopPropagation();};
      handle.ondragstart=e=>{
       if(readOnly()){e.preventDefault();return;}
       dragToken=token;
@@ -363,6 +369,31 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
       node.classList.add('ness-tagboard-dragging');
      };
      handle.ondragend=()=>{dragToken=null;node.classList.remove('ness-tagboard-dragging');};
+     // Native drag supports mouse; Pointer Events support touch and stylus.
+     let pointer=null,hover=null;
+     handle.onpointerdown=e=>{
+      if(readOnly()||e.pointerType==='mouse'||e.button!==0)return;
+      e.preventDefault();e.stopPropagation();pointer=e.pointerId;dragToken=token;
+      handle.setPointerCapture?.(pointer);node.classList.add('ness-tagboard-dragging');
+     };
+     handle.onpointermove=e=>{
+      if(pointer!==e.pointerId)return;
+      e.preventDefault();
+      hover=document.elementFromPoint?.(e.clientX,e.clientY)?.closest?.('[data-board-token]')||null;
+      if(hover===node)hover=null;
+     };
+     handle.onpointerup=e=>{
+      if(pointer!==e.pointerId)return;
+      e.preventDefault();e.stopPropagation();
+      const target=hover;pointer=null;hover=null;
+      handle.releasePointerCapture?.(e.pointerId);node.classList.remove('ness-tagboard-dragging');
+      if(target){
+       const found=orderedSequence().find(t=>t.kind===target.dataset.boardKind&&t.id===target.dataset.boardToken);
+       if(found){const rect=target.getBoundingClientRect();moveSequenceToken(token,found,e.clientY>rect.top+rect.height/2);}
+      }
+      dragToken=null;
+     };
+     handle.onpointercancel=()=>{pointer=null;hover=null;dragToken=null;node.classList.remove('ness-tagboard-dragging');};
      if(editMode){
       button('↑',node,()=>moveTokenOne(token,-1),'quiet ness-tagboard-reorder').title='Передвинуть выше';
       button('↓',node,()=>moveTokenOne(token,1),'quiet ness-tagboard-reorder').title='Передвинуть ниже';
@@ -371,7 +402,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     function renderDivider(parent,token){
      const divider=el('div',undefined,parent,'ness-tagboard-divider');
      sortable(divider,token);
-     const title=el('span',token.section.title,divider,'ness-tagboard-divider-title');
+     const band=el('div',undefined,divider,'ness-divider-line');
+     const title=el('span',token.section.title,band,'ness-tagboard-divider-title');
      title.setAttribute('aria-label','Раздел: '+token.section.title);
      title.title='Название только для редактора; не входит в промпт';
      if(editMode){
