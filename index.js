@@ -1207,8 +1207,8 @@ function snapshotGenerationConfig(config, kind='snapshot') {
     // Preserve settings necessary for a resumed request, but NEVER store credentials.
     const {apiKey, endpoint, enabled, styles, activeStyleId, ...publicSettings}=saved;
     const profile=profileById(settings(),kind);
-    if(profile?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
-    const style=profile?.options?.useArtStyle===false
+    if(profile?.parser?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
+    const style=profile?.parser?.options?.useArtStyle===false
         ? {id:'',name:'Без стиля',value:''}
         : clone(activeStyle(saved)||{id:'',name:'Без стиля',value:''});
     return {
@@ -1224,11 +1224,11 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
     const style = snapshot?.style || activeStyle(saved) || { id: '', name: 'Без стиля', value: '' };
     const profile = profileById(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
     const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
-    if (!snapshot && profile?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
+    if (!snapshot && profile?.parser?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
-        style: snapshot?.style ? style.value : (profile?.options?.useArtStyle === false ? '' : style.value),
+        style: snapshot?.style ? style.value : (profile?.parser?.options?.useArtStyle === false ? '' : style.value),
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
     });
@@ -1244,7 +1244,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         src: result.src,
         config: {
             ...config,
-            spImagenDirect: { version: 1, provider: 'novelai', style: snapshot?.style ? clone(style) : (profile?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style)), settings: publicSettings, generatedSeed: result.seed },
+            spImagenDirect: { version: 1, provider: 'novelai', style: snapshot?.style ? clone(style) : (profile?.parser?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style)), settings: publicSettings, generatedSeed: result.seed },
         },
     };
 }
