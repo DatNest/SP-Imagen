@@ -669,7 +669,20 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   const scroll=fragments.scrollTop,visible=editing?selected(activePreset):[];
   clear(fragments);
   const items=clauses();
-  for(const [index,fragment] of items.entries()){
+  const shared=board?board.getCatalog():catalog;
+   const dividers=shared.sections||[],renderedDividers=new Set();
+   const showDividers=(before)=>{
+    for(const divider of dividers){
+     if(renderedDividers.has(divider.id)||divider.before>before)continue;
+     const row=el('div',undefined,fragments,'ness-appearance-inline-divider');
+     el('span',divider.title,row);
+     row.title='Разделитель для удобства: не входит в промпт';
+     renderedDividers.add(divider.id);
+    }
+   };
+   for(const [index,fragment] of items.entries()){
+    const position=shared.tags.findIndex(tag=>String(tag.text||'').trim().toLowerCase()===fragment.text.trim().toLowerCase());
+    showDividers(position>=0?position:shared.tags.length);
    const {start,end,text}=fragment;
    const marked=visible.some(r=>r.start<end&&start<r.end);
    const chip=el('span',undefined,fragments,'ness-appearance-chip');
@@ -703,7 +716,8 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    }
    if(start===focusStart)part.focus();
   }
-  fragments.scrollTop=scroll;
+  showDividers(shared.tags.length);
+   fragments.scrollTop=scroll;
   updateMoves();
  }
  function updateMoves(){
