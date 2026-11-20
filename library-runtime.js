@@ -1027,7 +1027,8 @@ async function openLibraryEditor(){
   el('span','Детали открытого тела',extras,'ness-label');
   const exposedHelp=button('?',extras,undefined,'icon quiet ness-mini-help');
   exposedHelp.setAttribute('aria-label','Как работают голый верх и голый низ');
-  view.tip(exposedHelp,'Здесь хранятся постоянные особенности открытого тела. Кнопки только открывают редактор соответствующего поля: они не снимают одежду и не меняют сцены. Данные используются, когда участок действительно открыт и виден.');
+  const exposureTip=view.tip(exposedHelp,'Здесь хранятся постоянные особенности открытого тела. Кнопки только открывают редактор соответствующего поля: они не снимают одежду и не меняют сцены. Данные используются, когда участок действительно открыт и виден.');
+  exposedHelp.onclick=e=>{e.preventDefault();exposureTip.toggle();};
   const bodyEdit=el('div',undefined,host,'ness-fullboard-exposure-editor');bodyEdit.hidden=true;
   const controls=[];
   for(const [key,label] of [['nudeUpper','Голый верх'],['nudeLower','Голый низ']]){
@@ -1081,7 +1082,8 @@ async function openLibraryEditor(){
   formatSwitcher.setAttribute('aria-label','Формат описания');
   const formatHelp=button('?',formatStrip,undefined,'icon quiet ness-mini-help');
   formatHelp.setAttribute('aria-label','Как работает формат описания');
-  view.tip(formatHelp,'Теги: отдельные признаки через запятую, доступна разметка по ракурсам и конструктор. Текст: обычные предложения или абзацы. Переключение не преобразует, не удаляет и не переписывает исходное описание.');
+  const formatTip=view.tip(formatHelp,'Теги: отдельные признаки через запятую, доступна разметка по ракурсам и конструктор. Текст: обычные предложения или абзацы. Переключение не преобразует, не удаляет и не переписывает исходное описание.');
+  formatHelp.onclick=e=>{e.preventDefault();formatTip.toggle();};
   function updateFormatButtons(){
    formatTags.setAttribute('aria-pressed',String(appearanceFormat.value==='tags'));
    formatText.setAttribute('aria-pressed',String(appearanceFormat.value==='prose'));
