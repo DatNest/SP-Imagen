@@ -176,7 +176,10 @@ async function getRuntime() {
 }
 
 async function getLibraryRuntime() {
-    return libraryRuntime ??= createSpImagenLibraryRuntime({ getExtension: () => extensionApi });
+    const loaded=libraryRuntime ??= createSpImagenLibraryRuntime({ getExtension: () => extensionApi });
+    if(loaded?.bundleVersion!==SP_IMAGEN_BUNDLE_VERSION)
+        throw new Error('SP Imagen: несовместимая версия библиотеки. Не запускай генерацию и обнови расширение целиком, затем перезагрузи страницу без кэша.');
+    return loaded;
 }
 
 function hasNew() {
