@@ -1,5 +1,6 @@
 // Generated from modules/media_slots.js.
 import { withOperationDeadline } from './operation-timeout.js';
+import { readPostDraft, discardPostDraft } from './post-drafts.js';
 export async function installSpImagenMediaSlots(options) {
   'use strict';
   const { getExtension } = options || {};
@@ -632,7 +633,7 @@ export async function installSpImagenMediaSlots(options) {
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-expanded', 'false');
     const gallery = element('div', 'gallery');
-    const view = { node, root, anchor, index, message, tools, toggle, gallery, promptButton: null, cards: new Map() };
+    const view = { node, root, anchor, index, message, tools, toggle, gallery, promptButton: null, draftButton:null, discardDraftButton:null, cards: new Map() };
     toggle.addEventListener('click', () => toggleToolsMenu(view));
     tools.append(toggle);
     root.append(tools, gallery);
@@ -732,9 +733,42 @@ export async function installSpImagenMediaSlots(options) {
     }
   }
 
+  function updatePostDraftControls(view) {
+    const current=context();
+    const draft=eligible(view.message) ? readPostDraft(current,view.index) : null;
+    if(!draft){
+      view.draftButton?.remove();view.draftButton=null;
+      view.discardDraftButton?.remove();view.discardDraftButton=null;
+      return;
+    }
+    const stage=draft.final?.config?.prompt?'готовый промпт':draft.review?'сцена и персонажи':'сбор сцены';
+    if(!view.draftButton){
+      const button=element('button','tool draft-resume');
+      button.addEventListener('click',()=>void executeCommand('sp_ness_resume_post',view));
+      view.tools.append(button);view.draftButton=button;
+    }
+    view.draftButton.textContent='↪ Продолжить · '+stage;
+    view.draftButton.title='Продолжить сохранённый черновик без лишней генерации текста';
+    view.draftButton.setAttribute('aria-label',view.draftButton.title);
+    if(!view.discardDraftButton){
+      const button=element('button','tool draft-discard','×');
+      button.title='Удалить черновик этого RP-поста';
+      button.setAttribute('aria-label',button.title);
+      button.addEventListener('click',()=>void runAction(async()=>{
+        const live=context();
+        if(live.chat?.[view.index]!==view.message)return;
+        if(!host.confirm('Удалить сохранённый черновик этого поста? Картинки в галерее останутся.'))return;
+        discardPostDraft(live,view.index);
+        paint();
+      }));
+      view.tools.append(button);view.discardDraftButton=button;
+    }
+  }
+
   function updatePost(view, slots, chatId) {
     view.tools.hidden = !eligible(view.message);
     updatePostPromptIcon(view, slots);
+    updatePostDraftControls(view);
     for (const kind of KINDS) {
       const slot = slots?.[kind];
       const item = slot?.versions?.[slot.selected];
@@ -1111,7 +1145,7 @@ export async function installSpImagenMediaSlots(options) {
       host.toastr?.error?.('SP Imagen не загружен.', 'SP Imagen');
       return;
     }
-    const generationChat = command === 'sp_ness_generate_at' ? current.chat : null;
+    const generationChat = ['sp_ness_generate_at','sp_ness_resume_post'].includes(command) ? current.chat : null;
     if (generationChat && pendingGenerationClicks.has(generationChat)) return;
     if (generationChat) pendingGenerationClicks.add(generationChat);
     try { await runAction(() => extension.run(command, kind, request)); }
@@ -1201,8 +1235,8 @@ export async function installSpImagenMediaSlots(options) {
 
   const manager = {
     installed: true,
-    version: 63,
-    controlsRevision: 25,
+    version: 64,
+    controlsRevision: 26,
     guideStep,
     endGuideDemo,
     supportedKinds: KINDS,
