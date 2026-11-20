@@ -2282,7 +2282,10 @@ async function resumePost(request=null) {
  const draft=readPostDraft(st,request.index);
  if(!draft)throw Error('У этого RP-поста нет сохранённого черновика.');
  const kind=draft.kind;
- validateKind(kind);
+ // A completed draft already holds the final prompt and safe NovelAI snapshot.
+ // Deleting its authoring profile must not invalidate a paid-ready draft.
+ // Unfinished drafts still require their original profile to parse RP safely.
+ if(!draft.final?.config?.prompt?.trim())validateKind(kind);
  const originalChat=st.chat,originalId=st.chatId,post=st.chat[request.index];
  const ensureOrigin=()=>{
   const now=SillyTavern.getContext();
