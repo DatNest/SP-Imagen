@@ -1440,6 +1440,7 @@ function validateMasterLibrary(input,{copy=true}={}){
   ids.add(id);
   if(!entry||typeof entry!=='object'||Array.isArray(entry)||typeof entry.name!=='string'||!entry.name.trim()||typeof entry.base!=='string'||!entry.base.trim())throw Error('Заполни имя и постоянную внешность: '+id);
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
+  if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат описания внешности для '+id);
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
@@ -1929,8 +1930,9 @@ for(const [id,e] of Object.entries({...data.personas,...data.characters})){
  if(typeof e.promptName==='string'&&e.promptName.trim())lines.push('Prompt name: '+e.promptName.trim());
  const subject=typeof e.subject==='string'?e.subject.trim().toLowerCase():'';
  if(['girl','boy','cat','other'].includes(subject))lines.push('Subject: '+subject);
+ lines.push('Fixed appearance format: '+(e.appearanceFormat==='prose'?'prose description':'comma-separated tags'));
  if(hasConfiguredAppearanceViews(e)){
-  visibility.set(id,{base:e.base,name:e.name,promptName:e.promptName,aliases:e.aliases||[],ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{}});
+  visibility.set(id,{base:e.base,name:e.name,promptName:e.promptName,aliases:e.aliases||[],ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{},appearanceFormat:e.appearanceFormat||'tags'});
   lines.push('NESS_VIS character ID: '+id);
  }else lines.push('Fixed appearance: '+e.base);
  for(const [key,label] of [['thighMarks','Thigh marks, only if visible'],['kneeMarks','Knee marks, only if visible'],['shinMarks','Shin marks, only if visible'],['shoulderMarks','Shoulder marks, only if visible'],['forearmMarks','Forearm marks, only if visible'],['nudeUpper','Upper body traits, only if uncovered and visible'],['nudeLower','Lower body traits, only if uncovered and visible']])if(e[key])lines.push(label+': '+e[key]);
