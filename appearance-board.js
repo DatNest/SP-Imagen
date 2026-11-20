@@ -342,14 +342,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     const chosenNow=t=>mode==='skin'?skinCurrent.has(t.id):baseCurrent.some(r=>r.start<t.end&&t.start<r.end);
     const inAlways=t=>mode==='skin'?skinAlways.has(t.id):baseAlways.some(r=>r.start<t.end&&t.start<r.end);
     clear(left);clear(right);
-    el('strong','Все теги · доступные',left);
-    const groupBar=el('div',undefined,left,'ness-row');
+    el('strong','Все теги',left);
+    const groupBar=el('div',undefined,left,'ness-row ness-board-group-create');
     const groupInput=el('input',undefined,groupBar,'ness-input');groupInput.placeholder='Название раздела';groupInput.setAttribute('data-group-name','');
     groupInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGroup();}};
     button('+ Разделитель',groupBar,addGroup,'quiet');
 
     const sequence=orderedSequence();
     let dragToken=null,editMode=frame.dataset.moveMode==='true';
+    groupBar.hidden=!editMode;
     const tokenMatches=token=>token.kind==='divider'||norm(token.tag.text).includes(norm(filter));
     function sortable(node,token){
      node.setAttribute('data-board-token',token.id);
