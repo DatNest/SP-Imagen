@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.5';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.6';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -436,21 +436,30 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         const actions = document.createElement('div');
         actions.className = 'spi-dialog-actions';
         button('Посмотреть', actions, () => openPromptWindow(name));
-        button('Создать копию', actions, () => {
+        const copyHelp=document.createElement('div');copyHelp.className='spi-profile-help-row';
+        actions.append(copyHelp);
+        button('Создать копию', copyHelp, () => {
             const kind = name.replace(/^sp_ness_(snapshot|comic|story_page)_director$/, '$1');
             openCustomProfileEditor(null, renderCustom, {
                 name: 'Копия · '+label, kind, directorPrompt: settings().prompts[name] || shippedPrompt(name), prompt: '',
             });
         }, true);
+        addFieldHelp(copyHelp,'Копия профиля '+label,
+            '«Создать копию» сохраняет полный текст встроенного режиссёра '+label+' как независимый личный профиль. Оригинал не изменится.\n\nПосле сохранения выбери у копии «Использовать»: только тогда она заменит встроенного режиссёра для этого формата. Копия Snapshot не изменяет Comic и Story Page.\n\nНажми «Изменить», чтобы переписать инструкции копии: например, изменить правила ракурсов, количества планов или композиции. Следующая генерация этого формата будет опираться на новый текст. Сохраняй обязательный формат HTML/JSON, разделение персонажей, Text: и NSFW-блоки, иначе генерация может сломаться.\n\nДля небольшой дополнительной рекомендации без замены всей инструкции лучше «Добавить промпт».');
         row.append(title, actions); list.append(row);
     }
     // Built-in formats are already present above. Personal prompts are optional additions;
     // no second format picker or three independent assignments are exposed.
     const customTitle=document.createElement('h3'); customTitle.textContent='Мои промпты';
+    const customHint=document.createElement('p'); customHint.className='spi-profile-hint';
+    customHint.textContent='Свои правила направляют режиссёра при составлении промпта, но не копируются дословно в NAI5. Для готовых тегов и стилевых префиксов используй «Настройки → Стили».';
     const customList=document.createElement('div'); customList.className='spi-custom-profile-list';
     const addProfile=document.createElement('div'); addProfile.className='spi-dialog-actions';
-    const addButton=button('＋ Добавить промпт',addProfile,()=>openCustomProfileEditor(null,renderCustom),true);
+    const addHelp=document.createElement('div');addHelp.className='spi-profile-help-row';addProfile.append(addHelp);
+    const addButton=button('＋ Добавить промпт',addHelp,()=>openCustomProfileEditor(null,renderCustom),true);
     addButton.classList.add('spi-prompt-add');
+    addFieldHelp(addHelp,'Как работает «Добавить промпт»',
+        'Это короткие дополнительные правила для режиссёра, а не готовый промпт для NovelAI. Пример: «Выбирай крупный или средний план; показывай эмоции и руки». Режиссёр учитывает пожелание при написании описания, но НЕ копирует эту инструкцию дословно в картинку.\n\nНазови промпт, впиши правила и сохрани. Новый промпт автоматически станет активным для Snapshot, Comic и Story Page. В каждом формате одновременно активен только один личный профиль; позже можно выбрать «Использовать» у другого или выключить этот. При этом штатные инструкции режиссёра не меняются.\n\nВ «Изменить» можно переписать эти правила: следующий запуск активного профиля использует новый вариант. Чтобы менять саму логику одного формата, создай копию его встроенного профиля и редактируй полную инструкцию.');
     const renderCustom=()=>{
         const store=normalizeProfileStore(settings());
         customList.replaceChildren();
@@ -465,7 +474,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
             const formats=profile.kind==='all'?['snapshot','comic','story_page']:[profile.kind];
             const isActive=formats.every(format=>store.activeProfiles[format]===profile.id);
             const formatLabel=profile.kind==='all'?'все три':PROFILE_LABELS['sp_ness_'+profile.kind+'_director'];
-            const subtitle=document.createElement('small');subtitle.textContent=profile.directorPrompt?' · копия режиссёра '+formatLabel:' · дополнительный промпт';title.append(subtitle);
+            const subtitle=document.createElement('small');subtitle.textContent=profile.directorPrompt?' · копия режиссёра '+formatLabel:' · дополнительные инструкции режиссёру';title.append(subtitle);
             const toggle=button(isActive?'✓ Используется':'Использовать · '+formatLabel,actions,()=>{
                 const state=settings();
                 for(const format of formats)state.activeProfiles[format]=isActive?'':profile.id;
@@ -473,7 +482,11 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
             });
             toggle.setAttribute('aria-pressed',String(isActive));
             button('Изменить',actions,()=>openCustomProfileEditor(profile,renderCustom));
-            button('Создать копию',actions,()=>openCustomProfileEditor(null,renderCustom,{...profile,id:'',name:'Копия · '+profile.name}));
+            const personalCopyHelp=document.createElement('div');personalCopyHelp.className='spi-profile-help-row';
+            actions.append(personalCopyHelp);
+            button('Создать копию',personalCopyHelp,()=>openCustomProfileEditor(null,renderCustom,{...profile,id:'',name:'Копия · '+profile.name}));
+            addFieldHelp(personalCopyHelp,'Копия личного профиля',
+                'Создаёт независимую копию с тем же текстом и настройками. Можешь изменить её правила, не затрагивая оригинал. Сохранённая копия не включается сама: для генерации нажми у неё «Использовать». В каждом формате может быть активен только один личный профиль.');
             row.append(title,actions);customList.append(row);
         }
     };
@@ -520,7 +533,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     }
     syncBackupButtons();
     const scroll=document.createElement('div');scroll.className='spi-profile-scroll';
-    scroll.append(list, customTitle, customList, addProfile);
+    scroll.append(list, customTitle, customHint, customList, addProfile);
     if (pending.size) dialog.append(copy);
     dialog.append(transfer, backups, backupInfo, scroll, footer);
     if (askUpdates && pending.size) dialog.querySelector('button')?.focus();
@@ -536,7 +549,7 @@ function openCustomProfileEditor(existing,refresh=()=>{},template=null) {
     name.placeholder='Например, Мои акварельные иллюстрации';
     formField(form,'Название',name,'Чтобы быстро найти этот профиль.');
     const prompt=document.createElement('textarea');prompt.className='spi-custom-prompt';prompt.value=seed.prompt||'';
-    prompt.placeholder='Например: warm ambient lighting, hand-painted backgrounds, delicate expressions';prompt.maxLength=20000;
+    prompt.placeholder='Например: Framing: prefer a close or medium shot with expressive gestures and visible faces.';prompt.maxLength=20000;
     let directorField=null;
     if(copiedDirector){
         directorField=document.createElement('textarea');
@@ -544,9 +557,9 @@ function openCustomProfileEditor(existing,refresh=()=>{},template=null) {
         directorField.maxLength=100000;
         directorField.value=seed.directorPrompt;
         directorField.spellcheck=false;
-        formField(form,'Копия инструкции режиссёра · '+PROFILE_LABELS['sp_ness_'+seed.kind+'_director'],directorField,'Это независимая копия выбранного формата. Оригинал останется неизменным.');
-        formField(form,'Дополнительные пожелания · необязательно',prompt,'Можно оставить пустым. Это отдельный текст, не заменяющий инструкцию режиссёра.');
-    }else formField(form,'Твой промпт для картинки',prompt,'Дополнительные пожелания к изображению. Встроенные правила работают как прежде.');
+        formField(form,'Копия инструкции режиссёра · '+PROFILE_LABELS['sp_ness_'+seed.kind+'_director'],directorField,'Заменяет встроенного режиссёра только после «Использовать». Меняй правила построения сцен, не нарушая обязательный HTML/JSON-формат, макросы, Text: и NSFW-блоки. Оригинал не изменится.');
+        formField(form,'Дополнительные инструкции режиссёру · необязательно',prompt,'Режиссёр учитывает эти правила, но не копирует их дословно в NAI5.');
+    }else formField(form,'Твои правила для режиссёра',prompt,'Например: выбирать крупные ракурсы. Правила влияют на описание картинки, но сами не попадают в итоговый промпт NAI5.');
     const advanced=document.createElement('details');advanced.className='spi-profile-advanced';const summary=document.createElement('summary');summary.textContent='Что использовать из чата · необязательно';advanced.append(summary);
     const checks=document.createElement('fieldset');checks.className='spi-profile-checks';
     const legend=document.createElement('legend');legend.textContent='Что учитывать при генерации';checks.append(legend);

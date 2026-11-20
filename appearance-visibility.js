@@ -62,7 +62,44 @@ export function appearanceVisibilityInstruction(records,rules={},customTemplate)
  return template.includes('{{rules}}') ? template.replaceAll('{{rules}}',descriptions) : template+'\n'+descriptions;
 }
 
+function visibilityMarkerLocation(prompt,index){
+ const before=prompt.slice(0,index);
+ const sections=[...before.matchAll(/\|\s*(girl|boy|cat|other)\s*,\s*([^,;|\r\n]+)/gi)];
+ const latest=sections.at(-1);
+ if(!latest||before.slice(latest.index+latest[0].length).includes('|'))return 'в общей части промпта, вне секции персонажа';
+ const name=latest[2].trim().slice(0,70);
+ const text=before.slice(latest.index+latest[0].length);
+ return 'в секции персонажа «'+name+'»'+(text.includes(';')?', после первого разделителя «;» (возможно уже среди инструкций одежды)':', до первого разделителя «;»');
+}
+function validateVisibilityMarkers(prompt,records){
+ const seen=new Set();
+ const openings=[...prompt.matchAll(/\[\[NESS_VIS\b/gi)];
+ if(!openings.length&&/\bNESS_VIS\s*:/i.test(prompt)){
+  throw Error('В ответе есть NESS_VIS, но нет правильной открывающей конструкции [[NESS_VIS:...]]. Это служебная метка базовой внешности, не метка одежды.');
+ }
+ for(const opening of openings){
+  const pos=opening.index,close=prompt.indexOf(']]',pos);
+  const nextNewline=prompt.indexOf('\n',pos);
+  const location=visibilityMarkerLocation(prompt,pos);
+  if(close<0||nextNewline>=0&&close>nextNewline){
+   throw Error('Незаконченная метка БАЗОВОГО РАКУРСА [[NESS_VIS:...]]: отсутствует закрытие ]]. Место: '+location+'. Ожидается [[NESS_VIS:id:full_front]] (id и ракурс выбирает режиссёр).');
+  }
+  const marker=prompt.slice(pos,close+2),m=marker.match(/^\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]$/);
+  if(!m){
+   throw Error('Неверный синтаксис метки БАЗОВОГО РАКУРСА: '+JSON.stringify(marker.slice(0,120))+'. Место: '+location+'. Правильная форма [[NESS_VIS:ID:РАКУРС]] до одежды.');
+  }
+  const [,id,spec]=m,actor=records.get(id);
+  if(!actor)throw Error('Неизвестный ID «'+id+'» в [[NESS_VIS]]. Место: '+location+'. Режиссёр использовал несуществующий ключ персонажа из библиотеки.');
+  if(seen.has(id))throw Error('Повторная [[NESS_VIS]] персонажа «'+(actor.name||id)+'» (ID '+id+'). Метка должна быть ровно одна на персонажа, даже на странице из нескольких панелей.');
+  seen.add(id);
+  if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec)){
+   throw Error('Неизвестный ракурс «'+spec.slice(0,60)+'» у персонажа «'+(actor.name||id)+'». Место: '+location+'. Допустимые: '+['none',...Object.keys(NESS_APPEARANCE_PRESETS)].join(', ')+'.');
+  }
+ }
+}
+
 export function insertVisibleAppearance(prompt,records){
+ validateVisibilityMarkers(prompt,records);
  const seen=new Set();
  const result=prompt.replace(/([ \t]*,[ \t]*)?\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]([ \t]*[,;])?/g,(_,before,id,spec,after)=>{
   if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
@@ -79,7 +116,7 @@ export function insertVisibleAppearance(prompt,records){
     .replace(prose?/[.,;!?\s]+$/:/[;,\s]+$/,'');
   return text?(before||'')+text+';':after||'';
  });
- if(result.includes('[[NESS_VIS:'))throw Error('Режиссёр вернул незавершённую метку ракурса. Запусти генерацию заново.');
+ if(result.includes('[[NESS_VIS:'))throw Error('В промпте осталась неподставленная [[NESS_VIS]] базовой внешности. Проверь ID, выбранный ракурс и закрывающие скобки; это НЕ маркер одежды. NovelAI не запускался.');
  // A director can accidentally omit a visibility marker. If a known library character
  // is explicitly named at the start of its own section, use the base as a safe fallback
  // rather than silently generating a generic look-alike. Never create a new character.

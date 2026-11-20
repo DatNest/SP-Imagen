@@ -282,3 +282,185 @@
  #sp-imagen-review-panel .ness-tagboard-column{max-height:37vh;min-height:100px}
  #sp-imagen-review-panel .ness-tagboard-actions button{flex:1 1 auto}
 }
+
+
+/* Full-window visual constructor; theme values are inherited from the library dialog. */
+#sp-imagen-review-panel[data-dialog=library][data-view=constructor]{
+ width:min(1490px,calc(100vw - 16px))!important;
+ height:min(980px,calc(100dvh - 16px))!important;
+ max-height:calc(100dvh - 16px)!important;
+ border-radius:14px!important;
+}
+#sp-imagen-review-panel .ness-library-constructor[hidden]{display:none!important}
+#sp-imagen-review-panel[data-view=constructor] .ness-library-tools,
+#sp-imagen-review-panel[data-view=constructor] .ness-library-workspace{display:none!important}
+#sp-imagen-review-panel .ness-library-constructor{
+ display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:0;overflow:hidden;
+ padding:10px 16px 12px;gap:8px;color:var(--ness-text);
+}
+#sp-imagen-review-panel .ness-fullboard-toolbar{
+ flex:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+ padding:4px 0 10px;border-bottom:1px solid var(--ness-border);
+}
+#sp-imagen-review-panel .ness-fullboard-actions{display:flex;align-items:center;gap:7px}
+#sp-imagen-review-panel .ness-fullboard-character{display:flex;align-items:center;gap:10px;min-width:0}
+#sp-imagen-review-panel .ness-fullboard-character>.ness-label{display:flex;align-items:center;gap:8px}
+#sp-imagen-review-panel .ness-fullboard-character select{width:min(250px,44vw)!important;min-width:130px}
+#sp-imagen-review-panel .ness-fullboard-help{flex:none;margin:0!important}
+#sp-imagen-review-panel .ness-fullboard-area{flex:1 1 auto;min-height:0;min-width:0;overflow:hidden;display:flex}
+#sp-imagen-review-panel .ness-fullboard-area>.ness-tagboard{
+ flex:1 1 auto;min-height:0;min-width:0;display:flex;flex-direction:column;
+ padding:10px 12px;margin:0;gap:7px;
+ background:var(--ness-surface);border:1px solid var(--ness-border);
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-columns{
+ display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+ flex:1 1 auto;min-height:0;overflow:hidden;align-items:stretch;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-column{
+ min-height:0;max-height:none;height:100%;overflow-y:auto;overflow-x:hidden;
+ padding:12px 13px;scrollbar-width:thin;
+ scrollbar-color:var(--ness-border) var(--ness-input);
+}
+#sp-imagen-review-panel .ness-tagboard-flow,#sp-imagen-review-panel .ness-tagboard-selected{display:grid;align-content:start;gap:6px}
+#sp-imagen-review-panel .ness-tagboard-divider{
+ display:flex;align-items:center;gap:8px;min-width:0;padding:7px 0;
+ color:var(--ness-muted);background:transparent;border-radius:5px;
+}
+#sp-imagen-review-panel .ness-divider-line::before,
+#sp-imagen-review-panel .ness-divider-line::after{
+ content:'';display:block;height:1px;flex:1 1 14px;min-width:14px;
+ background:var(--ness-border);
+}
+#sp-imagen-review-panel .ness-tagboard-divider-title{
+ flex:0 1 auto;max-width:min(75%,480px);min-width:0;
+ text-align:center;font-size:12px;font-weight:600;line-height:1.45;
+ overflow-wrap:anywhere;white-space:normal;padding:0 12px;
+ color:var(--ness-muted);
+}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-tagboard-grip{order:-1;flex:none}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-tagboard-divider-title{order:0}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-divider-edit{flex:0 1 40%;max-width:360px;min-width:120px}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-tagboard-reorder{flex:none}
+#sp-imagen-review-panel .ness-tagboard-grip{
+ flex:none;align-self:center;min-width:32px!important;width:32px;
+ min-height:36px!important;padding:4px!important;border:1px dashed var(--ness-border)!important;
+ border-radius:7px!important;background:var(--ness-input)!important;color:var(--ness-muted)!important;
+ font-size:17px!important;cursor:grab;touch-action:pan-y;
+}
+#sp-imagen-review-panel .ness-tagboard-grip:active{cursor:grabbing}
+#sp-imagen-review-panel .ness-tagboard-dragging{opacity:.55;border-color:var(--ness-accent)!important}
+#sp-imagen-review-panel .ness-tagboard-reorder{min-width:30px!important;padding:3px!important}
+#sp-imagen-review-panel .ness-tagboard-history .ness-button[aria-pressed=true]{
+ border-color:var(--ness-accent)!important;background:var(--ness-input)!important;color:var(--ness-text)!important
+}
+#sp-imagen-review-panel .ness-open-constructor{min-height:40px!important;align-self:flex-start;margin:6px 0 14px;}
+#sp-imagen-review-panel .ness-tagboard-item{min-width:0;}
+#sp-imagen-review-panel .ness-tagboard-item .ness-tagboard-grip{order:-1}
+#sp-imagen-review-panel .ness-tagboard-groupselect{display:none!important}
+@media(max-width:720px){
+ #sp-imagen-review-panel[data-dialog=library][data-view=constructor]{
+  width:100%!important;max-height:100dvh!important;height:100dvh!important;border-radius:0!important;
+ }
+ #sp-imagen-review-panel .ness-library-constructor{padding:8px;gap:6px;}
+ #sp-imagen-review-panel .ness-fullboard-toolbar{align-items:stretch;}
+ #sp-imagen-review-panel .ness-fullboard-character{flex:1 1 auto}
+ #sp-imagen-review-panel .ness-fullboard-character select{width:min(250px,50vw)!important}
+ #sp-imagen-review-panel .ness-fullboard-help{font-size:11px!important}
+ #sp-imagen-review-panel .ness-fullboard-area{overflow-y:auto;overscroll-behavior:contain}
+ #sp-imagen-review-panel .ness-fullboard-area>.ness-tagboard{min-height:100%;overflow:visible;padding:8px}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-body{overflow:visible;min-height:auto}
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-columns{
+  display:flex;flex-direction:column;overflow:visible;flex:0 0 auto;gap:8px;
+ }
+ #sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-column{
+  height:auto;max-height:37dvh;min-height:110px;overflow-y:auto;
+ }
+}
+
+/* Center wrapping divider titles in symmetric rules, independently from drag handles. */
+#sp-imagen-review-panel .ness-divider-line{display:flex;align-items:center;flex:1 1 auto;min-width:0;}
+#sp-imagen-review-panel .ness-divider-line::before,
+#sp-imagen-review-panel .ness-divider-line::after{flex:1 1 0;min-width:16px;}
+#sp-imagen-review-panel .ness-divider-line>.ness-tagboard-divider-title{
+ max-width:min(74%,420px);flex:0 1 auto;padding:0 14px;white-space:normal;
+ overflow-wrap:anywhere;text-align:center;text-wrap:balance;
+}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-divider-line{order:0;}
+#sp-imagen-review-panel .ness-tagboard-divider>.ness-tagboard-grip{order:-1;}
+#sp-imagen-review-panel .ness-tagboard-grip{touch-action:none!important;user-select:none;-webkit-user-select:none;}
+#sp-imagen-review-panel .ness-tagboard-item>.ness-button:first-child{flex:1 1 auto;}
+
+/* v2.9.6: Keep personal prompt cards and their buttons inside mobile dialog flow. */
+.spi-prompt-center .spi-profile-scroll{
+  display:flex;flex-direction:column;align-items:stretch;gap:12px;
+  min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;padding:4px 5px 22px 2px;
+}
+.spi-prompt-center .spi-profile-scroll>:is(.spi-prompt-list,.spi-custom-profile-list,.spi-dialog-actions,.spi-profile-hint,h3){
+  flex:0 0 auto;min-height:0;min-width:0;
+}
+.spi-prompt-center .spi-profile-scroll .spi-prompt-row{
+  min-width:0;max-width:100%;height:auto;overflow-wrap:anywhere;
+  align-items:start;
+}
+.spi-prompt-center .spi-profile-scroll .spi-prompt-row>strong{
+  min-width:0;max-width:100%;display:flex;flex-wrap:wrap;gap:4px 7px;
+  line-height:1.4;
+}
+.spi-prompt-center .spi-profile-scroll .spi-dialog-actions{
+  display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:stretch;
+  min-width:0;gap:7px;margin-top:0;
+}
+.spi-prompt-center .spi-profile-scroll .spi-dialog-actions>.menu_button{
+  flex:0 1 auto;min-width:0;max-width:100%;height:auto;
+  white-space:normal;overflow-wrap:anywhere;text-align:center;
+}
+.spi-prompt-center .spi-profile-hint{
+  margin:0!important;color:var(--SmartThemeEmColor,#aaa);font-size:12px;line-height:1.5;
+}
+.spi-custom-profile-editor .spi-custom-profile-form{
+  display:flex;flex-direction:column;align-items:stretch;
+  flex:1 1 auto;min-width:0;min-height:0;overflow-y:auto;
+  overflow-x:hidden;padding:5px 4px 22px;gap:14px;
+  overscroll-behavior:contain;
+}
+.spi-custom-profile-editor .spi-custom-profile-form>*{
+  position:relative;flex:0 0 auto;min-width:0;margin:0;
+}
+.spi-custom-profile-editor .spi-custom-profile-form .spi-field{
+  display:flex;flex-direction:column;align-items:stretch;gap:7px;
+}
+.spi-custom-profile-editor .spi-custom-profile-form textarea{
+  max-width:100%;height:auto;min-height:180px;flex:0 0 auto;
+}
+.spi-custom-profile-editor>.spi-dialog-actions{
+  position:relative;z-index:2;flex:0 0 auto;min-width:0;
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--SmartThemeBorderColor,#777);
+  background:var(--SmartThemeBlurTintColor,#222);
+}
+@media (max-width:620px){
+ .spi-prompt-center .spi-profile-scroll .spi-prompt-row{grid-template-columns:minmax(0,1fr);}
+ .spi-custom-profile-editor .spi-custom-profile-form{padding-bottom:18px;}
+ .spi-custom-profile-editor>.spi-dialog-actions{gap:7px;justify-content:stretch;}
+ .spi-custom-profile-editor>.spi-dialog-actions>.menu_button{flex:1 1 auto;min-width:0;white-space:normal;}
+}
+
+/* Help beside Add Prompt / Copy Profile, never covering the action label. */
+.spi-prompt-center .spi-profile-help-row.spi-guide-has-help{
+ position:relative;display:inline-flex;flex:0 1 auto;align-items:center;gap:5px;
+ min-width:0;max-width:100%;flex-wrap:nowrap;
+}
+.spi-prompt-center .spi-profile-help-row>.menu_button{
+ flex:0 1 auto;min-width:0;height:auto;max-width:100%;
+ white-space:normal;overflow-wrap:anywhere;text-align:center;
+}
+.spi-prompt-center .spi-profile-help-row.spi-guide-has-help>.spi-guide-help{
+ position:static;inset:auto;z-index:auto;flex:none;margin:0;
+}
+.spi-prompt-center .spi-profile-help-row .spi-guide-help{touch-action:manipulation;}
+@media(max-width:620px){
+ .spi-prompt-center .spi-profile-help-row{width:auto;max-width:100%;}
+ .spi-prompt-center .spi-profile-help-row>.menu_button{flex:1 1 auto;}
+}
