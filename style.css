@@ -446,3 +446,21 @@
  .spi-custom-profile-editor>.spi-dialog-actions{gap:7px;justify-content:stretch;}
  .spi-custom-profile-editor>.spi-dialog-actions>.menu_button{flex:1 1 auto;min-width:0;white-space:normal;}
 }
+
+/* Help beside Add Prompt / Copy Profile, never covering the action label. */
+.spi-prompt-center .spi-profile-help-row.spi-guide-has-help{
+ position:relative;display:inline-flex;flex:0 1 auto;align-items:center;gap:5px;
+ min-width:0;max-width:100%;flex-wrap:nowrap;
+}
+.spi-prompt-center .spi-profile-help-row>.menu_button{
+ flex:0 1 auto;min-width:0;height:auto;max-width:100%;
+ white-space:normal;overflow-wrap:anywhere;text-align:center;
+}
+.spi-prompt-center .spi-profile-help-row.spi-guide-has-help>.spi-guide-help{
+ position:static;inset:auto;z-index:auto;flex:none;margin:0;
+}
+.spi-prompt-center .spi-profile-help-row .spi-guide-help{touch-action:manipulation;}
+@media(max-width:620px){
+ .spi-prompt-center .spi-profile-help-row{width:auto;max-width:100%;}
+ .spi-prompt-center .spi-profile-help-row>.menu_button{flex:1 1 auto;}
+}
