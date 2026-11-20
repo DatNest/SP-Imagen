@@ -1023,7 +1023,35 @@ async function openLibraryEditor(){
    if(!editor||editor.id!==selected.id){select.value=previous;return;}
    displayBoard();
   };
-  const sub=el('p','Теги и разделители можно переставлять за специальные ручки. Нажатие на текст назначает тег ракурсу; перетаскивание меняет только порядок.',host,'ness-note ness-fullboard-help');
+  const extras=el('div',undefined,host,'ness-fullboard-exposure');
+  el('span','Детали открытого тела',extras,'ness-label');
+  const exposedHelp=button('?',extras,undefined,'icon quiet ness-mini-help');
+  exposedHelp.setAttribute('aria-label','Как работают голый верх и голый низ');
+  view.tip(exposedHelp,'Здесь хранятся постоянные особенности открытого тела. Кнопки только открывают редактор соответствующего поля: они не снимают одежду и не меняют сцены. Данные используются, когда участок действительно открыт и виден.');
+  const bodyEdit=el('div',undefined,host,'ness-fullboard-exposure-editor');bodyEdit.hidden=true;
+  const controls=[];
+  for(const [key,label] of [['nudeUpper','Голый верх'],['nudeLower','Голый низ']]){
+   const source=editor.fields[key];
+   const toggle=button(label+(source?.value?.trim()?' •':''),extras,undefined,'quiet ness-fullboard-exposure-toggle');
+   toggle.setAttribute('aria-expanded','false');
+   controls.push({key,label,toggle});
+   toggle.onclick=()=>{
+    const selected=bodyEdit.dataset.key===key&&!bodyEdit.hidden;
+    clear(bodyEdit);bodyEdit.hidden=selected;bodyEdit.dataset.key=selected?'':key;
+    controls.forEach(item=>{const open=!selected&&item.key===key;item.toggle.setAttribute('aria-pressed',String(open));item.toggle.setAttribute('aria-expanded',String(open));});
+    if(selected)return;
+    const prompt=el('label',label+' · особенности открытого тела',bodyEdit,'ness-label');
+    const textarea=el('textarea',undefined,bodyEdit,'ness-input ness-fullboard-exposure-text');
+    textarea.value=source?.value||'';textarea.spellcheck=false;
+    prompt.setAttribute('for','ness-fullboard-'+key);textarea.id='ness-fullboard-'+key;
+    textarea.oninput=()=>{
+     if(!editor?.fields?.[key])return;
+     editor.fields[key].value=textarea.value;
+     toggle.textContent=label+(textarea.value.trim()?' •':'');
+     changed();
+    };
+   };
+  }
   const boardArea=el('div',undefined,host,'ness-fullboard-area');
   editor.visibility.openBoard(boardArea);
   view.showConstructor();
@@ -1040,11 +1068,25 @@ async function openLibraryEditor(){
   const appearance=tabs.add('Внешность');
   const identity=el('div',undefined,appearance,'ness-grid');fields.name=field(identity,labels.name,input(entry.name));
   const kind=field(identity,'Тип записи',choice([['personas','Персона'],['characters','Персонаж']],group));kind.onchange=()=>{changed(true);};
-  const appearanceFormat=field(appearance,'Формат описания',choice([
-    ['tags','Теги · отдельные признаки через запятую'],
-    ['prose','Обычный текст · предложения и абзацы']
-  ],entry.appearanceFormat||'tags'));
-  el('p','Смена формата не преобразует и не удаляет описание. В тегах используется разделитель «, ». В тексте предложения сохраняются как написаны.',appearance,'ness-note');
+  const formatStrip=el('div',undefined,appearance,'ness-format-strip');
+  el('span','Формат описания',formatStrip,'ness-label');
+  const formatSwitcher=el('div',undefined,formatStrip,'ness-format-switch');
+  const appearanceFormat=choice([['tags','Теги'],['prose','Текст']],entry.appearanceFormat||'tags');
+  appearanceFormat.className+=' ness-format-native';
+  appearanceFormat.tabIndex=-1;appearanceFormat.setAttribute('aria-hidden','true');
+  formatStrip.appendChild(appearanceFormat);
+  const formatTags=button('Теги',formatSwitcher,undefined,'quiet');
+  const formatText=button('Текст',formatSwitcher,undefined,'quiet');
+  formatSwitcher.setAttribute('role','group');
+  formatSwitcher.setAttribute('aria-label','Формат описания');
+  const formatHelp=button('?',formatStrip,undefined,'icon quiet ness-mini-help');
+  formatHelp.setAttribute('aria-label','Как работает формат описания');
+  view.tip(formatHelp,'Теги: отдельные признаки через запятую, доступна разметка по ракурсам и конструктор. Текст: обычные предложения или абзацы. Переключение не преобразует, не удаляет и не переписывает исходное описание.');
+  function updateFormatButtons(){
+   formatTags.setAttribute('aria-pressed',String(appearanceFormat.value==='tags'));
+   formatText.setAttribute('aria-pressed',String(appearanceFormat.value==='prose'));
+  }
+  updateFormatButtons();
   fields.base=field(appearance,labels.base,area(entry.base));fields.base.className+=' ness-appearance';
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
@@ -1052,10 +1094,13 @@ async function openLibraryEditor(){
   visibility.setFormat(appearanceFormat.value);
   const openConstructor=button('◫ Открыть конструктор тегов',appearance,()=>enterBoard(),'quiet ness-open-constructor');
   openConstructor.title='Полноэкранный редактор ракурсов, отдельных тегов кожи и разделителей';
-  appearanceFormat.onchange=()=>{
-    if(!visibility.setFormat(appearanceFormat.value)){appearanceFormat.value=visibility.format;return;}
-    changed();
-  };
+  function selectAppearanceFormat(next){
+   if(!visibility.setFormat(next)){appearanceFormat.value=visibility.format;updateFormatButtons();return;}
+   if(appearanceFormat.value===next)return;
+   appearanceFormat.value=next;updateFormatButtons();changed();
+  }
+  formatTags.onclick=()=>selectAppearanceFormat('tags');
+  formatText.onclick=()=>selectAppearanceFormat('prose');
   const aliasesTab=tabs.add('Другие имена'),aliases=createAliasTags(document,entry.aliases||[],()=>changed(true));aliasesTab.appendChild(aliases.element);
   const promptTab=tabs.add('Данные для промпта'),promptGrid=el('div',undefined,promptTab,'ness-grid');
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
