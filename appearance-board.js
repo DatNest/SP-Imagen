@@ -363,8 +363,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    return formatSkinParts(skin,[preset])||'(нет тегов)';
    }
    if(mode==='nsfw')return String(readNsfwState()?.[preset]||'').trim()||'(нет тегов)';
-   if(false){
-  }
   const state=baseState();
   const configured=hasConfiguredAppearanceViews({appearanceRanges:state.ranges,appearanceSelections:state.selections});
   // Mirror NESS_VIS insertion: an empty preset shows only Always, never the
@@ -418,8 +416,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     const baseAlways=mode==='base'?baseSelected(NESS_APPEARANCE_ALWAYS):[];
     const skinCurrent=mode==='skin'?new Set(skin.selections[preset]||[]):null;
     const skinAlways=mode==='skin'?new Set(skin.selections.always||[]):null;
-    const chosenNow=t=>mode==='skin'?skinCurrent.has(t.id):baseCurrent.some(r=>r.start<t.end&&t.start<r.end);
-    const inAlways=t=>mode==='skin'?skinAlways.has(t.id):baseAlways.some(r=>r.start<t.end&&t.start<r.end);
+    const chosenNow=t=>isChosen(t,preset);
+    const inAlways=t=>mode==='nsfw'?false:mode==='skin'?isSkinChosen(t,'always'):isBaseChosen(t,'always');
     clear(left);clear(right);
     el('strong','Все теги',left);
     const groupBar=el('div',undefined,left,'ness-row ness-board-group-create');
@@ -498,7 +496,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     }
     function renderSourceTag(parent,token){
      const tag=token.tag,item=el('div',undefined,parent,'ness-tagboard-item');
-     const use=button('→ '+tag.text,item,()=>toggle(tag,true),'quiet');
+     const selected=chosenNow(tag);
+      const use=button((selected?'✓ ':'→ ')+tag.text,item,()=>toggle(tag,!selected),'quiet');
      use.title='Назначить выбранному ракурсу';
      sortable(item,token);
      if(editMode){
@@ -518,14 +517,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     const sourceFlow=el('div',undefined,left,'ness-tagboard-flow');
     for(const token of sequence){
      if(token.kind==='divider'){renderDivider(sourceFlow,token);continue;}
-     if(chosenNow(token.tag)||(preset!==SKIN_ALWAYS&&inAlways(token.tag)))continue;
+     // The shared catalogue shows both assigned and unassigned tags.
      if(tokenMatches(token))renderSourceTag(sourceFlow,token);
     }
     el('strong',headings[preset]+' · выбранные',right);
 
     // Always-on tags apply to this view without being selected again.
     // Present them as a subtle inline summary, not a separate bulky card.
-    if(preset!==SKIN_ALWAYS){
+    if(mode!=='nsfw'&&preset!=='always'){
      const common=items().filter(inAlways);
      if(common.length){
       const band=el('div',undefined,right,'ness-tagboard-always');
@@ -549,23 +548,23 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
      const remove=button('← '+tag.text,item,()=>toggle(tag,false),'quiet');
      remove.title='Снять с выбранного ракурса';
      sortable(item,token);
-     const checkbox=el('input',undefined,item);checkbox.type='checkbox';checkbox.checked=checked.has(mode==='base'?tag.start:tag.id);
+     const checkbox=el('input',undefined,item);checkbox.type='checkbox';checkbox.checked=checked.has(tag.id);
      checkbox.setAttribute('aria-label','Отметить для группового снятия: '+tag.text);
-     checkbox.onchange=()=>{const k=mode==='base'?tag.start:tag.id;if(checkbox.checked)checked.add(k);else checked.delete(k);};
+     checkbox.onchange=()=>{const k=tag.id;if(checkbox.checked)checked.add(k);else checked.delete(k);};
     }
     const actions=el('div',undefined,right,'ness-tagboard-bottom');
     button('+ Все видимые',actions,()=>{
-     const candidates=items().filter(t=>!isChosen(t,preset)&&!isChosen(t,SKIN_ALWAYS)&&norm(t.text).includes(norm(filter)));
+     const candidates=items().filter(t=>!isChosen(t,preset)&&(mode==='nsfw'||!isChosen(t,'always'))&&norm(t.text).includes(norm(filter)));
      if(candidates.length>12&&!confirm('Добавить '+candidates.length+' тегов в выбранный набор?'))return;
      changeMany(candidates,true);
     },'quiet');
     button('− Выбранные',actions,()=>{
-     const chosen=items().filter(t=>checked.has(mode==='base'?t.start:t.id)&&isChosen(t,preset));
+     const chosen=items().filter(t=>checked.has(t.id)&&isChosen(t,preset));
      changeMany(chosen,false);checked.clear();
     },'quiet');
     const copyFrom=el('select',undefined,actions,'ness-input');
     const empty=el('option','Копировать из…',copyFrom);empty.value='';
-    for(const [id,label] of Object.entries(headings))if(id!==preset&&id!==SKIN_ALWAYS){
+    for(const [id,label] of Object.entries(headings))if(id!==preset&&id!=='always'){
      const o=el('option',label,copyFrom);o.value=id;
     }
     button('Копировать',actions,()=>{
@@ -590,7 +589,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();undo.push(snapshot());applySnapshot(redo.pop());}
  });
  render();
- return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(sections,readBaseState().base),refresh:render,getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';render();}};
+ return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(catalog.sections,readBaseState().base),getCatalog:()=>normalizeAppearanceCatalog(catalog,readBaseState().base,skin,readNsfwState()),refresh:render,getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';render();}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
