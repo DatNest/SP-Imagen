@@ -662,3 +662,147 @@
  #sp-imagen-review-panel .ness-fullboard-exposure-toggle{font-size:11px!important;}
  #sp-imagen-review-panel .ness-format-strip{gap:5px;}
 }
+
+/* v2.9.10 — profile choices as quiet, compact theme-aware cards. */
+.spi-prompt-center .spi-profile-scroll .spi-profile-card{
+ display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+ align-content:start;gap:7px;padding:10px 12px;
+ min-width:0;max-width:100%;border-radius:11px;
+ background:color-mix(in srgb,var(--SmartThemeBodyColor,#eee) 3%,transparent);
+ border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor,#777) 75%,transparent);
+ box-shadow:none;
+}
+.spi-prompt-center .spi-profile-card-head{
+ display:flex;align-items:center;justify-content:space-between;
+ gap:7px 12px;min-width:0;min-height:30px;width:100%;
+}
+.spi-prompt-center .spi-profile-card-head>strong,
+.spi-prompt-center .spi-profile-card-info>strong{
+ display:block;flex:1 1 auto;min-width:0;
+ font-size:14px;font-weight:650;line-height:1.4;
+ overflow-wrap:anywhere;
+}
+.spi-prompt-center .spi-profile-card-info{
+ display:flex;flex-direction:column;align-items:flex-start;
+ gap:2px;min-width:0;flex:1 1 auto;
+}
+.spi-prompt-center .spi-profile-card-info>small{
+ display:block;min-width:0;font-size:11px;line-height:1.35;
+ font-weight:400;color:var(--SmartThemeEmColor,#aaa);
+}
+.spi-prompt-center .spi-profile-card .spi-profile-visible{
+ flex:0 0 auto;display:inline-flex;align-items:center;
+ gap:6px;max-width:100%;margin:0;
+ padding:4px 8px;border-radius:999px;
+ border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor,#777) 68%,transparent);
+ background:color-mix(in srgb,var(--SmartThemeBodyColor,#eee) 3%,transparent);
+ color:var(--SmartThemeBodyColor,#eee);
+ font-size:11px;line-height:1.3;font-weight:500;white-space:nowrap;
+ cursor:pointer;
+}
+.spi-prompt-center .spi-profile-card .spi-profile-visible:has(input:checked){
+ border-color:color-mix(in srgb,var(--SmartThemeQuoteColor,#c09ab4) 40%,var(--SmartThemeBorderColor,#777));
+}
+.spi-prompt-center .spi-profile-card .spi-profile-visible input{
+ flex:none;width:15px;height:15px;min-width:15px;min-height:15px;
+ margin:0;accent-color:var(--SmartThemeQuoteColor,#c09ab4);cursor:pointer;
+}
+.spi-prompt-center .spi-profile-scroll .spi-profile-card-actions{
+ display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:center;
+ width:100%;min-width:0;min-height:0;gap:5px;margin:0!important;
+ padding:7px 0 0;
+ border-top:1px solid color-mix(in srgb,var(--SmartThemeBorderColor,#777) 42%,transparent);
+}
+.spi-prompt-center .spi-profile-card-actions .spi-profile-action.menu_button{
+ display:inline-flex;flex:0 1 auto;align-items:center;justify-content:center;
+ width:auto;max-width:100%;height:auto;min-height:30px!important;
+ margin:0!important;padding:5px 11px!important;
+ border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor,#777) 72%,transparent)!important;
+ border-radius:8px!important;
+ background:color-mix(in srgb,var(--SmartThemeBodyColor,#eee) 3%,transparent)!important;
+ color:var(--SmartThemeBodyColor,#eee)!important;
+ box-shadow:none!important;text-shadow:none!important;
+ white-space:normal;overflow-wrap:anywhere;
+ font-size:12px!important;font-weight:500!important;line-height:1.25!important;
+}
+.spi-prompt-center .spi-profile-card-actions .spi-profile-action.menu_button:hover,
+.spi-prompt-center .spi-profile-card-actions .spi-profile-action.menu_button:focus-visible{
+ border-color:var(--SmartThemeQuoteColor,#c09ab4)!important;
+ background:color-mix(in srgb,var(--SmartThemeQuoteColor,#c09ab4) 12%,transparent)!important;
+}
+.spi-prompt-center .spi-profile-card-actions .spi-profile-action-copy.menu_button{
+ border-color:color-mix(in srgb,var(--SmartThemeQuoteColor,#c09ab4) 35%,var(--SmartThemeBorderColor,#777))!important;
+}
+.spi-prompt-center .spi-profile-card-actions .spi-profile-help-row.spi-guide-has-help{
+ display:inline-flex;align-items:center;gap:5px;flex-wrap:nowrap;
+ width:auto;max-width:100%;margin:0;
+}
+.spi-prompt-center .spi-profile-card-actions .spi-profile-help-row>.spi-guide-help{
+ position:static!important;inset:auto!important;
+ display:inline-grid;flex:0 0 22px;place-items:center;
+ width:22px;min-width:22px;height:22px;min-height:22px;
+ margin:0!important;padding:0!important;
+ border:1px solid var(--SmartThemeBorderColor,#777);
+ border-radius:50%;background:transparent;
+ color:var(--SmartThemeEmColor,#aaa);
+}
+.spi-prompt-center .spi-profile-card-actions .spi-profile-help-row>.spi-guide-help:hover{
+ color:var(--SmartThemeQuoteColor,#c09ab4);
+}
+.spi-prompt-center .spi-profile-scroll>.spi-dialog-actions{
+ justify-content:flex-start;align-items:center;
+ flex-wrap:wrap;margin:0!important;gap:6px;
+}
+.spi-prompt-center .spi-profile-scroll .spi-profile-add-button.menu_button{
+ flex:0 1 auto;width:auto;max-width:100%;min-height:34px;
+ margin:0!important;padding:6px 12px!important;
+ border-radius:9px!important;
+ font-size:12px!important;font-weight:600!important;
+ white-space:normal;overflow-wrap:anywhere;
+ box-shadow:none!important;text-shadow:none!important;
+}
+.spi-prompt-center .spi-profile-scroll>.spi-dialog-actions>.spi-profile-help-row{
+ display:inline-flex;align-items:center;gap:5px;max-width:100%;
+}
+.spi-prompt-center .spi-profile-scroll>.spi-dialog-actions>.spi-profile-help-row>.spi-guide-help{
+ position:static;inset:auto;flex:none;
+}
+@media(max-width:620px){
+ .spi-prompt-center .spi-profile-scroll .spi-profile-card{padding:9px;gap:7px;}
+ .spi-prompt-center .spi-profile-card-head{align-items:flex-start;gap:7px;}
+ .spi-prompt-center .spi-profile-card-head>strong,
+ .spi-prompt-center .spi-profile-card-info>strong{font-size:13px;}
+ .spi-prompt-center .spi-profile-card .spi-profile-visible{font-size:10px;padding:3px 7px;}
+ .spi-prompt-center .spi-profile-scroll .spi-profile-card-actions{gap:5px;padding-top:6px;}
+ .spi-prompt-center .spi-profile-card-actions .spi-profile-action.menu_button{
+  min-height:31px!important;padding:5px 9px!important;font-size:11px!important;
+ }
+}
+
+/* v2.9.10 — inheritable “Always” tags as subdued chips, not a large notice. */
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-always{
+ display:flex!important;flex:0 0 auto!important;flex-wrap:wrap;
+ align-items:center;justify-content:flex-start;
+ gap:4px 5px!important;width:100%;max-width:100%;
+ min-height:0;margin:0 0 2px!important;
+ padding:3px 0 7px!important;
+ border:0!important;border-bottom:1px solid color-mix(in srgb,var(--ness-border) 68%,transparent)!important;
+ border-radius:0!important;background:transparent!important;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-always>.ness-tagboard-always-label{
+ display:inline-flex;flex:0 0 auto;align-items:center;width:auto!important;
+ margin:0 4px 0 0;padding:2px 0;
+ color:var(--ness-muted);font-size:11px!important;
+ font-weight:650;line-height:1.35;white-space:nowrap;
+}
+#sp-imagen-review-panel .ness-fullboard-area .ness-tagboard-always>.ness-tagboard-always-chip{
+ flex:0 1 auto;display:inline-flex;align-items:center;
+ width:max-content;max-width:100%;min-height:24px;
+ padding:3px 8px!important;margin:0;
+ border-radius:999px!important;
+ border:1px solid color-mix(in srgb,var(--ness-border) 68%,transparent)!important;
+ background:color-mix(in srgb,var(--ness-accent) 7%,var(--ness-surface))!important;
+ color:var(--ness-text)!important;
+ opacity:1!important;font-size:11px!important;
+ line-height:1.3;overflow-wrap:anywhere;white-space:normal;
+}
