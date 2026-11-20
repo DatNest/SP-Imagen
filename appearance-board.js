@@ -3,7 +3,7 @@
  * Existing base strings and appearanceSelections offsets remain authoritative.
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
-import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
+import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 
 export const SKIN_PRESETS=Object.freeze({
  upper_front:'Открытый верх · спереди',
@@ -291,8 +291,12 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
    return formatSkinParts(skin,[preset])||'(нет тегов)';
   }
   const state=baseState();
-  const picked=visibleAppearanceRanges(state.ranges,preset,state.selections,false);
-  return (picked.length?visibleAppearanceRanges(state.ranges,preset,state.selections,preset!=='always').map(x=>x.text.trim().replace(/[,;]+$/,'')).join(', '):state.base.trim())||'(нет тегов)';
+  const configured=hasConfiguredAppearanceViews({appearanceRanges:state.ranges,appearanceSelections:state.selections});
+  // Mirror NESS_VIS insertion: an empty preset shows only Always, never the
+  // entire source appearance unless no views were configured at all.
+  const selected=visibleAppearanceRanges(state.ranges,preset,state.selections,preset!==NESS_APPEARANCE_ALWAYS);
+  const tags=selected.map(x=>x.text.trim().replace(/[,;]+$/,'')).filter(Boolean).join(', ');
+  return (preset===NESS_APPEARANCE_ALWAYS||configured?tags:state.base.trim())||'(нет тегов)';
  }
  function render(){
   onLayoutChange(layout,mode);
