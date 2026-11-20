@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.3';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.4';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -144,32 +144,27 @@ function resetAllBundledPrompts() {
 }
 async function synchronizePrompts() {
     const state = settings();
-    // The signature changes for BOTH upgrades and downgrades. User edits within one build persist.
+    // All bundled director AND service instructions are version-owned, not
+    // user-owned: no saved setting is allowed to shadow the shipped originals.
+    // Only customProfiles from "Создать профиль" may persist across updates.
     const signature = SP_IMAGEN_BUNDLE_VERSION + ':'
         + await hash(JSON.stringify(SP_IMAGEN_PROMPTS) + '\n' + JSON.stringify(CODE_PROMPT_DEFAULTS));
-    if (state.appliedBundleSignature === signature) {
-        // Repair missing shipped keys without overwriting deliberate edits made in this build.
-        let missing = false;
-        for (const [name, shipped] of Object.entries(SP_IMAGEN_PROMPTS)) {
-            if (typeof state.prompts[name] !== 'string' || !state.prompts[name].trim()) {
-                state.prompts[name] = shipped; missing = true;
-            }
-        }
-        if (missing) saveSettings();
-        return;
-    }
+    const shippedNames = Object.keys(SP_IMAGEN_PROMPTS);
+    const exactDirectors = Object.keys(state.prompts).length === shippedNames.length
+        && shippedNames.every(name => state.prompts[name] === SP_IMAGEN_PROMPTS[name]);
+    const oldOverrides = Object.keys(state.codePrompts).length > 0;
+    if (state.appliedBundleSignature === signature && exactDirectors && !oldOverrides) return;
     const alreadyInstalled = Object.keys(state.prompts).length || Object.keys(state.codePrompts).length;
     state.promptBackups ??= {};
-    // Before replacing originals on an update, keep the previous full set. Never lose user profiles.
     if (alreadyInstalled) state.promptBackups.automatic = snapshotBundledPrompts(state);
     state.prompts = { ...SP_IMAGEN_PROMPTS };
+    // Service prompts always resolve directly from this release.
     state.codePrompts = {};
     state.promptBases = Object.fromEntries(await Promise.all(
         Object.entries(SP_IMAGEN_PROMPTS).map(async ([key, value]) => [key, await hash(value)])));
     state.pendingPrompts = {};
     state.seenRelease = SP_IMAGEN_RELEASE;
     state.appliedBundleSignature = signature;
-    // Save immediately via the host save function; a later page load must not re-run migration.
     await Promise.resolve(context().saveSettingsDebounced?.());
 }
 
@@ -490,7 +485,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     backups.style.flexWrap = 'wrap';
     const backupInfo = document.createElement('p'); backupInfo.className = 'spi-status';
     backupInfo.style.flexBasis = '100%';
-    backupInfo.textContent = 'Обновления заменяют встроенные инструкции; личные профили сохраняются. Перед обновлением старая версия копируется автоматически.';
+    backupInfo.textContent = 'При каждом запуске встроенные инструкции сверяются с текущей версией и восстанавливаются автоматически. Копии доступны для обмена вручную до перезагрузки; личные профили сохраняются.';
     const backupButton = button('◇ Сделать резервную копию промптов', backups, () => {
         try { saveManualPromptBackup(); backupInfo.textContent = 'Копия сохранена. Кнопка обмена меняет старые и текущие промпты местами.'; syncBackupButtons(); }
         catch (error) { backupInfo.textContent = String(error?.message || error); }
