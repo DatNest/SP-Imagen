@@ -594,6 +594,7 @@ function openCustomProfileEditor(existing=null,refresh=()=>{},template=null){
     if(!field.value)field.value=getTemplate();
     const templateActions=document.createElement('div');templateActions.className='spi-dialog-actions';
     button('Взять шаблон выбранного типа',templateActions,()=>{if(field.value.trim()&&!confirm('Заменить введённый текст промпта шаблоном '+PROFILE_KINDS[kind.value]+'?'))return;field.value=getTemplate();});
+    button('Начать с чистого листа',templateActions,()=>{if(field.value.trim()&&!confirm('Очистить весь текст собственной инструкции режиссёра?'))return;field.value='';field.focus();});
     form.append(templateActions);
     formField(form,'Полная инструкция собственного режиссёра',field,'Можно редактировать всё. Не удаляй обязательный HTML/JSON-формат, Text: и разделители персонажей, иначе финальный промпт может не обработаться.');
     const visible=document.createElement('input');visible.type='checkbox';visible.checked=seed.visible!==false;
