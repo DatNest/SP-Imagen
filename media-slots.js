@@ -127,7 +127,7 @@ export async function installSpImagenMediaSlots(options) {
       position: fixed !important;
       inset: var(--ms-top, 0px) auto auto var(--ms-left, 0px) !important;
       z-index: 2147482000 !important;
-      inline-size: min(12em, var(--ms-max-width));
+      inline-size: min(15em, var(--ms-max-width));
       max-block-size: var(--ms-max-height);
       overflow: auto;
       overscroll-behavior: contain;
@@ -255,14 +255,15 @@ export async function installSpImagenMediaSlots(options) {
     .generate { opacity: .8; font-size: 1.25em; }
     .generate[aria-expanded="true"], .generate:focus-visible { opacity: 1; }
     .generate, .tool { min-inline-size: 32px; min-block-size: 32px; text-align: center; }
+    .menu-empty {font-size:12px;line-height:1.45;opacity:.85;padding:8px;}
     .option {
       display: block;
       inline-size: 100%;
       min-block-size: 36px;
       padding: .45em .65em;
       text-align: start;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
+      white-space: normal;
     }
     @media (hover: hover) {
       .generate:hover { opacity: 1; }
