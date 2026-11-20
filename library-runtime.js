@@ -3,6 +3,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
+import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections } from './appearance-board.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -468,6 +469,8 @@ function validateMasterLibrary(input,{copy=true}={}){
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
   }
   if(Object.hasOwn(entry,'appearanceSelections'))entry.appearanceSelections=normalizeAppearanceSelections(entry.base,entry.appearanceSelections);
+  if(Object.hasOwn(entry,'appearanceSections'))entry.appearanceSections=normalizeAppearanceSections(entry.appearanceSections,entry.base);
+  if(Object.hasOwn(entry,'appearanceSkin'))entry.appearanceSkin=normalizeSkinTags(entry.appearanceSkin);
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
  const normalize=s=>s.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
@@ -811,6 +814,22 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   base=next;updatePresets();
  }
  area.oninput=()=>{sync();changed();drawFragments();};
+ const board=createAppearanceBoard({
+   ui,parent:form,initialSkin:initial.appearanceSkin,initialSections:initial.appearanceSections,
+   readBaseState:()=>({base,ranges,selections}),
+   writeBaseState:next=>{
+     area.value=base=next.base;
+     ranges=normalizeAppearanceRanges(base,next.ranges);
+     selections=normalizeAppearanceSelections(base,next.selections);
+     changed();updatePresets();drawFragments();
+   },
+   changed,readOnly:()=>!canEdit(),
+   onLayoutChange:(layout,mode)=>{
+     const showLegacy=mode==='base'&&layout==='text';
+     wrap.hidden=!showLegacy;
+     box.hidden=!showLegacy;
+   }
+ });
  function updateFormat(){
    const prose=formatMode==='prose';
    wrap.dataset.format=prose?'prose':'tags';
@@ -819,8 +838,9 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    tagInput.hidden=prose||editing;
    moves.hidden=prose||editing||!editingTag;
    pencil.hidden=prose;
-   box.hidden=prose;
    if(!prose){drawFragments();updateMoves();}
+   board.setAvailableFormat(formatMode);
+   board.refresh();
  }
  updatePresets();drawFragments();updateFormat();
  return {
@@ -833,7 +853,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
      return true;
    },
    get format(){return formatMode;},
-   get value(){sync();return {ranges,selections};}
+   get value(){sync();return {ranges,selections,skin:board.getSkin(),sections:board.getSections()};}
  };
 }
 
@@ -859,7 +879,9 @@ async function openLibraryEditor(){
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
   entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields))if(e.value!==''||Object.hasOwn(entry,key))entry[key]=e.value;
-  const {ranges,selections}=visibility.value;
+  const {ranges,selections,skin,sections}=visibility.value;
+  if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
+  if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
   if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
   if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
   aliases.commit();const names=aliases.values;
@@ -978,7 +1000,8 @@ async function openLibraryEditor(){
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
-  const body=tabs.add('Отметины и тело');
+  const body=tabs.add('Старые поля отметин');
+  el('p','Старые поля сохранены для совместимости с существующими профилями. Новый конструктор «Кожа и отметины» находится во вкладке «Внешность». Не копируй одни и те же признаки в оба места без необходимости.',body,'ness-note');
   const marks=el('section',undefined,body,'ness-body-section');marks.setAttribute('data-library-body-marks','');
   el('h4','Отметины на коже',marks);
   el('p','Шрамы, татуировки, родинки и другие постоянные отметины. Выбери часть тела и впиши короткие английские теги через запятую. Укажи сторону, если это важно.',marks,'ness-note');
