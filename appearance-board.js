@@ -43,7 +43,12 @@ export function normalizeSkinTags(raw){
  }
  const always=new Set(selections.always||[]);
  for(const id of Object.keys(SKIN_PRESETS))if(selections[id])selections[id]=selections[id].filter(x=>!always.has(x));
- return {tags:items,selections,sections};
+ // Optional presentation metadata for one visual pool. It never enters the
+ // image prompt; legacy base/skin/nude fields remain authoritative.
+ const poolOrder=Array.isArray(data.poolOrder)?[...new Set(data.poolOrder.filter(x=>typeof x==='string'&&x.length<=1200))].slice(0,1200):[];
+ const poolSections=(Array.isArray(data.poolSections)?data.poolSections:[]).filter(x=>x&&/^[a-z][a-z0-9_]{0,48}$/.test(String(x.id||''))&&validLabel(x.title)&&Number.isInteger(x.before))
+   .slice(0,60).map(x=>({id:x.id,title:validLabel(x.title),before:Math.max(0,Math.min(1200,x.before))}));
+ return {tags:items,selections,sections,poolOrder,poolSections};
 }
 export const hasSkinSelections=skin=>Object.values(normalizeSkinTags(skin).selections).some(xs=>xs.length>0);
 export function formatSkinParts(skin,parts){
@@ -103,10 +108,27 @@ export function reorderBaseTags(state,reordered){
  return {base:text,ranges:mapRanges(oldRanges,false),selections:normalizeAppearanceSelections(text,Object.fromEntries(Object.entries(oldSelections).map(([k,v])=>[k,mapRanges(v,true)])))};
 }
 
-export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,initialSkin,initialSections,changed,readOnly,onLayoutChange=()=>{}}){
+export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfw=()=>({}),writeNsfw=()=>{},initialSkin,initialSections,changed,readOnly,onLayoutChange=()=>{}}){
  const {el,button,clear,input}=ui;
  let skin=normalizeSkinTags(initialSkin),sections=normalizeAppearanceSections(initialSections,readBaseState().base);
  let mode='base',preset='face',layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
+ const nudeFields=Object.freeze({nudeUpper:'Голый верх',nudeLower:'Голый низ'});
+ const tagKey=text=>norm(text);
+ const parseNude=value=>String(value||'').split(',').map(x=>x.trim().replace(/;\s*$/,'').trim()).filter(Boolean);
+ const nudeSelected=id=>parseNude(readNsfw()?.[id]);
+ const allPool=()=>{
+  const base=parseBaseTags(readBaseState().base).map(tag=>({...tag,source:'base',poolKey:tagKey(tag.text)}));
+  const found=new Set(base.map(t=>t.poolKey));
+  const extra=skin.tags.filter(tag=>!found.has(tagKey(tag.text))).map(tag=>({...tag,source:'skin',poolKey:tagKey(tag.text)}));
+  for(const tag of extra)found.add(tag.poolKey);
+  for(const key of Object.keys(nudeFields))for(const text of parseNude(readNsfw()?.[key])){
+   const token=tagKey(text);
+   if(found.has(token))continue;
+   found.add(token);extra.push({id:'n_'+extra.length,text,source:'nsfw',poolKey:token});
+  }
+  const all=[...base,...extra],sort=new Map(skin.poolOrder.map((key,i)=>[key,i]));
+  return all.sort((a,b)=>(sort.get(a.poolKey)??(100000+all.indexOf(a)))-(sort.get(b.poolKey)??(100000+all.indexOf(b))));
+ };
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Конструктор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
@@ -119,22 +141,24 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
  const basic=button('Основа',modes,()=>{mode='base';preset='face';if(appearanceFormat==='prose')layout='text';checked.clear();render();},'quiet');
  const marks=button('Кожа и отметины',modes,()=>{mode='skin';layout='board';preset='upper_front';checked.clear();render();},'quiet');
+ const nsfw=button('NSFW',modes,()=>{mode='nsfw';layout='board';preset='nudeUpper';checked.clear();render();},'quiet');
  const content=el('div',undefined,frame,'ness-tagboard-body');
- const snapshot=()=>copy({base:readBaseState(),sections,skin});
+ const snapshot=()=>copy({base:readBaseState(),sections,skin,nsfw:readNsfw()});
  function applySnapshot(s){
   writeBaseState(copy(s.base));
   sections=normalizeAppearanceSections(s.sections,s.base.base);skin=normalizeSkinTags(s.skin);
+  for(const key of Object.keys(nudeFields))if(s.nsfw?.[key]!==undefined)writeNsfw(key,s.nsfw[key]);
   changed();render();
  }
  function record(){undo.push(snapshot());if(undo.length>50)undo.shift();redo.length=0;}
  function after(){changed();render();}
- const availablePresets=()=>mode==='base'?{always:'✦ Показывать всегда',...Object.fromEntries(Object.entries(NESS_APPEARANCE_PRESETS).map(([id,v])=>[id,v.label]))}:{always:'✦ Для всех открытых областей',...SKIN_PRESETS};
+ const availablePresets=()=>mode==='base'?{always:'✦ Показывать всегда',...Object.fromEntries(Object.entries(NESS_APPEARANCE_PRESETS).map(([id,v])=>[id,v.label]))}:mode==='skin'?{always:'✦ Для всех открытых областей',...SKIN_PRESETS}:nudeFields;
  const baseState=()=>readBaseState();
  const baseSelected=(id)=>visibleAppearanceRanges(baseState().ranges,id,baseState().selections,false);
  const isBaseChosen=(tag,id)=>baseSelected(id).some(r=>r.start<tag.end&&tag.start<r.end);
- const isSkinChosen=(tag,id)=>(skin.selections[id]||[]).includes(tag.id);
- const isChosen=(tag,id)=>mode==='base'?isBaseChosen(tag,id):isSkinChosen(tag,id);
- const items=()=>mode==='base'?parseBaseTags(baseState().base):skin.tags;
+ const isSkinChosen=(tag,id)=>skin.tags.some(t=>tagKey(t.text)===tag.poolKey&&(skin.selections[id]||[]).includes(t.id));
+ const isChosen=(tag,id)=>mode==='base'?(tag.source==='base'&&isBaseChosen(tag,id)):mode==='skin'?isSkinChosen(tag,id):nudeSelected(id).some(t=>tagKey(t)===tag.poolKey);
+ const items=allPool;
  function setSkinSelection(id,list){
   skin.selections[id]=[...new Set(list)];
   if(id===SKIN_ALWAYS){
