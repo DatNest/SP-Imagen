@@ -17,7 +17,7 @@ function parseJsonInstruction(value) {
     try { return { config: JSON.parse(json), repaired: false }; }
     catch (error) {
         // Only repair escaping inside a fully closed envelope; never invent missing prompt data.
-        const shape = json.match(/^\s*\{\s*"prompt"\s*:\s*"([\s\S]*)"\s*,\s*"aspect_ratio"\s*:\s*"(1:1|2:3|9:16)"\s*,\s*"image_size"\s*:\s*"1K"\s*\}\s*$/);
+        const shape = json.match(/^\s*\{\s*"prompt"\s*:\s*"([\s\S]*)"\s*,\s*"aspect_ratio"\s*:\s*"(1:1|2:3|3:2|9:16)"\s*,\s*"image_size"\s*:\s*"1K"\s*\}\s*$/);
         if (!shape) throw new Error('Повреждённый или обрезанный JSON режиссёра. Исходный ответ сохранён в sp_imagen_last_director_raw.', { cause: error });
         const body = shape[1];
         let escaped = '';
@@ -43,7 +43,7 @@ function validateImageConfig(result) {
     if (!config || typeof config !== 'object' || Array.isArray(config)
         || Object.keys(config).sort().join(',') !== 'aspect_ratio,image_size,prompt'
         || typeof config.prompt !== 'string' || !config.prompt.trim() || config.prompt.length > 45000
-        || !['1:1', '2:3', '9:16'].includes(config.aspect_ratio) || config.image_size !== '1K') {
+        || !['1:1', '2:3', '3:2', '9:16'].includes(config.aspect_ratio) || config.image_size !== '1K') {
         throw new Error('В ответе режиссёра отсутствует корректный prompt, aspect_ratio или image_size. Исходный ответ сохранён.');
     }
     return result;
