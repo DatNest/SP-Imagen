@@ -322,7 +322,7 @@ function downloadPromptJson(filename, data) {
 function openPromptJsonTransfer() {
     const { dialog, close } = shell('SP Imagen · JSON промптов', 'spi-prompt-json');
     const intro = document.createElement('p');
-    intro.textContent = 'Импорт заменяет три режиссёрских промпта. Для начала можно скачать шаблон с полями test.';
+    intro.textContent = 'Импорт создаёт три ЛИЧНЫЕ копии режиссёров, не перезаписывая штатные инструкции. Копии можно включить отдельно для каждого формата.';
     const upload = document.createElement('input');
     upload.type = 'file';
     upload.accept = '.json,application/json';
@@ -353,14 +353,20 @@ function openPromptJsonTransfer() {
         try {
             const imported = parsePromptJson(area.value);
             const sample = SP_IMAGEN_PROMPT_JSON_KEYS.some(key => imported[key].trim() === 'test');
-            const question = sample
-                ? 'Некоторые поля содержат test — это только шаблон, с ним генерация не будет работать. Всё равно заменить три режиссёрских промпта?'
-                : 'Заменить три текущих режиссёрских промпта данными из JSON?';
-            if (!confirm(question)) return;
+            if (sample) throw new Error('Шаблон с test нельзя включать в генерацию. Сначала заполни все три инструкции.');
+            if (!confirm('Создать три пользовательские копии из JSON? Официальные режиссёры не изменятся. Новые копии нужно включить в «Мои промпты».')) return;
             const state = settings();
-            for (const key of SP_IMAGEN_PROMPT_JSON_KEYS) state.prompts[key] = imported[key];
+            for (const key of SP_IMAGEN_PROMPT_JSON_KEYS) {
+                const kind = key.replace(/^sp_ness_(snapshot|comic|story_page)_director$/, '$1');
+                const profile = normalizeProfile({
+                    id:'custom_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,9),
+                    name:'Импорт · '+PROFILE_LABELS[key],kind, prompt:'',directorPrompt:imported[key],options:{}
+                });
+                if(!profile||!profile.directorPrompt.trim())throw new Error('Неверная инструкция '+PROFILE_LABELS[key]);
+                state.customProfiles.push(profile);
+            }
             saveSettings();
-            status.textContent = 'Импортировано 3 промпта. Тексты сохранены в настройках.';
+            status.textContent = 'Созданы три пользовательские копии. Встроенные промпты не изменены. Открой «Мои промпты» и включи нужную копию.';
             refreshNewIndicators();
         } catch (error) { status.textContent = String(error?.message || error); }
     }, true);
