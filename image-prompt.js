@@ -88,6 +88,23 @@ export function limitComicDialogue(prompt, kind, settings) {
         ? bubbles.map(b => ({ words: b.words, description: b.description }))
         : tail.split(/\r?\n\s*\r?\n/).filter(Boolean).map(words => ({ words, description: '' }));
 
+    // Never destroy otherwise valid lettering to satisfy a word limit.
+    // The director may place bubbles after character sections, use an alternate
+    // bubble syntax, or write a complete line longer than the selected cap.
+    // In those cases retain the original result for review instead of removing
+    // all bubble instructions and the terminal Text: block.
+    if (maxLines > 0) {
+        const bubbleMarkers = [...base.matchAll(/Speech bubble\s+\d+\s*:/giu)].length;
+        const unparsedBubbles = parsed && parsed.entries.length !== bubbleMarkers;
+        const bubblesAfterCast = /Speech bubble\s+\d+\s*:/iu.test(actors);
+        const unshortenable = candidates.some(item =>
+            String(item.words || '').trim() && !wholeShortPhrase(item.words, maxWords));
+        if (unparsedBubbles || bubblesAfterCast || unshortenable) {
+            console.warn('[SP Imagen] Dialogue preserved: automatic limits would lose or desynchronize speech bubbles. Review Text: before generating.');
+            return full;
+        }
+    }
+
     const selected = [];
     for (const item of candidates) {
         if (selected.length >= maxLines) break;
