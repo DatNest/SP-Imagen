@@ -81,11 +81,21 @@ export function limitComicDialogue(prompt, kind, settings) {
     const firstCharacter = visual.search(/\s\|\s*(?:girl|boy|cat|other)\s*,/iu);
     const base = firstCharacter < 0 ? visual : visual.slice(0, firstCharacter);
     const actors = firstCharacter < 0 ? '' : visual.slice(firstCharacter);
-    const parsed = parseBubbles(base);
-    const foundMarkers = [...base.matchAll(/Speech bubble\s+\d+\s*:/giu)].length;
-    if (!foundMarkers) return full; // Object lettering is not spoken dialogue.
-    if (!parsed || parsed.entries.length !== foundMarkers ||
-        /Speech bubble\s+\d+\s*:/iu.test(actors) || !last) {
+    // Existing prompts put bubbles either before the cast or, as required by
+    // the current Comic/Story Page contracts, AFTER all character sections.
+    // Process only a single, unambiguous bubble group in either position.
+    const beforeMarkers = [...base.matchAll(/Speech bubble\s+\d+\s*:/giu)].length;
+    const afterMarkers = [...actors.matchAll(/Speech bubble\s+\d+\s*:/giu)].length;
+    if (!beforeMarkers && !afterMarkers) return full; // Object lettering is not dialogue.
+    if (beforeMarkers && afterMarkers) {
+        console.warn('[SP Imagen] Dialogue limits skipped: bubble groups occur on both sides of character sections.');
+        return full;
+    }
+    const afterCast = afterMarkers > 0;
+    const bubbleContainer = afterCast ? visual : base;
+    const parsed = parseBubbles(bubbleContainer);
+    const foundMarkers = afterCast ? afterMarkers : beforeMarkers;
+    if (!parsed || parsed.entries.length !== foundMarkers || !last) {
         console.warn('[SP Imagen] Dialogue limits skipped: bubble format or location is ambiguous. Review Text:.');
         return full;
     }
@@ -137,6 +147,6 @@ export function limitComicDialogue(prompt, kind, settings) {
             b.description.replace(/[;, \t]+$/u, '') + ', saying ' + JSON.stringify(b.words));
         resultBase += '; ' + serialized.join('; ');
     }
-    const result = (resultBase + actors).trimEnd();
+    const result = (resultBase + (afterCast ? '' : actors)).trimEnd();
     return printed.length ? result + '\n\nText: ' + printed.join('\n\n') : result;
 }
