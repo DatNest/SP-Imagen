@@ -159,6 +159,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const isSkinChosen=(tag,id)=>skin.tags.some(t=>tagKey(t.text)===tag.poolKey&&(skin.selections[id]||[]).includes(t.id));
  const isChosen=(tag,id)=>mode==='base'?(tag.source==='base'&&isBaseChosen(tag,id)):mode==='skin'?isSkinChosen(tag,id):nudeSelected(id).some(t=>tagKey(t)===tag.poolKey);
  const items=allPool;
+ let poolSections=skin.poolSections.length?copy(skin.poolSections):
+  [...sections.map(x=>({...x})),...skin.sections.map(x=>({...x,before:parseBaseTags(baseState().base).length+x.before}))];
+ skin.poolSections=copy(poolSections);
  function setSkinSelection(id,list){
   skin.selections[id]=[...new Set(list)];
   if(id===SKIN_ALWAYS){
@@ -174,59 +177,81 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!relevant.length)return;
   record();
   if(mode==='skin'){
-   const ids=new Set(relevant.map(t=>t.id));
+   const ids=new Set();
+   for(const tag of relevant){
+    let stored=skin.tags.find(t=>tagKey(t.text)===tag.poolKey);
+    if(!stored&&assign){
+     stored={id:'s'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:tag.text,section:''};
+     skin.tags.push(stored);
+    }
+    if(stored)ids.add(stored.id);
+   }
    const current=new Set(skin.selections[preset]||[]);
    for(const id of ids)if(assign)current.add(id);else current.delete(id);
    setSkinSelection(preset,[...current]);
    if(preset!==SKIN_ALWAYS&&assign)skin.selections.always=(skin.selections.always||[]).filter(x=>!ids.has(x));
+  }else if(mode==='nsfw'){
+   const current=nudeSelected(preset);
+   const ids=new Set(relevant.map(t=>t.poolKey));
+   const next=assign?[...current,...relevant.filter(t=>!current.some(x=>tagKey(x)===t.poolKey)).map(t=>t.text)]:
+    current.filter(t=>!ids.has(tagKey(t)));
+   writeNsfw(preset,next.join(', '));
   }else{
-   const state=baseState(),updated={...(state.selections||{})};
-   const overlap=(r,t)=>r.start<t.end&&t.start<r.end;
-   const current=baseSelected(preset).filter(r=>!relevant.some(t=>overlap(r,t)));
-   if(assign)for(const t of relevant)current.push({start:t.start,end:t.end,text:t.text});
+   let state=baseState();
+   const added=relevant.filter(t=>assign&&t.source!=='base');
+   if(added.length){
+    state=reorderBaseTags(state,[...parseBaseTags(state.base),...added.map(t=>({text:t.text}))]);
+    writeBaseState(state);
+   }
+   const updated={...(state.selections||{})};
+   const current=visibleAppearanceRanges(state.ranges,preset,state.selections,false).filter(r=>!relevant.some(t=>tagKey(t.text)===tagKey(r.text)));
+   if(assign)for(const tag of relevant){
+    const token=parseBaseTags(state.base).find(t=>tagKey(t.text)===tag.poolKey);
+    if(token)current.push({start:token.start,end:token.end,text:token.text});
+   }
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
    if(preset===NESS_APPEARANCE_ALWAYS&&assign){
     for(const id of Object.keys(NESS_APPEARANCE_PRESETS)){
-     updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!relevant.some(t=>overlap(r,t))),true);
+     updated[id]=normalizeAppearanceRanges(state.base,(state.selections[id]||[]).filter(r=>!relevant.some(t=>tagKey(t.text)===tagKey(r.text))),true);
     }
    }else if(preset!==NESS_APPEARANCE_ALWAYS&&assign){
-    updated.always=normalizeAppearanceRanges(state.base,baseSelected(NESS_APPEARANCE_ALWAYS).filter(r=>!relevant.some(t=>overlap(r,t))),true);
+    updated.always=normalizeAppearanceRanges(state.base,(state.selections.always||[]).filter(r=>!relevant.some(t=>tagKey(t.text)===tagKey(r.text))),true);
    }
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
   after();
  }
 
- const sectionsForMode=()=>mode==='base'?sections:skin.sections;
+ const sectionsForMode=()=>poolSections;
  function orderedSequence(){
   const all=items(),headings=sectionsForMode(),sequence=[];
   for(let i=0;i<=all.length;i++){
    for(const divider of headings)if(divider.before===i)sequence.push({kind:'divider',id:divider.id,section:divider});
-   if(i<all.length)sequence.push({kind:'tag',id:mode==='base'?'base:'+all[i].start:all[i].id,tag:all[i]});
+   if(i<all.length)sequence.push({kind:'tag',id:all[i].poolKey,tag:all[i]});
   }
   return sequence;
  }
  function applySequence(sequence){
   if(readOnly())return;
   record();
-  const sorted=sequence.filter(t=>t.kind==='tag').map(t=>t.tag),beforeState=mode==='base'?baseState():null;
-  const movedSections=[];
+  const sorted=sequence.filter(t=>t.kind==='tag').map(t=>t.tag);
+  skin.poolOrder=sorted.map(t=>t.poolKey);
+  poolSections=[];
   let index=0;
   for(const token of sequence){
    if(token.kind==='tag')index++;
-   else movedSections.push({id:token.id,title:token.section.title,before:index});
+   else poolSections.push({id:token.id,title:token.section.title,before:index});
   }
-  if(mode==='base'){
-   sections=movedSections;
-   const existing=parseBaseTags(beforeState.base);
-   const same=existing.length===sorted.length&&existing.every((t,i)=>t.start===sorted[i].start&&t.text===sorted[i].text);
-   if(!same)writeBaseState(reorderBaseTags(beforeState,sorted));
-  }else{
-   skin.tags=sorted.map(t=>({...t}));
-   skin.sections=movedSections;
-  }
+  skin.poolSections=copy(poolSections);
+  const before=parseBaseTags(baseState().base),baseSorted=sorted.filter(t=>t.source==='base');
+  if(baseSorted.length===before.length&&before.some((tag,i)=>tag.start!==baseSorted[i].start))
+   writeBaseState(reorderBaseTags(baseState(),baseSorted));
+  const skinRank=new Map(sorted.filter(t=>t.source==='skin').map((tag,i)=>[tag.id,i]));
+  skin.tags.sort((a,b)=>(skinRank.get(a.id)??100000)-(skinRank.get(b.id)??100000));
+  sections=normalizeAppearanceSections(poolSections.filter(x=>x.before<=parseBaseTags(baseState().base).length),baseState().base);
   after();
  }
+
  function moveSequenceToken(token,target,afterTarget=false){
   if(readOnly())return;
   const sequence=orderedSequence(),from=sequence.findIndex(t=>t.kind===token.kind&&t.id===token.id),at=sequence.findIndex(t=>t.kind===target.kind&&t.id===target.id);
@@ -242,13 +267,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  function reposition(tag,delta){
   if(readOnly())return;
-  const sequence=orderedSequence(),from=sequence.findIndex(t=>t.kind==='tag'&&t.id===(mode==='base'?'base:'+tag.start:tag.id)),to=from+delta;
+  const sequence=orderedSequence(),from=sequence.findIndex(t=>t.kind==='tag'&&t.id===tag.poolKey),to=from+delta;
   if(from<0||to<0||to>=sequence.length)return;
   moveSequenceToken(sequence[from],sequence[to],delta>0);
  }
  function changeTagList(changedItems){
   if(readOnly())return;
-  const old=items(),survivors=new Set(changedItems.filter(t=>Number.isInteger(t.start)).map(t=>t.start));
+  const old=parseBaseTags(baseState().base),survivors=new Set(changedItems.filter(t=>Number.isInteger(t.start)).map(t=>t.start));
   const anchored=sections.map(d=>({...d,before:old.slice(0,d.before).filter(t=>survivors.has(t.start)).length}));
   record();
   const state=reorderBaseTags(baseState(),changedItems);
@@ -262,20 +287,20 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!title)return;
   record();
   const id='g'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),divider={id,title,before:items().length};
-  sectionsForMode().push(divider);
+  poolSections.push(divider);skin.poolSections=copy(poolSections);
   after();
  }
  function renameGroup(id,title){
   if(readOnly()||!title.trim())return;
-  record();const group=sectionsForMode().find(x=>x.id===id);
-  if(group)group.title=validLabel(title);
+  record();const group=poolSections.find(x=>x.id===id);
+  if(group)group.title=validLabel(title);skin.poolSections=copy(poolSections);
   after();
  }
  function deleteGroup(id){
   if(readOnly()||!id)return;
   record();
-  if(mode==='base')sections=sections.filter(x=>x.id!==id);
-  else skin.sections=skin.sections.filter(x=>x.id!==id);
+  poolSections=poolSections.filter(x=>x.id!==id);skin.poolSections=copy(poolSections);
+  sections=sections.filter(x=>x.id!==id);skin.sections=skin.sections.filter(x=>x.id!==id);
   after();
  }
  function addTag(value){
