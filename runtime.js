@@ -3,7 +3,7 @@ import { withOperationDeadline } from './operation-timeout.js';
 import { DEFAULT_CARD_WARDROBE, DEFAULT_PERSONA_WARDROBE, normalizeCardWardrobeSource, getCardPersonaWardrobe } from './wardrobe-card.js';
 import { boundedWardrobe, parseLabeledWardrobeRows, mayMatchWardrobeBoundary, WARDROBE_NAME_PLACEHOLDER } from './wardrobe-literal.js';
 import { CODE_PROMPT_DEFAULTS } from './code-prompts.js';
-import { filterProfileSources, directorProfileGuidance, applyProfileToPrompt } from './profiles.js';
+import { filterProfileSources, directorProfileGuidance } from './profiles.js';
 import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
@@ -2186,7 +2186,8 @@ if(visibility.size && profile?.options?.includeCharacters!==false){
  config.prompt=insertVisibleAppearance(config.prompt,visibility);
  config.prompt=insertSkinAppearance(config.prompt,visibility);
 }
-config.prompt=applyProfileToPrompt(config.prompt,profile);
+// Personal composition rules are already included in the director's instructions.
+// Never prepend their raw text to the NAI5 image prompt.
 if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,runtimeSettings);
 const snapshot=spImagenExtension().snapshotGenerationConfig?.(config,kind);
 if(snapshot?.spImagenDirect)config.spImagenDirect=snapshot.spImagenDirect;
