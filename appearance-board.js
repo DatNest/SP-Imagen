@@ -1,5 +1,5 @@
 /**
- * Two-mode tag board. Display-only headings never enter the image prompt.
+ * Shared appearance catalogue with three assignment modes. Display-only headings never enter the image prompt.
  * Existing base strings and appearanceSelections offsets remain authoritative.
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
@@ -210,11 +210,11 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
 
  function toggle(tag,assign){changeMany([tag],assign);}
- function changeMany(tags,assign){
+ function changeMany(tags,assign,recordHistory=true){
   if(readOnly()||!tags.length)return;
   const relevant=tags.filter(t=>isChosen(t,preset)!==assign);
   if(!relevant.length)return;
-  record();
+  if(recordHistory)record();
   if(mode==='skin'){
    const current=new Set(skin.selections[preset]||[]),ids=new Set();
    for(const tag of relevant){
@@ -337,7 +337,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   record();
   const id='t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
   const tag={id,text};catalog.tags.push(tag);
-  changeMany([tag],true);
+  changeMany([tag],true,false);
  }
  function removeTag(tag){
   if(readOnly())return;
@@ -377,8 +377,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(mode==='skin'){
    if(preset==='always')return skin.tags.filter(t=>(skin.selections.always||[]).includes(t.id)).map(t=>t.text).join(', ')||'(нет тегов)';
    return formatSkinParts(skin,[preset])||'(нет тегов)';
-   }
-   if(mode==='nsfw')return String(readNsfwState()?.[preset]||'').trim()||'(нет тегов)';
+  }
+  if(mode==='nsfw')return String(readNsfwState()?.[preset]||'').trim()||'(нет тегов)';
   const state=baseState();
   const configured=hasConfiguredAppearanceViews({appearanceRanges:state.ranges,appearanceSelections:state.selections});
   // Mirror NESS_VIS insertion: an empty preset shows only Always, never the
@@ -390,7 +390,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function render(){
   onLayoutChange(layout,mode);
   basic.setAttribute('aria-pressed',String(mode==='base'));
-  marks.setAttribute('aria-pressed',String(mode==='skin'));nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
+  marks.setAttribute('aria-pressed',String(mode==='skin'));
+  nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
   boardButton.disabled=mode==='base'&&appearanceFormat==='prose';
   boardButton.title=boardButton.disabled?'Для обычного текста используй текстовый редактор; кожа остаётся независимым набором тегов.':'';
   boardButton.setAttribute('aria-pressed',String(layout==='board'));
