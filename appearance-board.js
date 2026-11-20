@@ -232,10 +232,12 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
  }
  function preview(){
   if(mode==='skin'){
-   const selected=[...(skin.selections[preset]||[])];return formatSkinParts(skin,preset==='always'?[]:[preset]).replace(/[,;\s]+$/,'')||'(нет тегов)';
+   if(preset==='always')return skin.tags.filter(t=>(skin.selections.always||[]).includes(t.id)).map(t=>t.text).join(', ')||'(нет тегов)';
+   return formatSkinParts(skin,[preset])||'(нет тегов)';
   }
   const state=baseState();
-  return visibleAppearanceRanges(state.ranges,preset,state.selections,preset!=='always').map(x=>x.text.trim().replace(/[,;]+$/,'')).join(', ')||'(нет тегов)';
+  const picked=visibleAppearanceRanges(state.ranges,preset,state.selections,false);
+  return (picked.length?visibleAppearanceRanges(state.ranges,preset,state.selections,preset!=='always').map(x=>x.text.trim().replace(/[,;]+$/,'')).join(', '):state.base.trim())||'(нет тегов)';
  }
  function render(){
   onLayoutChange(layout,mode);
@@ -350,7 +352,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
 export function skinAppearanceInstruction(records){
  const entries=[...records].filter(([,v])=>hasSkinSelections(v.skinTags));
  if(!entries.length)return '';
- const names=entries.map(([id,v])=>id+': '+Object.keys(SKIN_PRESETS).filter(k=>(v.skinTags?.selections?.[k]||[]).length).join(', ')).join('\n');
+ const names=entries.map(([id,v])=>id+': '+Object.keys(SKIN_PRESETS).filter(k=>(v.skinTags?.selections?.[k]||[]).length||(v.skinTags?.selections?.always||[]).length).join(', ')).join('\n');
  return '\n\nVISIBLE SKIN AND MARKS — ONE OPTIONAL MARKER PER CHARACTER\n'
   +'In each character entry whose ID is listed below, immediately after its [[NESS_VIS:id:preset]] marker and BEFORE any clothing, append [[NESS_SKIN:id:part1,part2]] for ONLY the uncovered skin areas actually visible in at least one chosen panel. You may choose multiple parts independently of the main appearance camera preset. '
   +'Allowed skin parts: '+Object.keys(SKIN_PRESETS).join(', ')+'. The lower_front and lower_back parts are DISTINCT; do not include lower_front when only the rear is visible, nor vice versa. Upper-front/back are distinct as well. '
@@ -360,7 +362,7 @@ export function skinAppearanceInstruction(records){
 }
 export function insertSkinAppearance(prompt,records){
  const inserted=new Set();
- const result=String(prompt||'').replace(/\[\[NESS_SKIN:([a-z][a-z0-9_]*):([a-z_,]+)\]\]/g,(whole,id,definition)=>{
+ const result=String(prompt||'').replace(/\[\[NESS_SKIN:([a-z][a-z0-9_]*):([a-z_,]+)\]\][ \t]*(?:[,;][ \t]*)?/g,(whole,id,definition)=>{
   const record=records.get(id);
   if(!record||!hasSkinSelections(record.skinTags)||inserted.has(id))
    throw Error('Некорректная повторная метка открытой кожи персонажа '+id+'. Сохрани исходный ответ режиссёра для проверки.');
