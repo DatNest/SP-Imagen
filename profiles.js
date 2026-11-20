@@ -20,6 +20,9 @@ export function normalizeProfile(input) {
     id, name: name.slice(0, 100),
     kind: Object.hasOwn(PROFILE_KINDS, input.kind) ? input.kind : 'all',
     prompt: String(input.prompt || '').slice(0, 20000),
+    // Only a format-specific user copy may replace one director. Legacy personal
+    // style prompts remain independent and continue to work across all formats.
+    directorPrompt: input.kind && input.kind !== 'all' ? String(input.directorPrompt || '').slice(0, 100000) : '',
     options: Object.fromEntries(Object.keys(DEFAULT_OPTIONS).map(key => [key, input.options?.[key] !== false])),
   };
 }
