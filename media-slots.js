@@ -1235,9 +1235,9 @@ export async function installSpImagenMediaSlots(options) {
 
   const manager = {
     installed: true,
-    version: 64,
-    controlsRevision: 26,
-    bundleVersion: '2.9.4',
+    version: 65,
+    controlsRevision: 27,
+    bundleVersion: '2.9.5',
     guideStep,
     endGuideDemo,
     supportedKinds: KINDS,
