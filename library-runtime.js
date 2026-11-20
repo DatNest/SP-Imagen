@@ -3,7 +3,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
-import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections } from './appearance-board.js';
+import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -473,6 +473,7 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(Object.hasOwn(entry,'appearanceSelections'))entry.appearanceSelections=normalizeAppearanceSelections(entry.base,entry.appearanceSelections);
   if(Object.hasOwn(entry,'appearanceSections'))entry.appearanceSections=normalizeAppearanceSections(entry.appearanceSections,entry.base);
   if(Object.hasOwn(entry,'appearanceSkin'))entry.appearanceSkin=normalizeSkinTags(entry.appearanceSkin);
+   if(Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog=normalizeAppearanceCatalog(entry.appearanceCatalog,entry.base,entry.appearanceSkin,{nudeUpper:entry.nudeUpper,nudeLower:entry.nudeLower},entry.appearanceSections);
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
  const normalize=s=>s.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
@@ -503,7 +504,7 @@ function loadMasterLibrary(){
 
 // Module: library_publish
 function librarySnapshot(data){
- return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
+ return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
 }
 async function saveMasterLibrary(input,expectedRaw){
  const st=SillyTavern.getContext();
@@ -549,7 +550,7 @@ function restoreLibraryBodyFields(input){
 }
 
 // Module: appearance_visibility_editor
-function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,save,canEdit){
+function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,save,canEdit,readNsfw=()=>({}),writeNsfw=()=>{},openCategory=()=>{}){
  const {el,clear,button,input}=ui;
  const wrap=el('div',undefined,undefined,'ness-appearance-wrap');
  if(tagColor)wrap.style.setProperty('--ness-appearance-color',tagColor);
@@ -816,12 +817,14 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
   base=next;updatePresets();
  }
  area.oninput=()=>{sync();changed();drawFragments();};
- let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base),board=null;
- function openBoard(parent){
+ let skin=normalizeSkinTags(initial.appearanceSkin),sections=normalizeAppearanceSections(initial.appearanceSections,base);
+  let catalog=normalizeAppearanceCatalog(initial.appearanceCatalog,base,skin,readNsfw(),sections),board=null;
+ function openBoard(parent,{mode='base',preset}={}){
   sync();
   closeBoard();
   board=createAppearanceBoard({
-   ui,parent,initialSkin:skin,initialSections:sections,
+   ui,parent,initialSkin:skin,initialSections:sections,initialCatalog:catalog,initialMode:mode,initialPreset:preset,
+    readNsfwState:readNsfw,writeNsfwState:writeNsfw,
    readBaseState:()=>({base,ranges,selections}),
    writeBaseState:next=>{
     area.value=base=next.base;
@@ -837,7 +840,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
  function closeBoard(){
   if(!board)return;
   skin=board.getSkin();
-  sections=board.getSections();
+  sections=board.getSections();catalog=board.getCatalog();
   board.element.remove();
   board=null;
  }
@@ -864,7 +867,7 @@ function createAppearanceVisibilityEditor(ui,form,area,initial,changed,tagColor,
    },
    openBoard,closeBoard,
    get format(){return formatMode;},
-   get value(){sync();return {ranges,selections,skin:board?board.getSkin():skin,sections:board?board.getSections():normalizeAppearanceSections(sections,base)};}
+   get value(){sync();return {ranges,selections,skin:board?board.getSkin():skin,sections:board?board.getSections():normalizeAppearanceSections(sections,base),catalog:board?board.getCatalog():normalizeAppearanceCatalog(catalog,base,skin,readNsfw())};}
  };
 }
 
@@ -890,9 +893,10 @@ async function openLibraryEditor(){
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
   entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields))if(e.value!==''||Object.hasOwn(entry,key))entry[key]=e.value;
-  const {ranges,selections,skin,sections}=visibility.value;
+  const {ranges,selections,skin,sections,catalog}=visibility.value;
   if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
   if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
+   entry.appearanceCatalog=catalog;
   if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
   if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
   aliases.commit();const names=aliases.values;
