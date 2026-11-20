@@ -10,6 +10,7 @@ import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KE
 import { parseImageHtml } from './image-transport.js';
 import { normalizeImagePrompt, limitComicDialogue } from './image-prompt.js';
 import { createSpImagenProgress } from './progress-ui.js';
+import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
 export function createSpImagenRuntime({ getExtension, getMediaSlots } = {}){
@@ -971,6 +972,54 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
  return {element,checks,flush:()=>pending,dispose(){disposed=true;if(timer!==null)clearTimeout(timer);addBox.ontoggle=null;search.oninput=null;list.dispose();},get rosterIds(){return ids.slice();}};
 }
 
+// The previous release offered this in-place save choice at both interruption points.
+// Keep it inside the current modal so there is no additional focus trap.
+function confirmKeepingDraft(panel, actions, what='черновик') {
+ return new Promise(resolve=>{
+  actions.hidden=true;
+  const box=document.createElement('div');box.className='ness-save-confirm';
+  const title=document.createElement('strong');title.textContent='Сохранить '+what+' до возвращения?';
+  const note=document.createElement('p');note.textContent='Черновик привязан к этому посту. Новая генерация на другом посте удалит его.';
+  const buttons=document.createElement('div');buttons.className='ness-save-confirm-actions';
+  let settled=false;
+  function choose(label,value) {
+   const b=document.createElement('button');b.type='button';b.className='ness-button';b.textContent=label;
+   b.onclick=()=>{if(settled)return;settled=true;box.remove();actions.hidden=false;resolve(value);};
+   buttons.append(b);
+  }
+  choose('Сохранить',true);choose('Не сохранять',false);choose('Назад',null);
+  box.append(title,note,buttons);panel.append(box);
+ });
+}
+function activePostIndex(ctx) {
+ const selected=nessGenerationTargets.get(ctx.chat);
+ return selected&&selected.chatId===ctx.chatId&&ctx.chat?.[selected.index]===selected.message?selected.index:-1;
+}
+function parserDraftFromVariables(v) {
+ return {
+  parsedScene:String(v.sp_imagen_parsed_scene||''),
+  rpOutfits:String(v.sp_imagen_rp_outfits||''),
+  parserWarning:String(v.sp_imagen_parser_warning||''),
+  npcDraft:String(v.sp_imagen_npc_draft||''),
+  npcStatus:String(v.sp_imagen_npc_status||''),
+  sourceCount:String(v.sp_imagen_rp_source_count||'')
+ };
+}
+function restoreParserToVariables(v,draft){
+ const parsed=draft?.parser||{};
+ v.sp_imagen_parsed_scene=String(parsed.parsedScene||'');
+ v.sp_imagen_rp_outfits=String(parsed.rpOutfits||'');
+ v.sp_imagen_parser_warning=String(parsed.parserWarning||'');
+ v.sp_imagen_npc_draft=String(parsed.npcDraft||'');
+ v.sp_imagen_npc_status=String(parsed.npcStatus||'');
+ v.sp_imagen_rp_source_count=String(parsed.sourceCount||'');
+ v.sp_imagen_active_kind=draft.kind;
+ v.sp_imagen_preview_status='cancelled';
+ v.sp_imagen_run_ticket='';
+ v.sp_imagen_prepared_ticket='';
+ v.sp_imagen_structured_library='';
+ v.sp_imagen_resume_review=draft.review||null;
+}
 // Module: dialogs
 function createDialogShell(kind='review'){
  return createOwnedDialogShell(kind,{loadTheme:loadNessTheme,applyTheme:applyNessTheme});
@@ -1433,6 +1482,10 @@ validateKind(kind);
 
   if(SillyTavern.getContext().chat!==chat||SillyTavern.getContext().chatId!==id)throw Error('Чат изменился во время подготовки.');
   v.sp_imagen_rp_source_count=String(recent.length);
+  // Store the processed scene before opening the review window; no extra LLM call.
+  if(targetIndex!==null)savePostDraft(st,targetIndex,{
+   kind,stage:'parsed',parser:parserDraftFromVariables(v)
+  },{replace:true});
   if(typeof st.saveMetadata==='function')await st.saveMetadata();
   return 'RP-постов подготовлено: '+recent.length;
   }finally{preparationLocks.delete(chat);}
