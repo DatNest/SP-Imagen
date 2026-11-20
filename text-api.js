@@ -1,5 +1,5 @@
 export function defaultTextApiSettings() {
-    return { mode: 'st', profileId: '', endpoint: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000 };
+    return { mode: 'st', profileId: '', endpoint: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000, streaming: false, jailbreak: false, jailbreakText: '', reasoningMode: 'inherit', reasoningProtocol: 'auto', reasoningEffort: 'medium', reasoningBudget: 4096 };
 }
 
 export function normalizeTextApiSettings(value) {
@@ -14,6 +14,14 @@ export function normalizeTextApiSettings(value) {
     settings.maxTokens = Math.trunc(Number(settings.maxTokens));
     if (!Number.isFinite(settings.temperature) || settings.temperature < 0 || settings.temperature > 2) settings.temperature = 0.2;
     if (!Number.isInteger(settings.maxTokens) || settings.maxTokens < 1000 || settings.maxTokens > 100000) settings.maxTokens = 16000;
+    settings.streaming = settings.streaming === true;
+    settings.jailbreak = settings.jailbreak === true;
+    settings.jailbreakText = String(settings.jailbreakText || '').slice(0, 10000);
+    if (!['inherit','off','effort','budget'].includes(settings.reasoningMode)) settings.reasoningMode = 'inherit';
+    if (!['auto','openrouter','openai','none'].includes(settings.reasoningProtocol)) settings.reasoningProtocol = 'auto';
+    if (!['minimal','low','medium','high','xhigh'].includes(settings.reasoningEffort)) settings.reasoningEffort = 'medium';
+    settings.reasoningBudget = Math.trunc(Number(settings.reasoningBudget));
+    if (!Number.isInteger(settings.reasoningBudget) || settings.reasoningBudget < 128 || settings.reasoningBudget > 100000) settings.reasoningBudget = 4096;
     return settings;
 }
 
@@ -32,13 +40,71 @@ export async function listSillyTavernProfiles(context) {
         : { id: String(profile?.id || ''), name: String(profile?.name || profile?.id || 'Профиль') }).filter(profile => profile.id);
 }
 
+// Provider-specific reasoning transport. Never silently send an OpenRouter
+// object to OpenAI or pretend unsupported models accept adjustable thinking.
+export function reasoningProtocolFor(settings, profile = null) {
+    if (settings.reasoningProtocol !== 'auto') return settings.reasoningProtocol;
+    const api = String(profile?.api || '').toLowerCase();
+    const location = String(profile?.['api-url'] || settings.endpoint || '').toLowerCase();
+    if (api.includes('openrouter') || /(?:^|\\.)openrouter\\.ai(?:\\/|$)/.test(location.replace(/^https?:\\/\\//,''))) return 'openrouter';
+    if (api === 'openai' || /(?:^|\\.)api\\.openai\\.com(?:\\/|$)/.test(location.replace(/^https?:\\/\\//,''))) return 'openai';
+    return 'none';
+}
+
+export function reasoningRequestOptions(settings, profile = null, forST = false) {
+    const mode = settings.reasoningMode;
+    if (mode === 'inherit') return {};
+    const protocol = reasoningProtocolFor(settings,profile);
+    if (protocol === 'none') throw new Error('У выбранного подключения неизвестный формат reasoning. Выбери OpenRouter/OpenAI вручную или «Как в профиле».');
+    if (mode === 'budget' && (protocol !== 'openrouter' || forST))
+        throw new Error('Лимит токенов reasoning поддержан только для прямого OpenRouter API. В профиле ST используй уровень или его собственные настройки.');
+    if (protocol === 'openrouter') {
+        if (forST) return {reasoning_effort: mode === 'off' ? 'none' : settings.reasoningEffort};
+        if (mode === 'off') return {reasoning:{enabled:false}};
+        if (mode === 'budget') return {reasoning:{max_tokens:settings.reasoningBudget}};
+        return {reasoning:{effort:settings.reasoningEffort}};
+    }
+    if (mode === 'budget') throw new Error('OpenAI Chat Completions не поддерживает ручной reasoning budget в этом формате. Используй усилие.');
+    // OpenAI's support for "none" and xhigh depends on model version.
+    // Pass exact requested effort: the API can reject unsupported values explicitly.
+    return {reasoning_effort:mode === 'off' ? 'none' : settings.reasoningEffort};
+}
+
+function withManualJailbreak(settings,messages) {
+    if (!settings.jailbreak) return messages;
+    const extra=settings.jailbreakText.trim();
+    if (!extra) throw new Error('Jailbreak включён, но его текст пуст. Введи инструкцию либо выключи галочку.');
+    const list=messages.slice();
+    const position=list[0]?.role==='system'?1:0;
+    list.splice(position,0,{role:'system',content:extra});
+    return list;
+}
+
+async function collectSillyTavernStream(response) {
+    if (typeof response !== 'function') throw new Error('SillyTavern не предоставила потоковый ответ. Отключи Streaming для этого профиля.');
+    let text='';
+    for await (const chunk of response()) {
+        if(typeof chunk?.text==='string') text=chunk.text; // ST sends cumulative text
+    }
+    if(!text.trim()) throw new Error('Поток завершился без итогового текста режиссёра.');
+    return text.trim();
+}
+
 async function generateWithSillyTavernProfile(context, settings, messages, signal) {
     if (!settings.profileId) throw new Error('Выбери отдельный профиль подключения SillyTavern для SP Imagen.');
     const service = await connectionService(context);
     if (!service?.sendRequest) throw new Error('Менеджер профилей SillyTavern недоступен. Выбери «Прямой API».');
-    const response = await service.sendRequest(settings.profileId, messages, settings.maxTokens, {
-        stream: false, signal, extractData: true, includePreset: false, includeInstruct: true,
-    });
+    const profile=service.getProfile?.(settings.profileId);
+    // Profile managers preserve their native instruct formatting for text completions.
+    // Model-specific overrides are supported only for chat completion profiles.
+    const selectedApi=profile&&service.validateProfile?.(profile);
+    if(settings.reasoningMode!=='inherit'&&selectedApi?.selected!=='openai')
+        throw new Error('Ручное reasoning через профиль ST поддержано только для Chat Completion. Выбери «Как в профиле» или прямой API.');
+    const overrides=reasoningRequestOptions(settings,profile,true);
+    const response = await service.sendRequest(settings.profileId, withManualJailbreak(settings,messages), settings.maxTokens, {
+        stream:settings.streaming, signal, extractData: true, includePreset: false, includeInstruct: true,
+    },overrides);
+    if(settings.streaming)return await collectSillyTavernStream(response);
     const content = typeof response === 'string' ? response : response?.content ?? response?.text;
     if (typeof content !== 'string' || !content.trim()) throw new Error('Профиль SillyTavern вернул пустой ответ.');
     return content.trim();
@@ -82,23 +148,66 @@ function validate(settings) {
     if (!settings.model) throw new Error('Укажи модель текстового API.');
 }
 
+async function collectDirectStream(response) {
+    if (!response.body?.getReader) throw new Error('Текстовый API не вернул поток SSE. Отключи Streaming.');
+    const reader=response.body.getReader(),decoder=new TextDecoder();
+    let buffer='',result='',done=false,wasDone=false;
+    const consume=packet=>{
+        for(const line of packet.split(/\\r?\\n/)){
+            if(!line.startsWith('data:'))continue;
+            const payload=line.slice(5).trim();
+            if(payload==='[DONE]'){wasDone=true;continue;}
+            if(!payload)continue;
+            let data;
+            try{data=JSON.parse(payload)}catch{throw new Error('Провайдер вернул повреждённый SSE-фрагмент.');}
+            if(data?.error)throw new Error('Ошибка текстового API при streaming: '+String(data.error?.message || data.error).slice(0,400));
+            const delta=data?.choices?.[0]?.delta?.content;
+            if(typeof delta==='string')result+=delta;
+            else if(Array.isArray(delta))for(const p of delta)if(typeof p?.text==='string')result+=p.text;
+            else if(typeof data?.choices?.[0]?.text==='string')result+=data.choices[0].text;
+        }
+    };
+    try{
+      while(!done){
+        const next=await reader.read();done=next.done;
+        buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!done}).replace(/\\r\\n/g,'\\n');
+        let split;
+        while((split=buffer.indexOf('\\n\\n'))!==-1){
+            const packet=buffer.slice(0,split);buffer=buffer.slice(split+2);
+            consume(packet);
+        }
+        if(wasDone)break;
+      }
+      if(buffer.trim())consume(buffer);
+    } finally { try{await reader.cancel()}catch{} reader.releaseLock?.(); }
+    if(!result.trim()) throw new Error('Streaming завершился без итогового текста. Возможно, модель потратила лимит на reasoning. Увеличь максимум токенов.');
+    return result.trim();
+}
+
 export async function generateTextCompletion(input, messages, signal, context = globalThis.SillyTavern?.getContext?.()) {
     const settings = normalizeTextApiSettings(input);
     if (settings.mode === 'st') return await generateWithSillyTavernProfile(context, settings, messages, signal);
     validate(settings);
+    const options=reasoningRequestOptions(settings);
+    const payload={model:settings.model,messages:withManualJailbreak(settings,messages),
+        max_tokens:settings.maxTokens,stream:settings.streaming,...options};
+    // Reasoning models may reject temperature even when it is supported by
+    // their non-thinking sibling. Only send it without a manual reasoning override.
+    if(settings.reasoningMode==='inherit')payload.temperature=settings.temperature;
     const response = await fetchWithTimeout(chatUrl(settings.endpoint), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ model: settings.model, messages, temperature: settings.temperature, max_tokens: settings.maxTokens, stream: false }),
+        headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json', Accept:settings.streaming?'text/event-stream':'application/json' },
+        body: JSON.stringify(payload),
     }, 180000, signal);
     if (!response.ok) {
         const detail = await response.text();
         throw new Error(`Текстовый API ${response.status}: ${detail.slice(0, 800)}`);
     }
+    if(settings.streaming)return await collectDirectStream(response);
     let data;
     try { data = await response.json(); } catch { throw new Error('Текстовый API вернул нечитаемый JSON.'); }
     const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? data?.output_text;
-    if (typeof content !== 'string' || !content.trim()) throw new Error('Текстовый API не вернул текст.');
+    if (typeof content !== 'string' || !content.trim()) throw new Error('Текстовый API не вернул текст. Если модель потратила все токены на reasoning, увеличь максимум токенов.');
     return content.trim();
 }
 
