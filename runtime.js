@@ -2181,12 +2181,23 @@ if(npcLanguage){
 if(visibility.size && profile?.options?.includeCharacters!==false)config.prompt=insertVisibleAppearance(config.prompt,visibility);
 config.prompt=applyProfileToPrompt(config.prompt,profile);
 if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,kind,runtimeSettings);
+requireOrigin();
+const selected=nessGenerationTargets.get(beforeChat);
+if(selected&&(selected.chatId!==beforeId||beforeChat[selected.index]!==selected.message||selected.message.mes!==selected.text))throw Error('Выбранный пост изменился. Подготовь картинку заново.');
+const targetIndex=selected?selected.index:await lastRpIndex(beforeChat);
+if(targetIndex<0)throw Error('Imagen: настоящий RP-пост не найден');
+const target=beforeChat[targetIndex];
+// Save before preview or paid request; an aborted preparation is recoverable
+// without spending a second director call.
+savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
+getMediaSlots?.()?.refresh?.();
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
  progress.set('Проверка перед NovelAI', 'Подтверди готовый промпт. Пока запрос NovelAI не отправлен.');
- const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount});
+ const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount,index:targetIndex,kind,message:target});
  if(!accepted){finished=true;progress.close();return 'Отправка в NAI5 отменена';}
 }
 const imagePrompt=config.prompt,cast=Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[];
+savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
 const live = SillyTavern.getContext();
   if (live.chatId !== beforeId || live.chat !== beforeChat || live.chat.length !== beforeCount)
     throw new Error('Imagen: чат изменился во время подготовки');
@@ -2196,11 +2207,7 @@ const live = SillyTavern.getContext();
   requireOrigin();
   // The last REAL roleplay message may be either authored by the user or the character.
   // Never attach imagery to hidden GlassPhone entries, meta or a prior IIG-only post.
-  const selected=nessGenerationTargets.get(live.chat);
-  if(selected&&(selected.chatId!==live.chatId||live.chat[selected.index]!==selected.message||selected.message.mes!==selected.text))throw Error("Выбранный пост изменился. Подготовь картинку заново.");
-  const targetIndex=selected?selected.index:await lastRpIndex(live.chat);
-  if (targetIndex < 0) throw new Error('Imagen: настоящий RP-пост не найден');
-  const target = live.chat[targetIndex];
+  if(live.chat[targetIndex]!==target)throw Error('Выбранный RP-пост изменился.');
   // SP Imagen owns the complete image request and publishes to its own gallery.
   const directExtension=spImagenExtension();
   if(!directExtension.directGenerationEnabled?.()){
