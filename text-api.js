@@ -178,7 +178,11 @@ async function collectDirectStream(response) {
     try{
         while(!wasDone){
             const next=await reader.read();
-            buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done}).replace(/\r\n/g,'\n');
+            // Normalize *after* concatenation: CRLF may straddle two network
+            // chunks. Normalizing each chunk separately can hide the SSE blank
+            // line and make a complete stream wait until its timeout.
+            buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done});
+            buffer=buffer.replace(/\r\n/g,'\n');
             let split;
             while((split=buffer.indexOf('\n\n'))!==-1){
                 const packet=buffer.slice(0,split);buffer=buffer.slice(split+2);
