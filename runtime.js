@@ -1460,6 +1460,7 @@ validateKind(kind);
   v.sp_imagen_composition_proposal = '';
   v.sp_imagen_rp_outfits = '';
   v.sp_imagen_parser_warning = '';
+  delete v.sp_imagen_resume_review;
 
   if(targetIndex===null)nessGenerationTargets.delete(chat);
   else nessGenerationTargets.set(chat,{index:targetIndex,message:chat[targetIndex],text:chat[targetIndex].mes,chatId:id});
@@ -1598,6 +1599,7 @@ async function reviewSceneDialog(providedProgress=null){
   if (typeof st.saveMetadata === 'function') await st.saveMetadata();
   const startChat = st.chat, startId = st.chatId;
   const scene = String(v.sp_imagen_parsed_scene || '');
+  const resumeReview=v.sp_imagen_resume_review&&typeof v.sp_imagen_resume_review==='object'?v.sp_imagen_resume_review:null;
   if(!masterLibraryRaw())throw Error('Открой «Библиотека» и сохрани записи персонажей.');
   const master=loadMasterLibrary();let done=false,committing=false;
   let defaultComposition='', compositionExtra='', compositionCatalog={}, compositionMood='', compositionWarning='';
@@ -1612,7 +1614,7 @@ async function reviewSceneDialog(providedProgress=null){
       compositionCatalog=settings.catalogs?.[kind]||{};
       if(!compositionCatalog||typeof compositionCatalog!=='object'||Array.isArray(compositionCatalog)||Object.values(compositionCatalog).some(x=>typeof x!=='string'))throw Error('Неверный каталог композиций '+kind);
       // Restore automatic composition selection; keep the manual fallback unchanged.
-      if(Object.keys(compositionCatalog).length){
+      if(!resumeReview&&Object.keys(compositionCatalog).length){
         providedProgress?.set('Подбор композиции', 'Подбираю композиционные приёмы к сцене; это отдельный запрос к текстовой модели.',{stoppable:false});
         const result=await selectComposition(compositionCatalog,kind,scene);
         if(SillyTavern.getContext().chat!==startChat||SillyTavern.getContext().chatId!==startId)throw Error('Чат изменился при подборе композиции.');
@@ -1708,7 +1710,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
   const view=createReviewView({kind:v.sp_imagen_active_kind||'snapshot',manualMode,postCount:v.sp_imagen_rp_source_count||loadGen2Settings().posts[v.sp_imagen_active_kind||'snapshot']});
   const {overlay,panel,sceneEl,outfEl,compEl,errEl,cancel,next}=view;
   const ui=createUiKit(document);
-  sceneEl.value=scene;outfEl.value=outfits;compEl.value=suggestion;
+  sceneEl.value=resumeReview?.scene??scene;outfEl.value=resumeReview?.outfits??outfits;compEl.value=resumeReview?.composition??suggestion;
   panel.querySelector('[data-wardrobe-info]').textContent = manualMode ? 'Ручной режим' : wardrobeStatus;
   if (v.sp_imagen_parser_warning) {const w=panel.querySelector('[data-warning]');w.textContent=v.sp_imagen_parser_warning;w.style.display='block';}
 
@@ -1720,7 +1722,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
     let at=sourceText.indexOf(token);
     while(at>=0){if(!/[\p{L}\p{N}_]/u.test(sourceText[at-1]||'')&&!/[\p{L}\p{N}_]/u.test(sourceText[at+token.length]||''))return true;at=sourceText.indexOf(token,at+1);}return false;
   })).map(([id])=>id);
-  const initialRoster=Array.isArray(v.sp_imagen_chat_cast_ids)?v.sp_imagen_chat_cast_ids:[...new Set([...(Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[]),...mentioned])];
+  const initialRoster=Array.isArray(resumeReview?.castIds)?resumeReview.castIds:Array.isArray(v.sp_imagen_chat_cast_ids)?v.sp_imagen_chat_cast_ids:[...new Set([...(Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[]),...mentioned])];
   const persistRoster=async ids=>{
     const now=SillyTavern.getContext();if(now.chat!==startChat||now.chatId!==startId)throw Error('Чат изменился');
     const vars=now.chatMetadata.variables||={},previous=vars.sp_imagen_chat_cast_ids;
@@ -1733,7 +1735,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
   view.castSlot.appendChild(castManager.element);
 
   const npcInfo=ui.note(view.npcSlot,manualMode?'Впиши NPC вручную или предложи по постам.':String(v.sp_imagen_npc_status||'Проверь предложения NPC.'));
-  const npcEl=createNpcCards(document);npcEl.value=manualMode?'':String(v.sp_imagen_npc_draft||'');view.npcSlot.appendChild(npcEl.element);
+  const npcEl=createNpcCards(document);npcEl.value=resumeReview?.npc??(manualMode?'':String(v.sp_imagen_npc_draft||''));view.npcSlot.appendChild(npcEl.element);
   const npcActions=ui.row(view.npcSlot);
   const npcAdd=ui.button('+ NPC',npcActions,()=>npcEl.add('','',true));
   const npcSuggest=ui.button('Предложить NPC по постам',npcActions);
