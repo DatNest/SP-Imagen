@@ -44,10 +44,12 @@ export async function listSillyTavernProfiles(context) {
 // object to OpenAI or pretend unsupported models accept adjustable thinking.
 export function reasoningProtocolFor(settings, profile = null) {
     if (settings.reasoningProtocol !== 'auto') return settings.reasoningProtocol;
-    const api = String(profile?.api || '').toLowerCase();
-    const location = String(profile?.['api-url'] || settings.endpoint || '').toLowerCase();
-    if (api.includes('openrouter') || /(?:^|\\.)openrouter\\.ai(?:\\/|$)/.test(location.replace(/^https?:\\/\\//,''))) return 'openrouter';
-    if (api === 'openai' || /(?:^|\\.)api\\.openai\\.com(?:\\/|$)/.test(location.replace(/^https?:\\/\\//,''))) return 'openai';
+    const api=String(profile?.api||'').toLowerCase();
+    const origin=String(profile?.['api-url']||settings.endpoint||'');
+    let host='';
+    try{host=new URL(origin).hostname.toLowerCase();}catch{}
+    if(api.includes('openrouter')||host==='openrouter.ai'||host.endsWith('.openrouter.ai'))return 'openrouter';
+    if(api==='openai'||host==='api.openai.com')return 'openai';
     return 'none';
 }
 
@@ -151,36 +153,37 @@ function validate(settings) {
 async function collectDirectStream(response) {
     if (!response.body?.getReader) throw new Error('Текстовый API не вернул поток SSE. Отключи Streaming.');
     const reader=response.body.getReader(),decoder=new TextDecoder();
-    let buffer='',result='',done=false,wasDone=false;
+    let buffer='',result='',wasDone=false;
     const consume=packet=>{
-        for(const line of packet.split(/\\r?\\n/)){
+        for(const line of packet.split(/\r?\n/)){
             if(!line.startsWith('data:'))continue;
             const payload=line.slice(5).trim();
             if(payload==='[DONE]'){wasDone=true;continue;}
             if(!payload)continue;
             let data;
             try{data=JSON.parse(payload)}catch{throw new Error('Провайдер вернул повреждённый SSE-фрагмент.');}
-            if(data?.error)throw new Error('Ошибка текстового API при streaming: '+String(data.error?.message || data.error).slice(0,400));
+            if(data?.error)throw new Error('Ошибка текстового API при streaming: '+String(data.error?.message||data.error).slice(0,400));
             const delta=data?.choices?.[0]?.delta?.content;
             if(typeof delta==='string')result+=delta;
-            else if(Array.isArray(delta))for(const p of delta)if(typeof p?.text==='string')result+=p.text;
-            else if(typeof data?.choices?.[0]?.text==='string')result+=data.choices[0].text;
+            else if(Array.isArray(delta)){
+                for(const p of delta)if(typeof p?.text==='string')result+=p.text;
+            } else if(typeof data?.choices?.[0]?.text==='string')result+=data.choices[0].text;
         }
     };
     try{
-      while(!done){
-        const next=await reader.read();done=next.done;
-        buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!done}).replace(/\\r\\n/g,'\\n');
-        let split;
-        while((split=buffer.indexOf('\\n\\n'))!==-1){
-            const packet=buffer.slice(0,split);buffer=buffer.slice(split+2);
-            consume(packet);
+        while(!wasDone){
+            const next=await reader.read();
+            buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done}).replace(/\r\n/g,'\n');
+            let split;
+            while((split=buffer.indexOf('\n\n'))!==-1){
+                const packet=buffer.slice(0,split);buffer=buffer.slice(split+2);
+                consume(packet);
+            }
+            if(next.done)break;
         }
-        if(wasDone)break;
-      }
-      if(buffer.trim())consume(buffer);
-    } finally { try{await reader.cancel()}catch{} reader.releaseLock?.(); }
-    if(!result.trim()) throw new Error('Streaming завершился без итогового текста. Возможно, модель потратила лимит на reasoning. Увеличь максимум токенов.');
+        if(!wasDone&&buffer.trim())consume(buffer);
+    }finally{try{await reader.cancel()}catch{}reader.releaseLock?.();}
+    if(!result.trim())throw new Error('Streaming завершился без итогового текста. Возможно, модель потратила лимит на reasoning.');
     return result.trim();
 }
 
@@ -194,16 +197,33 @@ export async function generateTextCompletion(input, messages, signal, context = 
     // Reasoning models may reject temperature even when it is supported by
     // their non-thinking sibling. Only send it without a manual reasoning override.
     if(settings.reasoningMode==='inherit')payload.temperature=settings.temperature;
-    const response = await fetchWithTimeout(chatUrl(settings.endpoint), {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json', Accept:settings.streaming?'text/event-stream':'application/json' },
-        body: JSON.stringify(payload),
-    }, 180000, signal);
-    if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(`Текстовый API ${response.status}: ${detail.slice(0, 800)}`);
+    const url=chatUrl(settings.endpoint);
+    const optionsFetch={
+        method:'POST',
+        headers:{Authorization:`Bearer ${settings.apiKey}`,'Content-Type':'application/json',Accept:settings.streaming?'text/event-stream':'application/json'},
+        body:JSON.stringify(payload)
+    };
+    if(settings.streaming){
+        // Keep abort listener alive until the entire stream is consumed, not
+        // just until the HTTP headers arrive. Never auto-retry billed requests.
+        const controller=new AbortController();
+        const abort=()=>controller.abort(signal?.reason);
+        if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+        const timeout=setTimeout(()=>controller.abort(),180000);
+        try{
+            const response=await fetch(url,{...optionsFetch,signal:controller.signal});
+            if(!response.ok)throw new Error(`Текстовый API ${response.status}: ${(await response.text()).slice(0,800)}`);
+            return await collectDirectStream(response);
+        }catch(error){
+            if(controller.signal.aborted&&!signal?.aborted)throw new Error('Streaming текстовой модели превысил 3 минуты.');
+            throw error;
+        }finally{clearTimeout(timeout);signal?.removeEventListener('abort',abort);}
     }
-    if(settings.streaming)return await collectDirectStream(response);
+    const response=await fetchWithTimeout(url,optionsFetch,180000,signal);
+    if(!response.ok) {
+        const detail=await response.text();
+        throw new Error(`Текстовый API ${response.status}: ${detail.slice(0,800)}`);
+    }
     let data;
     try { data = await response.json(); } catch { throw new Error('Текстовый API вернул нечитаемый JSON.'); }
     const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? data?.output_text;
@@ -213,7 +233,7 @@ export async function generateTextCompletion(input, messages, signal, context = 
 
 export async function testSillyTavernProfile(context, input, signal, systemPrompt = 'Проверка подключения. Ответь только OK.') {
     const settings = normalizeTextApiSettings(input);
-    return await generateWithSillyTavernProfile(context, { ...settings, maxTokens: 64 }, [
+    return await generateWithSillyTavernProfile(context, { ...settings, maxTokens: Math.max(512, Math.min(1024, settings.maxTokens)) }, [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: 'OK' },
     ], signal);
