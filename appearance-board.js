@@ -3,7 +3,7 @@
  * Existing base strings and appearanceSelections offsets remain authoritative.
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
-import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
+import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 
 export const SKIN_PRESETS=Object.freeze({
  upper_front:'Открытый верх · спереди',
@@ -28,7 +28,11 @@ export function normalizeSkinTags(raw){
   ids.add(id);items.push({id,text:tag.text.trim().slice(0,1200),section:String(tag.section||'')});
   if(items.length>=600)break;
  }
- const sections=(Array.isArray(data.sections)?data.sections:[]).filter(x=>x&&typeof x.id==='string'&&/^[a-z][a-z0-9_]{0,48}$/.test(x.id)&&validLabel(x.title)).slice(0,60)
+ const sectionIdsSeen=new Set();
+ const sections=(Array.isArray(data.sections)?data.sections:[]).filter(x=>{
+  if(!x||typeof x.id!=='string'||!/^[a-z][a-z0-9_]{0,48}$/.test(x.id)||!validLabel(x.title)||sectionIdsSeen.has(x.id))return false;
+  sectionIdsSeen.add(x.id);return true;
+ }).slice(0,60)
  .map(x=>({id:x.id,title:validLabel(x.title),before:Number.isInteger(x.before)?Math.max(0,Math.min(items.length,x.before)):Math.max(0,items.findIndex(t=>t.section===x.id))}));
  const sectionIds=new Set(sections.map(x=>x.id));
  for(const item of items)if(!sectionIds.has(item.section))item.section='';
@@ -291,8 +295,12 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
    return formatSkinParts(skin,[preset])||'(нет тегов)';
   }
   const state=baseState();
-  const picked=visibleAppearanceRanges(state.ranges,preset,state.selections,false);
-  return (picked.length?visibleAppearanceRanges(state.ranges,preset,state.selections,preset!=='always').map(x=>x.text.trim().replace(/[,;]+$/,'')).join(', '):state.base.trim())||'(нет тегов)';
+  const configured=hasConfiguredAppearanceViews({appearanceRanges:state.ranges,appearanceSelections:state.selections});
+  // Mirror NESS_VIS insertion: an empty preset shows only Always, never the
+  // entire source appearance unless no views were configured at all.
+  const selected=visibleAppearanceRanges(state.ranges,preset,state.selections,preset!==NESS_APPEARANCE_ALWAYS);
+  const tags=selected.map(x=>x.text.trim().replace(/[,;]+$/,'')).filter(Boolean).join(', ');
+  return (preset===NESS_APPEARANCE_ALWAYS||configured?tags:state.base.trim())||'(нет тегов)';
  }
  function render(){
   onLayoutChange(layout,mode);
@@ -556,15 +564,15 @@ export function insertSkinAppearance(prompt,records){
  const result=String(prompt||'').replace(/\[\[NESS_SKIN:([a-z][a-z0-9_]*):([a-z_, \t]+)\]\][ \t]*(?:[,;][ \t]*)?/g,(whole,id,definition)=>{
   const record=records.get(id);
   if(!record)throw Error('Метка кожи с неизвестным персонажем '+id+'.');
-  if(!hasSkinSelections(record.skinTags))return ' ';
+  if(!hasSkinSelections(record.skinTags))return '';
   if(inserted.has(id))throw Error('Некорректная повторная метка открытой кожи персонажа '+id+'. Сохрани исходный ответ режиссёра для проверки.');
   inserted.add(id);
   const chosen=definition.split(',').map(s=>s.trim());
-  if(chosen.length===1&&chosen[0]==='none')return ' ';
+  if(chosen.length===1&&chosen[0]==='none')return '';
   if(!chosen.length||chosen.some(p=>!Object.hasOwn(SKIN_PRESETS,p)))
    throw Error('Режиссёр выбрал неизвестную область кожи персонажа '+id+'.');
   const line=formatSkinParts(record.skinTags,chosen);
-  return line?' '+line+'; ':'';
+  return line?line+'; ':'';
  });
  if(result.includes('[[NESS_SKIN:'))throw Error('Режиссёр оставил неподставленную [[NESS_SKIN]] ОТКРЫТОЙ КОЖИ; проверь ID, названия открытых областей и закрывающие ]]. Это НЕ ракурс базовой внешности.');
  if(ignoredMarkers.size)console.warn('[SP Imagen] Удалены лишние NESS_SKIN для персонажей без настроенных тегов кожи: '+[...ignoredMarkers].join(', '));

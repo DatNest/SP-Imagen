@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.10';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.11';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -155,7 +155,19 @@ async function synchronizePrompts() {
     const exactDirectors = Object.keys(state.prompts).length === shippedNames.length
         && shippedNames.every(name => state.prompts[name] === SP_IMAGEN_PROMPTS[name]);
     const oldOverrides = Object.keys(state.codePrompts).length > 0;
-    if (state.appliedBundleSignature === signature && exactDirectors && !oldOverrides) return;
+    // A code/CSS-only release must not reset otherwise identical official
+    // prompts or replace the user's last automatic backup. The version prefix
+    // may change while the verified packaged prompt-content hash stays equal.
+    const shippedHash = signature.slice(signature.indexOf(':') + 1);
+    const installedHash = String(state.appliedBundleSignature || '').split(':').at(-1);
+    const unchangedPrompts = installedHash === shippedHash && exactDirectors && !oldOverrides;
+    if (unchangedPrompts) {
+        if (state.appliedBundleSignature !== signature) {
+            state.appliedBundleSignature = signature;
+            await Promise.resolve(context().saveSettingsDebounced?.());
+        }
+        return;
+    }
     const alreadyInstalled = Object.keys(state.prompts).length || Object.keys(state.codePrompts).length;
     state.promptBackups ??= {};
     if (alreadyInstalled) state.promptBackups.automatic = snapshotBundledPrompts(state);

@@ -121,11 +121,18 @@ export function insertVisibleAppearance(prompt,records){
   const prose=appearanceFormat==='prose';
   const useBase=missingPreset.has(id);
   const view=useBase?[]:visibleAppearanceRanges(ranges,spec,selections,false);
-  const parts=view.length?visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trim()).filter(Boolean):[];
-  // A missing preset cannot establish which areas are visible, so restore the
-  // exact authoritative base appearance instead of making up an angle.
-  // Other, valid markers retain their original view-specific selections.
-  const text=(view.length?(prose?parts.join(' '):parts.map(x=>x.replace(/[,;]+$/,'')).join(', ')):String(base||'').trim())
+  const configured=hasConfiguredAppearanceViews({appearanceRanges:ranges,appearanceSelections:selections});
+  // Even when this particular preset has no selected tags, globally enabled
+  // "Always" tags still apply. A deliberately empty preset must NEVER cause
+  // the entire base description to leak into a close-up or detail view.
+  const fragments=!useBase&&(view.length||configured)
+   ? visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trim()).filter(Boolean)
+   : [];
+  // Missing view: there is no safe way to infer framing, so retain the exact
+  // original base. Skin-only characters without view tags also need the base.
+  const text=(useBase||!configured
+   ? String(base||'').trim()
+   : prose?fragments.join(' '):fragments.map(x=>x.replace(/[,;]+$/,'')).join(', '))
     .replace(prose?/[.,;!?\s]+$/:/[;,\s]+$/,'');
   return text?(before||'')+text+';':after||'';
  });
