@@ -509,18 +509,21 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
  const entries=[...records].filter(([,v])=>hasSkinSelections(v.skinTags));
- if(!entries.length)return '';
+ if(!entries.length){
+  return records.size?'\n\nVISIBLE SKIN MARKERS: No library character has configured exposed-skin tags. Do NOT write [[NESS_SKIN:...]] markers. Legacy nudeUpper and nudeLower fields are independent.':'';
+ }
  const names=entries.map(([id,v])=>id+': '+Object.keys(SKIN_PRESETS).filter(k=>(v.skinTags?.selections?.[k]||[]).length||(v.skinTags?.selections?.always||[]).length).join(', ')).join('\n');
  return '\n\nVISIBLE SKIN AND MARKS — ONE OPTIONAL MARKER PER CHARACTER\n'
   +'In each character entry whose ID is listed below, immediately after its [[NESS_VIS:id:preset]] marker and BEFORE any clothing, append [[NESS_SKIN:id:part1,part2]] for ONLY the uncovered skin areas actually visible in at least one chosen panel. You may choose multiple parts independently of the main appearance camera preset. '
   +'Allowed skin parts: '+Object.keys(SKIN_PRESETS).join(', ')+'. The lower_front and lower_back parts are DISTINCT; do not include lower_front when only the rear is visible, nor vice versa. Upper-front/back are distinct as well. '
   +'If no configured exposed skin part is visible, use [[NESS_SKIN:id:none]]. Include the marker only once for each listed participant, keep literal [[NESS_SKIN:...]] syntax; never invent anatomy or reveal skin covered by clothing. '
+  +'NEVER emit [[NESS_SKIN:...]] for an ID not listed below, even if bare skin is visible or legacy nudeUpper/nudeLower fields exist. '
   +'Skin tags are inserted by the library after the base appearance and before clothing, not written by you. This is an extension-control marker, not an unresolved placeholder: it overrides any general placeholder prohibition. The source fields with legacy nudeUpper/nudeLower are independent and remain governed by their existing visibility rules.\n'
   +'Skin-equipped character IDs and available parts:\n'+names;
 }
 export function insertSkinAppearance(prompt,records){
  const source=String(prompt||'');
- const openings=[...source.matchAll(/\[\[NESS_SKIN\b/gi)],seenMarkers=new Set();
+ const openings=[...source.matchAll(/\[\[NESS_SKIN\b/gi)],seenMarkers=new Set(),ignoredMarkers=new Set();
  if(!openings.length&&/\bNESS_SKIN\s*:/i.test(source))
   throw Error('Метка ОТКРЫТОЙ КОЖИ написана без [[...]]. Это [[NESS_SKIN:ID:ОБЛАСТЬ]], а не [[NESS_VIS]] базовой внешности и не метка одежды.');
  for(const opening of openings){
@@ -531,7 +534,10 @@ export function insertSkinAppearance(prompt,records){
   if(!m)throw Error('Некорректный формат метки ОТКРЫТОЙ КОЖИ '+JSON.stringify(exact.slice(0,100))+'. Ожидается [[NESS_SKIN:ID:lower_back]] или [[NESS_SKIN:ID:none]].');
   const [,id,definition]=m,record=records.get(id);
   if(!record)throw Error('Метка ОТКРЫТОЙ КОЖИ с неизвестным ID «'+id+'»: персонаж не найден в подготовленной библиотеке.');
-  if(!hasSkinSelections(record.skinTags))throw Error('[[NESS_SKIN]] для «'+(record.name||id)+'», хотя ему не настроены теги открытой кожи. Удали эту метку из ответа режиссёра.');
+  if(!hasSkinSelections(record.skinTags)){
+   ignoredMarkers.add(id);
+   continue; // No skin tags available: harmless marker is removed below.
+  }
   if(seenMarkers.has(id))throw Error('Две метки [[NESS_SKIN]] у персонажа «'+(record.name||id)+'». Требуется ровно одна для всех открытых участков.');
   seenMarkers.add(id);
   const parts=definition.split(',').map(x=>x.trim());
@@ -542,8 +548,9 @@ export function insertSkinAppearance(prompt,records){
  const inserted=new Set();
  const result=String(prompt||'').replace(/\[\[NESS_SKIN:([a-z][a-z0-9_]*):([a-z_, \t]+)\]\][ \t]*(?:[,;][ \t]*)?/g,(whole,id,definition)=>{
   const record=records.get(id);
-  if(!record||!hasSkinSelections(record.skinTags)||inserted.has(id))
-   throw Error('Некорректная повторная метка открытой кожи персонажа '+id+'. Сохрани исходный ответ режиссёра для проверки.');
+  if(!record)throw Error('Метка кожи с неизвестным персонажем '+id+'.');
+  if(!hasSkinSelections(record.skinTags))return ' ';
+  if(inserted.has(id))throw Error('Некорректная повторная метка открытой кожи персонажа '+id+'. Сохрани исходный ответ режиссёра для проверки.');
   inserted.add(id);
   const chosen=definition.split(',').map(s=>s.trim());
   if(chosen.length===1&&chosen[0]==='none')return ' ';
@@ -553,6 +560,7 @@ export function insertSkinAppearance(prompt,records){
   return line?' '+line+'; ':'';
  });
  if(result.includes('[[NESS_SKIN:'))throw Error('Режиссёр оставил неподставленную [[NESS_SKIN]] ОТКРЫТОЙ КОЖИ; проверь ID, названия открытых областей и закрывающие ]]. Это НЕ ракурс базовой внешности.');
+ if(ignoredMarkers.size)console.warn('[SP Imagen] Удалены лишние NESS_SKIN для персонажей без настроенных тегов кожи: '+[...ignoredMarkers].join(', '));
  for(const [id,record] of records)if(hasSkinSelections(record.skinTags)&&!inserted.has(id))
   console.warn('[SP Imagen] Режиссёр не выбрал открытые участки '+id+'; детали кожи не вставлены во избежание невидимой анатомии.');
  return result;
