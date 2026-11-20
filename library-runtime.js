@@ -999,7 +999,7 @@ async function openLibraryEditor(){
   view.showEditor();
   status(dirty?'Изменения в конструкторе ещё не сохранены. Нажми «Сохранить».':'Вернулись в карточку персонажа.');
  }
- function displayBoard(){
+ function displayBoard(mode='base',preset){
   if(!editor||!inBoardMode)return;
   const host=view.constructorHost;
   clear(host);
@@ -1058,13 +1058,13 @@ async function openLibraryEditor(){
    };
   }
   const boardArea=el('div',undefined,host,'ness-fullboard-area');
-  editor.visibility.openBoard(boardArea);
+  editor.visibility.openBoard(boardArea,{mode,preset});
   view.showConstructor();
  }
- function enterBoard(){
+ function enterBoard(mode='base',preset){
   if(!editor||busy||done||!tryFlush())return;
   inBoardMode=true;
-  displayBoard();
+  displayBoard(mode,preset);
  }
  function editCharacter(id,group){
   if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);const entry=draft[group][id],fields={};
@@ -1096,7 +1096,10 @@ async function openLibraryEditor(){
   fields.base=field(appearance,labels.base,area(entry.base));fields.base.className+=' ness-appearance';
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
-  const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done);
+  const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done,
+    ()=>({nudeUpper:fields.nudeUpper?.value??entry.nudeUpper??'',nudeLower:fields.nudeLower?.value??entry.nudeLower??''}),
+    state=>{for(const key of Object.keys(NSFW_PRESETS))if(fields[key]&&Object.hasOwn(state,key))fields[key].value=state[key];changed();},
+    (mode,preset)=>enterBoard(mode,preset));
   visibility.setFormat(appearanceFormat.value);
   const openConstructor=button('◫ Открыть конструктор тегов',appearance,()=>enterBoard(),'quiet ness-open-constructor');
   openConstructor.title='Полноэкранный редактор ракурсов, отдельных тегов кожи и разделителей';
