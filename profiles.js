@@ -55,17 +55,13 @@ export function filterProfileSources(source,profile) {
   }));
 }
 export function directorProfileGuidance(profile) {
-  if (!profile?.prompt?.trim()) return '';
-  return '\n\nPERSONAL IMAGE COMPOSITION PREFERENCE (optional; output format, grounded RP facts, identities and safety constraints take priority):\n' + profile.prompt.trim() + '\nUse these preferences only where compatible with the established scene. Preserve the required <naicom> output contract, character sections and the final Text: block.';
-}
-export function applyProfileToPrompt(prompt,profile) {
-  const instruction = String(profile?.prompt || '').trim();
-  if (!instruction) return String(prompt || '');
-  const text = String(prompt || '');
-  // Inject ONLY into the base caption: never after Text:, never inside per-character sections.
-  const firstCharacter = text.search(/\s\|\s*(?:girl|boy|cat|other)\s*,/i);
-  const prefix = firstCharacter < 0 ? text : text.slice(0,firstCharacter);
-  const suffix = firstCharacter < 0 ? '' : text.slice(firstCharacter);
-  if (prefix.includes(instruction)) return text;
-  return [instruction.replace(/[,;\s]+$/g,''),prefix.replace(/^\s*[,;]+\s*/,'')].filter(Boolean).join(', ') + suffix;
+  const rule = String(profile?.prompt || '').trim();
+  if (!rule) return '';
+  // User-authored instructions shape the director output. They are NOT literal
+  // NAI5 tags and must never be prepended to its final image prompt.
+  return '\n\nOPTIONAL USER IMAGE COMPOSITION INSTRUCTIONS FOR THE DIRECTOR\n' +
+    'Apply the following user preferences while writing the image description, only when consistent with established RP facts, source appearance, current wardrobe and the selected format. ' +
+    'Translate requested framing, composition and mood into concrete visible image content; DO NOT quote, copy or prepend these instructions themselves to the final NAI5 prompt. ' +
+    'The resulting image prompt must still begin with the required subject-count and format tags, followed by the established base scene and separate | character sections. ' +
+    'Preserve the exact HTML/JSON output contract and terminal Text: position.\nUSER PREFERENCES:\n' + rule;
 }
