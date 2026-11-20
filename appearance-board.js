@@ -206,18 +206,23 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     writeBaseState(state);
    }
    const updated={...(state.selections||{})};
-   const current=visibleAppearanceRanges(state.ranges,preset,state.selections,false).filter(r=>!relevant.some(t=>tagKey(t.text)===tagKey(r.text)));
+   const baseItems=parseBaseTags(state.base);
+   const targeted=baseItems.filter(t=>relevant.some(x=>x.poolKey===tagKey(t.text)));
+   // Existing view markings may cover part of a tag, not necessarily an
+   // exact full-text token. Preserve overlap semantics from the old editor.
+   const overlaps=(r,t)=>r.start<t.end&&t.start<r.end;
+   const keep=r=>!targeted.some(t=>overlaps(r,t));
+   const current=visibleAppearanceRanges(state.ranges,preset,state.selections,false).filter(keep);
    if(assign)for(const tag of relevant){
-    const token=parseBaseTags(state.base).find(t=>tagKey(t.text)===tag.poolKey);
+    const token=baseItems.find(t=>tagKey(t.text)===tag.poolKey);
     if(token)current.push({start:token.start,end:token.end,text:token.text});
    }
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
    if(preset===NESS_APPEARANCE_ALWAYS&&assign){
-    for(const id of Object.keys(NESS_APPEARANCE_PRESETS)){
-     updated[id]=normalizeAppearanceRanges(state.base,(state.selections[id]||[]).filter(r=>!relevant.some(t=>tagKey(t.text)===tagKey(r.text))),true);
-    }
+    for(const id of Object.keys(NESS_APPEARANCE_PRESETS))
+     updated[id]=normalizeAppearanceRanges(state.base,(state.selections[id]||[]).filter(keep),true);
    }else if(preset!==NESS_APPEARANCE_ALWAYS&&assign){
-    updated.always=normalizeAppearanceRanges(state.base,(state.selections.always||[]).filter(r=>!relevant.some(t=>tagKey(t.text)===tagKey(r.text))),true);
+    updated.always=normalizeAppearanceRanges(state.base,(state.selections.always||[]).filter(keep),true);
    }
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
