@@ -438,7 +438,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         button('Создать копию', actions, () => {
             const kind = name.replace(/^sp_ness_(snapshot|comic|story_page)_director$/, '$1');
             openCustomProfileEditor(null, renderCustom, {
-                name: 'Копия · '+label, kind, directorPrompt: shippedPrompt(name), prompt: '',
+                name: 'Копия · '+label, kind, directorPrompt: settings().prompts[name] || shippedPrompt(name), prompt: '',
             });
         }, true);
         row.append(title, actions); list.append(row);
