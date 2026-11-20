@@ -428,13 +428,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const blocks=el('div',undefined,content,'ness-tagboard-columns');
    const left=el('section',undefined,blocks,'ness-tagboard-column'),right=el('section',undefined,blocks,'ness-tagboard-column');
    function drawColumns(){
-    const baseCurrent=mode==='base'?baseSelected(preset):[];
-    const baseAlways=mode==='base'?baseSelected(NESS_APPEARANCE_ALWAYS):[];
-    const skinCurrent=mode==='skin'?new Set(skin.selections[preset]||[]):null;
-    const skinAlways=mode==='skin'?new Set(skin.selections.always||[]):null;
-    const chosenNow=t=>isChosen(t,preset);
-    const inAlways=t=>mode==='nsfw'?false:mode==='skin'?isSkinChosen(t,'always'):isBaseChosen(t,'always');
-    clear(left);clear(right);
+     // Build lookup sets once per render: avoid rescanning the entire catalogue for each chip.
+     const baseTags=mode==='base'?new Map(parseBaseTags(baseState().base).map(t=>[norm(t.text),t])):null;
+     const baseCurrent=mode==='base'?baseSelected(preset):[];
+     const baseAlways=mode==='base'?baseSelected(NESS_APPEARANCE_ALWAYS):[];
+     const skinNames=new Map(skin.tags.map(t=>[t.id,norm(t.text)]));
+     const skinCurrent=mode==='skin'?new Set((skin.selections[preset]||[]).map(id=>skinNames.get(id)).filter(Boolean)):null;
+     const skinAlways=mode==='skin'?new Set((skin.selections.always||[]).map(id=>skinNames.get(id)).filter(Boolean)):null;
+     const nsfwCurrent=mode==='nsfw'?new Set(parseBaseTags(readNsfwState()?.[preset]||'').map(t=>norm(t.text))):null;
+     const overlaps=(t,ranges)=>!!t&&ranges.some(r=>r.start<t.end&&t.start<r.end);
+     const chosenNow=t=>mode==='base'?overlaps(baseTags.get(norm(t.text)),baseCurrent):mode==='skin'?skinCurrent.has(norm(t.text)):nsfwCurrent.has(norm(t.text));
+     const inAlways=t=>mode==='base'?overlaps(baseTags.get(norm(t.text)),baseAlways):mode==='skin'?skinAlways.has(norm(t.text)):false;
+     clear(left);clear(right);
     el('strong','Все теги',left);
     const groupBar=el('div',undefined,left,'ness-row ness-board-group-create');
     const groupInput=el('input',undefined,groupBar,'ness-input');groupInput.placeholder='Название раздела';groupInput.setAttribute('data-group-name','');
