@@ -184,7 +184,9 @@ async function collectDirectStream(response) {
     try{
         while(!wasDone){
             const next=await reader.read();
-            buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done}).replace(/\r\n/g,'\n');
+            // Normalize CRLF only after joining chunks; the separator may cross network reads.
+            buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done});
+            buffer=buffer.replace(/\r\n/g,'\n');
             let split;
             while((split=buffer.indexOf('\n\n'))!==-1){
                 const packet=buffer.slice(0,split);buffer=buffer.slice(split+2);
