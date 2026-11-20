@@ -2253,12 +2253,92 @@ const live = SillyTavern.getContext();
 
 }
 
+// Module: resume_post
+// Resume exactly the stored post. A saved final prompt goes directly to the NAI
+// preview; never make another director or composition model request.
+async function resumePost(request=null) {
+ const st=SillyTavern.getContext();
+ if(!request||request.chat!==st.chat||request.chatId!==st.chatId||st.chat?.[request.index]!==request.message)
+   throw Error('Чат или RP-пост изменился. Нажми «Продолжить» у сохранённого поста заново.');
+ const draft=readPostDraft(st,request.index);
+ if(!draft)throw Error('У этого RP-поста нет сохранённого черновика.');
+ const kind=draft.kind;
+ validateKind(kind);
+ const originalChat=st.chat,originalId=st.chatId,post=st.chat[request.index];
+ const ensureOrigin=()=>{
+  const now=SillyTavern.getContext();
+  if(now.chat!==originalChat||now.chatId!==originalId||now.chat?.[request.index]!==post)
+    throw Error('Чат или исходный пост изменился; черновик сохранён, отправка отменена.');
+ };
+ const progress=createSpImagenProgress();
+ try{
+  const finalConfig=draft.final?.config;
+  if(finalConfig?.prompt?.trim()){
+   if(generationLocks.has(originalChat)||preparationLocks.has(originalChat))throw Error('Генерация или подготовка уже выполняется.');
+   if(!getMediaSlots?.()?.installed)throw Error('Галерея SP Imagen не готова. Обнови страницу.');
+   generationLocks.add(originalChat);
+   try{
+    const config=JSON.parse(JSON.stringify(finalConfig));
+    if(config.spImagenDirect?.settings?.apiKey || config.spImagenDirect?.settings?.endpoint)
+      throw Error('Черновик содержит параметры подключения, которые нельзя хранить в чате. Сохрани новый черновик без API-ключа.');
+    if(!spImagenExtension().directGenerationEnabled?.())throw Error('Включи прямую генерацию NovelAI в SP Imagen.');
+    progress.set('Сохранённый промпт', 'Проверь сохранённый текст; режиссёр не вызывается.',{stoppable:false});
+    const accepted=await previewFinalPrompt(config,{
+     chat:originalChat,id:originalId,count:originalChat.length,index:request.index,kind,message:post
+    });
+    if(!accepted){progress.close();return 'Черновик оставлен на посте без отправки в NovelAI.';}
+    ensureOrigin();
+    if(progress.signal.aborted)throw Error('Отменено пользователем. Черновик сохранён.');
+    st.chatMetadata.variables ||= {};
+    st.chatMetadata.variables.sp_imagen_last_final_image_prompt=config.prompt;
+    await saveNessGenerationMetadata(st,'восстановленный финальный промпт');
+    ensureOrigin();
+    progress.submitted();
+    const output=await spImagenExtension().generateImage(config,{reuseSnapshot:true,signal:progress.signal});
+    ensureOrigin();
+    progress.set('Сохранение изображения','Добавляю новую версию к исходному RP-посту.',{stoppable:false});
+    const manager=getMediaSlots();
+    const stored=await manager.publish(request.index,kind,output);
+    ensureOrigin();
+    const versions=post.extra?.ness_media_slots_v2?.[kind]?.versions;
+    if(!Array.isArray(versions)||!versions.some(x=>x.src===stored?.src))
+      throw Error('Изображение не подтверждено галереей. Черновик сохранён.');
+    discardPostDraft(st,request.index);
+    try{await manager.focus(request.index,kind,true);}catch(error){console.warn('[SP Imagen] Could not focus saved image',error);}
+    progress.complete('Изображение готово','Сохранено без повторного запроса режиссёру.');
+    return 'SP Imagen: восстановленная генерация сохранена в RP-посте #'+request.index;
+   }finally{generationLocks.delete(originalChat);}
+  }
+  if(!draft.parser?.parsedScene)throw Error('Сохранённый черновик не содержит данных сцены. Не удаляй его до проверки.');
+  if(preparationLocks.has(originalChat)||generationLocks.has(originalChat))throw Error('Подготовка или генерация уже выполняется.');
+  nessGenerationTargets.set(originalChat,{index:request.index,message:post,text:post.mes,chatId:originalId});
+  st.chatMetadata.variables ||= {};
+  restoreParserToVariables(st.chatMetadata.variables,draft);
+  progress.set('Сохранённая сцена','Проверь сохранённые детали и персонажей — повторного сбора постов нет.',{stoppable:false});
+  await reviewScene(progress);
+  ensureOrigin();
+  if(st.chatMetadata.variables.sp_imagen_preview_status!=='approved'){
+   progress.close();
+   return 'Подготовка остановлена; черновик сохранён.';
+  }
+  progress.set('Подготовка библиотеки','Подставляю актуальные описания из библиотеки.');
+  await prepareLibrary();
+  ensureOrigin();
+  return await renderImage(kind,progress);
+ }catch(error){progress.fail(error);throw error;}
+}
+
 // Module: generate_at
 // One entry point for post buttons. The request is ephemeral, never stored in chat metadata.
 async function generateAt(request=null){
  const st=SillyTavern.getContext();
  if(!request||request.chat!==st.chat||request.chatId!==st.chatId||st.chat[request.index]!==request.message)throw Error('Выбранный пост или чат изменился. Нажми кнопку на посте заново.');
  validateKind(request.kind);
+ const existing=readPostDraft(st,request.index);
+ if(existing){
+   if(!window.confirm('У этого поста есть сохранённый черновик. Начать новую генерацию и заменить его? Чтобы продолжить старую, нажми «Продолжить» под постом.'))return 'Черновик сохранён без изменений.';
+   discardPostDraft(st,request.index);
+ }
  const progress=createSpImagenProgress();
  const checkStopped=()=>{if(progress.signal.aborted)throw Error('Генерация остановлена пользователем.');};
  try{
@@ -2285,6 +2365,6 @@ async function generateAt(request=null){
 }
 
 // Module: runtime_exports
-return {generateAt,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
+return {generateAt,resumePost,prepareRp,reviewScene,prepareLibrary,manualPrepare,prepareNpc,selectComposition,renderImage,openLibrary,openSettings,utilities:{inferWardrobeRecordRule,compileNessRule,cleanRpVisualText,normalizeImagePrompt,parseImageHtml,getVisibleRpText,loadGen2Settings,validateGen2Settings,readConfiguredWardrobe,collectConfiguredRp,cleanConfiguredRp,saveGen2Settings,configuredDirectorPrompt,createGen2SettingsPanel,loadMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw}};
 
 }
