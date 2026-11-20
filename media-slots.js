@@ -668,14 +668,15 @@ export async function installSpImagenMediaSlots(options) {
   function card(index, kind, slot, locked) {
     const selected = slot.selected;
     const item = slot.versions[selected];
+    const displayName=generationProfiles().find(p=>p.id===kind)?.name||slot.label||item?.config?.profileName||LABEL[kind];
     const section = element('section', 'card');
     const collapsed = slot.collapsed !== false;
     section.dataset.collapsed = String(collapsed);
     const heading = element('button', 'heading');
     heading.title = collapsed ? 'Развернуть изображение' : 'Свернуть изображение';
-    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${LABEL[kind]}`);
+    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${displayName}`);
     heading.setAttribute('aria-expanded', String(!collapsed));
-    const name = element('span', 'heading-title', slot.label||item?.config?.profileName||LABEL[kind]);
+    const name = element('span', 'heading-title', displayName);
     const meta = element('span', 'heading-meta');
     meta.append(element('span','heading-count',`${selected+1} / ${slot.versions.length}`),
         element('span','heading-chevron',collapsed ? '▸' : '▾'));
@@ -686,7 +687,7 @@ export async function installSpImagenMediaSlots(options) {
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
     const image = element('img');
     image.src = item.src;
-    image.alt = `${LABEL[kind]} · версия ${selected + 1}`;
+    image.alt = `${displayName} · версия ${selected + 1}`;
     image.loading = 'lazy';
     frame.addEventListener('click', () => host.open(item.src, '_blank', 'noopener'));
     frame.append(image);
