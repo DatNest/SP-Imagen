@@ -277,7 +277,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const base=baseState(),existing=parseBaseTags(base.base);
   const reordered=sorted.map(tag=>existing.find(x=>norm(x.text)===norm(tag.text))).filter(Boolean);
   catalog={tags:sorted.map(x=>({...x})),sections:movedSections};
-  if(reordered.length===existing.length&&!reordered.every((x,i)=>x.start===existing[i].start))
+  if(appearanceFormat!=='prose'&&reordered.length===existing.length&&!reordered.every((x,i)=>x.start===existing[i].start))
    writeBaseState(reorderBaseTags(base,reordered));
   skin.tags=sorted.map(t=>skinTag(t)).filter(Boolean);
   after();
@@ -344,6 +344,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!confirm('Удалить тег из общей библиотеки? Он исчезнет из всех ракурсов, кожи и NSFW.'))return;
   const all=items(),at=all.indexOf(tag),source=parseBaseTags(baseState().base);
   const existing=source.find(x=>norm(x.text)===norm(tag.text));
+  if(existing&&appearanceFormat==='prose'){warn('Для обычного текста редактируй описание через текстовый режим. Удаление из каталога изменило бы исходный абзац.');return;}
   if(existing&&source.length===1){warn('Нельзя удалить последний тег основы: постоянная внешность должна быть заполнена.');return;}
   record();
   catalog.tags=catalog.tags.filter(x=>x.id!==tag.id);
@@ -362,6 +363,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!text||text===tag.text||readOnly())return;
   if(/[,\r\n]/.test(text)){warn('В одном теге нельзя использовать запятую.');return;}
   if(items().some(x=>x!==tag&&norm(x.text)===norm(text)))return;
+  if(appearanceFormat==='prose'&&parseBaseTags(baseState().base).some(t=>norm(t.text)===norm(tag.text))){warn('Для обычного текста меняй фразу в текстовом режиме, чтобы сохранить абзац.');return;}
   record();
   const previous=tag.text,source=parseBaseTags(baseState().base);
   const existing=source.find(x=>norm(x.text)===norm(previous));
