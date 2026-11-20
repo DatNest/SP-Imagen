@@ -391,3 +391,58 @@
 #sp-imagen-review-panel .ness-tagboard-divider>.ness-tagboard-grip{order:-1;}
 #sp-imagen-review-panel .ness-tagboard-grip{touch-action:none!important;user-select:none;-webkit-user-select:none;}
 #sp-imagen-review-panel .ness-tagboard-item>.ness-button:first-child{flex:1 1 auto;}
+
+/* v2.9.6: Keep personal prompt cards and their buttons inside mobile dialog flow. */
+.spi-prompt-center .spi-profile-scroll{
+  display:flex;flex-direction:column;align-items:stretch;gap:12px;
+  min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;padding:4px 5px 22px 2px;
+}
+.spi-prompt-center .spi-profile-scroll>:is(.spi-prompt-list,.spi-custom-profile-list,.spi-dialog-actions,.spi-profile-hint,h3){
+  flex:0 0 auto;min-height:0;min-width:0;
+}
+.spi-prompt-center .spi-profile-scroll .spi-prompt-row{
+  min-width:0;max-width:100%;height:auto;overflow-wrap:anywhere;
+  align-items:start;
+}
+.spi-prompt-center .spi-profile-scroll .spi-prompt-row>strong{
+  min-width:0;max-width:100%;display:flex;flex-wrap:wrap;gap:4px 7px;
+  line-height:1.4;
+}
+.spi-prompt-center .spi-profile-scroll .spi-dialog-actions{
+  display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:stretch;
+  min-width:0;gap:7px;margin-top:0;
+}
+.spi-prompt-center .spi-profile-scroll .spi-dialog-actions>.menu_button{
+  flex:0 1 auto;min-width:0;max-width:100%;height:auto;
+  white-space:normal;overflow-wrap:anywhere;text-align:center;
+}
+.spi-prompt-center .spi-profile-hint{
+  margin:0!important;color:var(--SmartThemeEmColor,#aaa);font-size:12px;line-height:1.5;
+}
+.spi-custom-profile-editor .spi-custom-profile-form{
+  display:flex;flex-direction:column;align-items:stretch;
+  flex:1 1 auto;min-width:0;min-height:0;overflow-y:auto;
+  overflow-x:hidden;padding:5px 4px 22px;gap:14px;
+  overscroll-behavior:contain;
+}
+.spi-custom-profile-editor .spi-custom-profile-form>*{
+  position:relative;flex:0 0 auto;min-width:0;margin:0;
+}
+.spi-custom-profile-editor .spi-custom-profile-form .spi-field{
+  display:flex;flex-direction:column;align-items:stretch;gap:7px;
+}
+.spi-custom-profile-editor .spi-custom-profile-form textarea{
+  max-width:100%;height:auto;min-height:180px;flex:0 0 auto;
+}
+.spi-custom-profile-editor>.spi-dialog-actions{
+  position:relative;z-index:2;flex:0 0 auto;min-width:0;
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--SmartThemeBorderColor,#777);
+  background:var(--SmartThemeBlurTintColor,#222);
+}
+@media (max-width:620px){
+ .spi-prompt-center .spi-profile-scroll .spi-prompt-row{grid-template-columns:minmax(0,1fr);}
+ .spi-custom-profile-editor .spi-custom-profile-form{padding-bottom:18px;}
+ .spi-custom-profile-editor>.spi-dialog-actions{gap:7px;justify-content:stretch;}
+ .spi-custom-profile-editor>.spi-dialog-actions>.menu_button{flex:1 1 auto;min-width:0;white-space:normal;}
+}
