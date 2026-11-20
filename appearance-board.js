@@ -444,6 +444,20 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
     }
     el('strong',headings[preset]+' · выбранные',right);
 
+    // Always-on tags apply to this view without being selected again.
+    // Present them as a subtle inline summary, not a separate bulky card.
+    if(preset!==SKIN_ALWAYS){
+     const common=items().filter(inAlways);
+     if(common.length){
+      const band=el('div',undefined,right,'ness-tagboard-always');
+      const label=el('span','✦ Всегда',band,'ness-tagboard-always-label');
+      label.title='Теги действуют для всех ракурсов. Меняются в «Показывать всегда».';
+      for(const tag of common){
+       const chip=el('span',tag.text,band,'ness-tagboard-always-chip');
+       chip.title='Тег действует для всех ракурсов';
+      }
+     }
+    }
     const list=el('div',undefined,right,'ness-tagboard-selected');
     for(const token of sequence){
      if(token.kind==='divider'){
@@ -459,13 +473,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
      const checkbox=el('input',undefined,item);checkbox.type='checkbox';checkbox.checked=checked.has(mode==='base'?tag.start:tag.id);
      checkbox.setAttribute('aria-label','Отметить для группового снятия: '+tag.text);
      checkbox.onchange=()=>{const k=mode==='base'?tag.start:tag.id;if(checkbox.checked)checked.add(k);else checked.delete(k);};
-    }
-    if(preset!==SKIN_ALWAYS){
-     const common=items().filter(inAlways);
-     if(common.length){const band=el('div',undefined,right,'ness-tagboard-always');
-      el('span','✦ Показывать всегда',band);
-      for(const tag of common)el('span',tag.text,band,'ness-tagboard-always-chip');
-     }
     }
     const actions=el('div',undefined,right,'ness-tagboard-bottom');
     button('+ Все видимые',actions,()=>{

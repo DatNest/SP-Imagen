@@ -59,7 +59,9 @@ export function appearanceVisibilityInstruction(records,rules={},customTemplate)
  if(!records.size)return '';
  const descriptions=Object.entries(NESS_APPEARANCE_RULES).map(([id,[,text]])=>id+': '+(rules[id]||text)).join('\n');
  const template=typeof customTemplate==='string' && customTemplate.trim() ? customTemplate : `\n\nFRAMING OVERRIDE FOR MARKED LIBRARY CHARACTERS\nFor each marked character shown, choose exactly ONE preset for their whole entry, even across multiple panels. Put exactly one literal marker in their own entry where fixed base appearance belongs. Use the supplied character ID. Example: [[NESS_VIS:id:upper_back]]. Use one preset ID only, with no combined views or suffixes. Do not write fixed base appearance yourself. Keep their usual identity, pose, clothing and scene details. The library inserts the chosen preset and always-insert tags once, in library order. If no appearance detail is visible, use [[NESS_VIS:id:none]]. Never include markers for absent characters. These markers override any placeholder ban. The following editable rules guide the single choice within this format:\n{{rules}}`;
- return template.includes('{{rules}}') ? template.replaceAll('{{rules}}',descriptions) : template+'\n'+descriptions;
+ const expanded=template.includes('{{rules}}')?template.replaceAll('{{rules}}',descriptions):template+'\n'+descriptions;
+ // Always reinforce syntax, even when an older user-customized template is used.
+ return expanded+'\nCRITICAL MARKER SYNTAX: Use exactly [[NESS_VIS:ACTUAL_ID:PRESET]] with TWO colons. Never output [[NESS_VIS:ACTUAL_ID]] without a preset. Allowed PRESET values: '+['none',...Object.keys(NESS_APPEARANCE_PRESETS)].join(', ')+'. Choose a preset from the actual scene framing; do not output placeholder names.';
 }
 
 function visibilityMarkerLocation(prompt,index){
@@ -99,24 +101,36 @@ function validateVisibilityMarkers(prompt,records){
 }
 
 export function insertVisibleAppearance(prompt,records){
- validateVisibilityMarkers(prompt,records);
+ const missingPreset=new Set();
+ // The director sometimes emits [[NESS_VIS:known_id]] without its view.
+ // Recover only this unambiguous omission. Never guess that a full-body,
+ // front, back, or face-specific view was actually visible.
+ const repaired=String(prompt||'').replace(/\[\[NESS_VIS:([a-z][a-z0-9_]*):?[ \t]*\]\]/g,(marker,id)=>{
+  if(!records.has(id))throw Error('Метка БАЗОВОЙ внешности с неизвестным ID «'+id+'»: персонаж не найден в подготовленной библиотеке.');
+  missingPreset.add(id);
+  return '[[NESS_VIS:'+id+':full_front]]'; // Canonical syntax for validation only.
+ });
+ validateVisibilityMarkers(repaired,records);
  const seen=new Set();
- const result=prompt.replace(/([ \t]*,[ \t]*)?\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]([ \t]*[,;])?/g,(_,before,id,spec,after)=>{
+ const result=repaired.replace(/([ \t]*,[ \t]*)?\[\[NESS_VIS:([a-z][a-z0-9_]*):([^\]\r\n]+)\]\]([ \t]*[,;])?/g,(_,before,id,spec,after)=>{
   if(!records.has(id)||seen.has(id))throw Error('Некорректная метка ракурса для «'+id+'». Запусти режиссёра заново.');
   seen.add(id);
   if(spec!=='none'&&!Object.hasOwn(NESS_APPEARANCE_PRESETS,spec))throw Error('Режиссёр должен выбрать один ракурс для «'+id+'». Запусти генерацию заново.');
   const {base,ranges=[],selections={},appearanceFormat='tags'}=records.get(id);
   if(spec==='none')return after||'';
   const prose=appearanceFormat==='prose';
-  const view=visibleAppearanceRanges(ranges,spec,selections,false);
+  const useBase=missingPreset.has(id);
+  const view=useBase?[]:visibleAppearanceRanges(ranges,spec,selections,false);
   const parts=view.length?visibleAppearanceRanges(ranges,spec,selections,true).map(r=>r.text.trim()).filter(Boolean):[];
-  // In prose mode preserve the authorial punctuation between sentences.
-  // Only the final boundary is standardized before clothing/pose instructions.
+  // A missing preset cannot establish which areas are visible, so restore the
+  // exact authoritative base appearance instead of making up an angle.
+  // Other, valid markers retain their original view-specific selections.
   const text=(view.length?(prose?parts.join(' '):parts.map(x=>x.replace(/[,;]+$/,'')).join(', ')):String(base||'').trim())
     .replace(prose?/[.,;!?\s]+$/:/[;,\s]+$/,'');
   return text?(before||'')+text+';':after||'';
  });
  if(result.includes('[[NESS_VIS:'))throw Error('В промпте осталась неподставленная [[NESS_VIS]] базовой внешности. Проверь ID, выбранный ракурс и закрывающие скобки; это НЕ маркер одежды. NovelAI не запускался.');
+ if(missingPreset.size)console.warn('[SP Imagen] Отсутствует ракурс в NESS_VIS. Безопасно использована исходная внешность из библиотеки для: '+[...missingPreset].map(id=>records.get(id)?.name||id).join(', '));
  // A director can accidentally omit a visibility marker. If a known library character
  // is explicitly named at the start of its own section, use the base as a safe fallback
  // rather than silently generating a generic look-alike. Never create a new character.

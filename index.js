@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.9';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.10';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -434,24 +434,26 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     const list=document.createElement('div');list.className='spi-prompt-list';
     for (const [key,label] of Object.entries(PROFILE_LABELS)) {
         const kind=key.replace(/^sp_ness_(snapshot|comic|story_page)_director$/,'$1');
-        const row=document.createElement('div');row.className='spi-prompt-row'+(pending.has(key)?' spi-conflict':'');
+        const row=document.createElement('div');row.className='spi-prompt-row spi-profile-card'+(pending.has(key)?' spi-conflict':'');
+        const head=document.createElement('div');head.className='spi-profile-card-head';
         const title=document.createElement('strong');title.textContent=label;
         const visible=document.createElement('label');visible.className='spi-profile-visible';
+        visible.title='Показывать профиль в меню генерации по звёздочке';
         const check=document.createElement('input');check.type='checkbox';check.checked=settings().visibleBuiltIns?.[kind]!==false;
-        const span=document.createElement('span');span.textContent='Показывать по ✧';
+        const span=document.createElement('span');span.textContent='✧ В меню';
         visible.append(check,span);
         check.onchange=()=>{settings().visibleBuiltIns[kind]=check.checked;saveSettings();mediaSlots?.refresh?.();};
-        title.append(visible);
-        const actions=document.createElement('div');actions.className='spi-dialog-actions';
-        button('Посмотреть',actions,()=>openPromptWindow(key));
+        head.append(title,visible);
+        const actions=document.createElement('div');actions.className='spi-dialog-actions spi-profile-card-actions';
+        button('Просмотр',actions,()=>openPromptWindow(key)).classList.add('spi-profile-action');
         const copyHelp=document.createElement('div');actions.append(copyHelp);
         button('Создать копию',copyHelp,()=>openCustomProfileEditor(null,renderCustom,{
             name:'Копия · '+label,kind,directorPrompt:settings().prompts[key]||shippedPrompt(key),
             visible:true,parser:{posts:null,instructions:'',options:{}},
-        }),true);
+        }),true).classList.add('spi-profile-action','spi-profile-action-copy');
         helpButton(copyHelp,'Самостоятельная копия '+label,
             'Создаётся НОВЫЙ независимый профиль, который не заменяет '+label+'. Он получит собственную строку в выборе по звёздочке и отдельную галерею.\n\nИзмени скопированную инструкцию и сохрани. Сразу после сохранения новый профиль доступен для генерации, если включено «Показывать по ✧». Исходный '+label+' продолжает работать без изменений. У копии можно отдельно задать число RP-постов, передаваемые источники и правила разбора.\n\nОбязательные HTML/JSON-маркеры, секции персонажей и Text: лучше сохранять, иначе режиссёр может вернуть непригодный формат.');
-        row.append(title,actions);list.append(row);
+        row.append(head,actions);list.append(row);
     }
     scroll.append(list);
     heading('Собственные профили генерации',scroll);
@@ -461,7 +463,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     const customList=document.createElement('div');customList.className='spi-custom-profile-list';scroll.append(customList);
     const createActions=document.createElement('div');createActions.className='spi-dialog-actions';
     const profileCreate=button('＋ Создать свой профиль',createActions,()=>openCustomProfileEditor(null,renderCustom),true);
-    profileCreate.classList.add('spi-create-custom-profile');
+    profileCreate.classList.add('spi-create-custom-profile','spi-profile-add-button');
     const profileHelp=document.createElement('div');createActions.append(profileHelp);
     helpButton(profileHelp,'Создать собственный профиль',
         'Это отдельный режим генерации с собственным именем и полным промптом режиссёра. Можно начать с одного из встроенных шаблонов и переписать его целиком.\n\nВ «Настройке разбора» задаются число читаемых RP-постов, источники (сцена, библиотека, одежда, композиция) и дополнительные указания по разбору. Эти параметры используются только при выборе этого профиля. Галочка возле него показывает или скрывает профиль в меню ✧; сохранённые изображения не удаляются.');
@@ -474,7 +476,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     const addActions=document.createElement('div');addActions.className='spi-dialog-actions';
     const addRow=document.createElement('div');addActions.append(addRow);
     const addButton=button('＋ Добавить промпт',addRow,()=>openExtraRuleEditor(null,renderCustom),true);
-    addButton.classList.add('spi-prompt-add');
+    addButton.classList.add('spi-prompt-add','spi-profile-add-button');
     helpButton(addRow,'Добавить дополнительный промпт',
         'Впиши название и текст правила. После сохранения оно будет добавляться ДОСЛОВНО в инструкции режиссёра для Snapshot, Comic, Story Page и всех собственных профилей.\n\nНапример: «Framing: always use a close or medium shot». Режиссёр получит эту инструкцию как написано и будет применять её к описанию сцены. Сам текст НЕ вставляется механически перед тегами 1girl/1boy в финальный промпт NAI5.\n\nМожно создавать несколько правил: все включённые работают вместе. Галочка возле каждого правила управляет его применением. «Изменить» меняет текст для следующих генераций; исходные режиссёры от этого не переписываются.');
     scroll.append(addActions);
@@ -483,31 +485,37 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         customList.replaceChildren();rulesList.replaceChildren();
         if(!store.profiles.length){const p=document.createElement('p');p.className='spi-status';p.textContent='Пока нет личных режимов генерации.';customList.append(p);}
         for(const profile of store.profiles){
-            const row=document.createElement('div');row.className='spi-prompt-row';
-            const title=document.createElement('strong');title.append(document.createTextNode(profile.name));
-            const meta=document.createElement('small');meta.textContent=' · '+PROFILE_KINDS[profile.kind]+' · свой режиссёр';title.append(meta);
-            const toggle=document.createElement('label');toggle.className='spi-profile-visible';
+            const row=document.createElement('div');row.className='spi-prompt-row spi-profile-card';
+            const head=document.createElement('div');head.className='spi-profile-card-head';
+            const info=document.createElement('div');info.className='spi-profile-card-info';
+            const title=document.createElement('strong');title.textContent=profile.name;
+            const meta=document.createElement('small');meta.textContent=PROFILE_KINDS[profile.kind]+' · свой режиссёр';
+            info.append(title,meta);
+            const toggle=document.createElement('label');toggle.className='spi-profile-visible';toggle.title='Показывать профиль в меню генерации по звёздочке';
             const check=document.createElement('input');check.type='checkbox';check.checked=profile.visible;
-            toggle.append(check,document.createTextNode('Показывать по ✧'));title.append(toggle);
+            toggle.append(check,document.createTextNode('✧ В меню'));
             check.onchange=()=>{const target=settings().customProfiles.find(p=>p.id===profile.id);if(target){target.visible=check.checked;saveSettings();mediaSlots?.refresh?.();}};
-            const actions=document.createElement('div');actions.className='spi-dialog-actions';
-            button('Изменить',actions,()=>openCustomProfileEditor(profile,renderCustom));
+            head.append(info,toggle);
+            const actions=document.createElement('div');actions.className='spi-dialog-actions spi-profile-card-actions';
+            button('Изменить',actions,()=>openCustomProfileEditor(profile,renderCustom)).classList.add('spi-profile-action');
             const dup=document.createElement('div');actions.append(dup);
-            button('Создать копию',dup,()=>openCustomProfileEditor(null,renderCustom,{...profile,id:'',name:'Копия · '+profile.name}));
+            button('Создать копию',dup,()=>openCustomProfileEditor(null,renderCustom,{...profile,id:'',name:'Копия · '+profile.name})).classList.add('spi-profile-action','spi-profile-action-copy');
             helpButton(dup,'Копия личного профиля','Создаёт НОВЫЙ независимый профиль на основе этой инструкции. Его можно изменить и показывать отдельно в меню ✧. Исходный профиль не изменяется, галереи у них раздельные.');
-            row.append(title,actions);customList.append(row);
+            row.append(head,actions);customList.append(row);
         }
         if(!store.rules.length){const p=document.createElement('p');p.className='spi-status';p.textContent='Пока нет общих дополнительных правил.';rulesList.append(p);}
         for(const rule of store.rules){
-            const row=document.createElement('div');row.className='spi-prompt-row';
-            const title=document.createElement('strong');title.append(document.createTextNode(rule.name));
-            const active=document.createElement('label');active.className='spi-profile-visible';
+            const row=document.createElement('div');row.className='spi-prompt-row spi-profile-card spi-profile-rule';
+            const head=document.createElement('div');head.className='spi-profile-card-head';
+            const title=document.createElement('strong');title.textContent=rule.name;
+            const active=document.createElement('label');active.className='spi-profile-visible';active.title='Применять правило ко всем режиссёрам';
             const check=document.createElement('input');check.type='checkbox';check.checked=rule.enabled;
-            active.append(check,document.createTextNode('Применять'));title.append(active);
+            active.append(check,document.createTextNode('Применять'));
             check.onchange=()=>{const r=settings().extraPrompts.find(x=>x.id===rule.id);if(r){r.enabled=check.checked;saveSettings();}};
-            const actions=document.createElement('div');actions.className='spi-dialog-actions';
-            button('Изменить',actions,()=>openExtraRuleEditor(rule,renderCustom));
-            row.append(title,actions);rulesList.append(row);
+            head.append(title,active);
+            const actions=document.createElement('div');actions.className='spi-dialog-actions spi-profile-card-actions';
+            button('Изменить',actions,()=>openExtraRuleEditor(rule,renderCustom)).classList.add('spi-profile-action');
+            row.append(head,actions);rulesList.append(row);
         }
     };
     renderCustom();
@@ -552,9 +560,15 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         autoSwap.disabled = !validPromptSnapshot(slots.automatic);
     }
     syncBackupButtons();
+    // Maintenance controls are available on demand, not a wall of
+    // competing buttons above the actual list of generation profiles.
+    const maintenance=document.createElement('details');maintenance.className='spi-profile-maintenance';
+    const maintenanceTitle=document.createElement('summary');
+    maintenanceTitle.textContent='Управление · импорт и резервные копии';
+    maintenance.append(maintenanceTitle,transfer,backups,backupInfo);
 
     if(pending.size)dialog.append(copy);
-    dialog.append(transfer,backups,backupInfo,scroll,footer);
+    dialog.append(maintenance,scroll,footer);
     return closed;
 }
 function openExtraRuleEditor(existing=null,refresh=()=>{}){
