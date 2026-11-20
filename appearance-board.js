@@ -14,6 +14,7 @@ export const SKIN_PRESETS=Object.freeze({
  legs:'Открытые ноги'
 });
 export const SKIN_ALWAYS='always';
+export const NSFW_PRESETS=Object.freeze({nudeUpper:'Голый верх',nudeLower:'Голый низ'});
 const copy=x=>JSON.parse(JSON.stringify(x));
 const norm=s=>String(s||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
 const validLabel=s=>String(s||'').trim().slice(0,50);
@@ -76,6 +77,41 @@ export function normalizeAppearanceSections(raw,base){
  }
  return sections;
 }
+/** Shared tag catalogue, with legacy source fields kept as prompt authorities. */
+export function normalizeAppearanceCatalog(raw,base,skin,nsfw={},legacySections=[]){
+ const data=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+ const skinState=normalizeSkinTags(skin),tags=[],names=new Set(),ids=new Set();
+ const add=(value,preferredId)=>{
+  const valueText=String(value||'').trim().replace(/[,;\s]+$/,'').trim();
+  if(!valueText||names.has(norm(valueText))||tags.length>=700)return;
+  names.add(norm(valueText));
+  let id=String(preferredId||'');
+  if(!/^[a-z][a-z0-9_]{0,48}$/.test(id)||ids.has(id)){
+   let index=tags.length+1;while(ids.has('tag'+index))index++;id='tag'+index;
+  }
+  ids.add(id);tags.push({id,text:valueText.slice(0,1200)});
+ };
+ for(const t of Array.isArray(data.tags)?data.tags:[])if(typeof t?.text==='string')add(t.text,t.id);
+ const baseTags=parseBaseTags(base);
+ for(const t of baseTags)add(t.text);
+ for(const t of skinState.tags)add(t.text,t.id);
+ for(const key of Object.keys(NSFW_PRESETS))for(const t of parseBaseTags(nsfw?.[key]||''))add(t.text);
+ const sectionSource=Array.isArray(data.sections)?data.sections:[
+  ...normalizeAppearanceSections(legacySections,base),
+  ...skinState.sections.map(x=>({...x,before:baseTags.length+x.before}))
+ ];
+ const sections=[],sectionIds=new Set();
+ for(const x of sectionSource){
+  if(!x||!validLabel(x.title)||sections.length>=60)continue;
+  let id=String(x.id||'');
+  if(!/^[a-z][a-z0-9_]{0,48}$/.test(id)||sectionIds.has(id)){
+   let i=sections.length+1;while(sectionIds.has('divider'+i))i++;id='divider'+i;
+  }
+  sectionIds.add(id);
+  sections.push({id,title:validLabel(x.title),before:Number.isInteger(x.before)?Math.max(0,Math.min(tags.length,x.before)):tags.length});
+ }
+ return {tags,sections};
+}
 /** Preserve character source ordering, all surviving offsets and selection ownership. */
 export function reorderBaseTags(state,reordered){
  const before=parseBaseTags(state.base),oldRanges=state.ranges||[],oldSelections=state.selections||{};
@@ -103,10 +139,12 @@ export function reorderBaseTags(state,reordered){
  return {base:text,ranges:mapRanges(oldRanges,false),selections:normalizeAppearanceSelections(text,Object.fromEntries(Object.entries(oldSelections).map(([k,v])=>[k,mapRanges(v,true)])))};
 }
 
-export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,initialSkin,initialSections,changed,readOnly,onLayoutChange=()=>{}}){
+export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfwState=()=>({}),writeNsfwState=()=>{},initialSkin,initialSections,initialCatalog,initialMode='base',initialPreset,changed,readOnly,onLayoutChange=()=>{}}){
  const {el,button,clear,input}=ui;
- let skin=normalizeSkinTags(initialSkin),sections=normalizeAppearanceSections(initialSections,readBaseState().base);
- let mode='base',preset='face',layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
+ let skin=normalizeSkinTags(initialSkin),catalog=normalizeAppearanceCatalog(initialCatalog,readBaseState().base,skin,readNsfwState(),initialSections);
+ let mode=['base','skin','nsfw'].includes(initialMode)?initialMode:'base';
+ let preset=initialPreset||(mode==='skin'?'upper_front':mode==='nsfw'?'nudeUpper':'face');
+ let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Конструктор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
@@ -119,22 +157,29 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
  const basic=button('Основа',modes,()=>{mode='base';preset='face';if(appearanceFormat==='prose')layout='text';checked.clear();render();},'quiet');
  const marks=button('Кожа и отметины',modes,()=>{mode='skin';layout='board';preset='upper_front';checked.clear();render();},'quiet');
+ const nsfw=button('NSFW',modes,()=>{mode='nsfw';layout='board';preset='nudeUpper';checked.clear();render();},'quiet');
  const content=el('div',undefined,frame,'ness-tagboard-body');
- const snapshot=()=>copy({base:readBaseState(),sections,skin});
+ const snapshot=()=>copy({base:readBaseState(),catalog,skin,nsfw:readNsfwState()});
  function applySnapshot(s){
-  writeBaseState(copy(s.base));
-  sections=normalizeAppearanceSections(s.sections,s.base.base);skin=normalizeSkinTags(s.skin);
+  writeBaseState(copy(s.base));writeNsfwState(copy(s.nsfw||{}));
+  skin=normalizeSkinTags(s.skin);
+  catalog=normalizeAppearanceCatalog(s.catalog,s.base.base,skin,s.nsfw);
   changed();render();
  }
  function record(){undo.push(snapshot());if(undo.length>50)undo.shift();redo.length=0;}
  function after(){changed();render();}
- const availablePresets=()=>mode==='base'?{always:'✦ Показывать всегда',...Object.fromEntries(Object.entries(NESS_APPEARANCE_PRESETS).map(([id,v])=>[id,v.label]))}:{always:'✦ Для всех открытых областей',...SKIN_PRESETS};
+ const availablePresets=()=>mode==='base'?{always:'✦ Показывать всегда',...Object.fromEntries(Object.entries(NESS_APPEARANCE_PRESETS).map(([id,v])=>[id,v.label]))}:mode==='skin'?{always:'✦ Для всех открытых областей',...SKIN_PRESETS}:NSFW_PRESETS;
  const baseState=()=>readBaseState();
- const baseSelected=(id)=>visibleAppearanceRanges(baseState().ranges,id,baseState().selections,false);
- const isBaseChosen=(tag,id)=>baseSelected(id).some(r=>r.start<tag.end&&tag.start<r.end);
- const isSkinChosen=(tag,id)=>(skin.selections[id]||[]).includes(tag.id);
- const isChosen=(tag,id)=>mode==='base'?isBaseChosen(tag,id):isSkinChosen(tag,id);
- const items=()=>mode==='base'?parseBaseTags(baseState().base):skin.tags;
+ const baseSelected=id=>visibleAppearanceRanges(baseState().ranges,id,baseState().selections,false);
+ const baseTag=tag=>parseBaseTags(baseState().base).find(t=>norm(t.text)===norm(tag.text));
+ const isBaseChosen=(tag,id)=>{
+  const t=baseTag(tag);return !!t&&baseSelected(id).some(r=>r.start<t.end&&t.start<r.end);
+ };
+ const skinTag=tag=>skin.tags.find(t=>norm(t.text)===norm(tag.text));
+ const isSkinChosen=(tag,id)=>{const t=skinTag(tag);return !!t&&(skin.selections[id]||[]).includes(t.id);};
+ const isNsfwChosen=(tag,id)=>parseBaseTags(readNsfwState()?.[id]||'').some(t=>norm(t.text)===norm(tag.text));
+ const isChosen=(tag,id)=>mode==='base'?isBaseChosen(tag,id):mode==='skin'?isSkinChosen(tag,id):isNsfwChosen(tag,id);
+ const items=()=>catalog.tags;
  function setSkinSelection(id,list){
   skin.selections[id]=[...new Set(list)];
   if(id===SKIN_ALWAYS){
@@ -150,29 +195,49 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   if(!relevant.length)return;
   record();
   if(mode==='skin'){
-   const ids=new Set(relevant.map(t=>t.id));
-   const current=new Set(skin.selections[preset]||[]);
-   for(const id of ids)if(assign)current.add(id);else current.delete(id);
+   const current=new Set(skin.selections[preset]||[]),ids=new Set();
+   for(const tag of relevant){
+    let st=skinTag(tag);
+    if(!st&&assign){
+     let id=tag.id;
+     if(skin.tags.some(x=>x.id===id))id='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+     st={id,text:tag.text,section:''};skin.tags.push(st);
+    }
+    if(!st)continue;
+    ids.add(st.id);if(assign)current.add(st.id);else current.delete(st.id);
+   }
    setSkinSelection(preset,[...current]);
    if(preset!==SKIN_ALWAYS&&assign)skin.selections.always=(skin.selections.always||[]).filter(x=>!ids.has(x));
+  }else if(mode==='nsfw'){
+   const state={...readNsfwState()},existing=parseBaseTags(state[preset]||'').map(x=>x.text);
+   const keys=new Set(relevant.map(t=>norm(t.text)));
+   state[preset]= (assign
+    ?[...existing,...relevant.filter(t=>!existing.some(x=>norm(x)===norm(t.text))).map(t=>t.text)]
+    :existing.filter(t=>!keys.has(norm(t)))).join(', ');
+   writeNsfwState(state);
   }else{
-   const state=baseState(),updated={...(state.selections||{})};
+   let state=baseState();
+   if(assign){
+    const existing=parseBaseTags(state.base),missing=relevant.filter(t=>!existing.some(x=>norm(x.text)===norm(t.text)));
+    if(missing.length){state=reorderBaseTags(state,[...existing,...missing.map(t=>({text:t.text}))]);writeBaseState(state);}
+   }
+   const updated={...(state.selections||{})};
    const overlap=(r,t)=>r.start<t.end&&t.start<r.end;
-   const current=baseSelected(preset).filter(r=>!relevant.some(t=>overlap(r,t)));
-   if(assign)for(const t of relevant)current.push({start:t.start,end:t.end,text:t.text});
+   const targets=relevant.map(baseTag).filter(Boolean);
+   const current=baseSelected(preset).filter(r=>!targets.some(t=>overlap(r,t)));
+   if(assign)for(const t of targets)current.push({start:t.start,end:t.end,text:t.text});
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
    if(preset===NESS_APPEARANCE_ALWAYS&&assign){
-    for(const id of Object.keys(NESS_APPEARANCE_PRESETS)){
-     updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!relevant.some(t=>overlap(r,t))),true);
-    }
+    for(const id of Object.keys(NESS_APPEARANCE_PRESETS))
+     updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!targets.some(t=>overlap(r,t))),true);
    }else if(preset!==NESS_APPEARANCE_ALWAYS&&assign){
-    updated.always=normalizeAppearanceRanges(state.base,baseSelected(NESS_APPEARANCE_ALWAYS).filter(r=>!relevant.some(t=>overlap(r,t))),true);
+    updated.always=normalizeAppearanceRanges(state.base,baseSelected(NESS_APPEARANCE_ALWAYS).filter(r=>!targets.some(t=>overlap(r,t))),true);
    }
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
   after();
  }
-
+ 
  const sectionsForMode=()=>mode==='base'?sections:skin.sections;
  function orderedSequence(){
   const all=items(),headings=sectionsForMode(),sequence=[];
