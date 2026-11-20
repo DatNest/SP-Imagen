@@ -16,13 +16,17 @@ export function normalizeProfile(input) {
   const id = String(input.id || '').trim();
   const name = String(input.name || '').trim();
   if (!/^[a-z0-9_-]{3,80}$/i.test(id) || !name) return null;
+  const directorPrompt = String(input.directorPrompt || '');
+  // Never silently truncate an instruction: a partial director can break the
+  // output contract and cause costly failed generations.
+  if (directorPrompt.length > 100000) return null;
   return {
     id, name: name.slice(0, 100),
     kind: Object.hasOwn(PROFILE_KINDS, input.kind) ? input.kind : 'all',
     prompt: String(input.prompt || '').slice(0, 20000),
     // Only a format-specific user copy may replace one director. Legacy personal
     // style prompts remain independent and continue to work across all formats.
-    directorPrompt: input.kind && input.kind !== 'all' ? String(input.directorPrompt || '').slice(0, 100000) : '',
+    directorPrompt: input.kind && input.kind !== 'all' ? directorPrompt : '',
     options: Object.fromEntries(Object.keys(DEFAULT_OPTIONS).map(key => [key, input.options?.[key] !== false])),
   };
 }
