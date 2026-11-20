@@ -87,8 +87,9 @@ export function reorderBaseTags(state,reordered){
    if(a>=b)continue;
    const target=destinations.get(old.start);
    if(!target)continue;
+   const full=a===old.start&&b===old.end;
    const start=target.start+a-old.start;
-   const end=Math.min(target.end,target.start+b-old.start);
+   const end=full?target.end:Math.min(target.end,target.start+b-old.start);
    if(start<end)moved.push({...r,start,end,text:text.slice(start,end)});
   }
   return normalizeAppearanceRanges(text,moved,unclassified);
@@ -96,7 +97,7 @@ export function reorderBaseTags(state,reordered){
  return {base:text,ranges:mapRanges(oldRanges,false),selections:normalizeAppearanceSelections(text,Object.fromEntries(Object.entries(oldSelections).map(([k,v])=>[k,mapRanges(v,true)])))};
 }
 
-export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,initialSkin,initialSections,changed,readOnly}){
+export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,initialSkin,initialSections,changed,readOnly,onLayoutChange=()=>{}}){
  const {el,button,clear,input}=ui;
  let skin=normalizeSkinTags(initialSkin),sections=normalizeAppearanceSections(initialSections,readBaseState().base);
  let mode='base',preset='face',layout='board',filter='',checked=new Set(),undo=[],redo=[];
@@ -237,6 +238,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   return visibleAppearanceRanges(state.ranges,preset,state.selections,preset!=='always').map(x=>x.text.trim().replace(/[,;]+$/,'')).join(', ')||'(нет тегов)';
  }
  function render(){
+  onLayoutChange(layout,mode);
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   boardButton.setAttribute('aria-pressed',String(layout==='board'));
@@ -342,7 +344,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,in
   }
  }
  render();
- return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(sections,readBaseState().base),refresh:render,getMode:()=>mode,setAvailableFormat(value){textButton.disabled=value==='prose';if(value==='prose'&&mode==='base'){layout='text';render();}}};
+ return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(sections,readBaseState().base),refresh:render,getMode:()=>mode,setAvailableFormat(value){textButton.disabled=false;if(value==='prose'&&mode==='base'){layout='text';render();}}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
