@@ -1103,7 +1103,7 @@ function saveImageStyle({name, value}) {
 function snapshotGenerationConfig(config, kind='snapshot') {
     const saved=settings().novelai;
     // Preserve settings necessary for a resumed request, but NEVER store credentials.
-    const {apiKey, endpoint, enabled, ...publicSettings}=saved;
+    const {apiKey, endpoint, enabled, styles, activeStyleId, ...publicSettings}=saved;
     const profile=activeProfile(settings(),kind);
     if(profile?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
     const style=profile?.options?.useArtStyle===false
@@ -1155,6 +1155,7 @@ async function run(command, kind, request = null) {
         sp_imagen_menu: () => openHub(),
         sp_imagen_quick_guide: () => launchQuickGuide(),
         sp_ness_generate_at: () => api.generateAt(request),
+        sp_ness_resume_post: () => api.resumePost(request),
         sp_ness_settings: () => api.openSettings(),
         sp_ness_library_editor: () => openLibrary(),
         sp_ness_prompt_editor: () => openPromptCenter(),
