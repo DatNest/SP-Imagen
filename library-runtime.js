@@ -988,8 +988,8 @@ async function openLibraryEditor(){
 
  function exitBoard(){
   if(!inBoardMode)return;
-  editor?.visibility?.closeBoard?.();
   if(!tryFlush())return;
+  editor?.visibility?.closeBoard?.();
   inBoardMode=false;
   clear(view.constructorHost);
   view.showEditor();
