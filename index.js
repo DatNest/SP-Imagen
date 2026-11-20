@@ -15,7 +15,7 @@ import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.10';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.11';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
