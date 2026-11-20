@@ -1091,36 +1091,6 @@ async function openLibraryEditor(){
    if(!editor||editor.id!==selected.id){select.value=previous;return;}
    displayBoard();
   };
-  const extras=el('div',undefined,host,'ness-fullboard-exposure');
-  el('span','Детали открытого тела',extras,'ness-label');
-  const exposedHelp=button('?',extras,undefined,'icon quiet ness-mini-help');
-  exposedHelp.setAttribute('aria-label','Как работают голый верх и голый низ');
-  const exposureTip=view.tip(exposedHelp,'Здесь хранятся постоянные особенности открытого тела. Кнопки только открывают редактор соответствующего поля: они не снимают одежду и не меняют сцены. Данные используются, когда участок действительно открыт и виден.');
-  exposedHelp.onclick=e=>{e.preventDefault();exposureTip.toggle();};
-  const bodyEdit=el('div',undefined,host,'ness-fullboard-exposure-editor');bodyEdit.hidden=true;
-  const controls=[];
-  for(const [key,label] of [['nudeUpper','Голый верх'],['nudeLower','Голый низ']]){
-   const source=editor.fields[key];
-   const toggle=button(label+(source?.value?.trim()?' •':''),extras,undefined,'quiet ness-fullboard-exposure-toggle');
-   toggle.setAttribute('aria-expanded','false');
-   controls.push({key,label,toggle});
-   toggle.onclick=()=>{
-    const selected=bodyEdit.dataset.key===key&&!bodyEdit.hidden;
-    clear(bodyEdit);bodyEdit.hidden=selected;bodyEdit.dataset.key=selected?'':key;
-    controls.forEach(item=>{const open=!selected&&item.key===key;item.toggle.setAttribute('aria-pressed',String(open));item.toggle.setAttribute('aria-expanded',String(open));});
-    if(selected)return;
-    const prompt=el('label',label+' · особенности открытого тела',bodyEdit,'ness-label');
-    const textarea=el('textarea',undefined,bodyEdit,'ness-input ness-fullboard-exposure-text');
-    textarea.value=source?.value||'';textarea.spellcheck=false;
-    prompt.setAttribute('for','ness-fullboard-'+key);textarea.id='ness-fullboard-'+key;
-    textarea.oninput=()=>{
-     if(!editor?.fields?.[key])return;
-     editor.fields[key].value=textarea.value;
-     toggle.textContent=label+(textarea.value.trim()?' •':'');
-     changed();
-    };
-   };
-  }
   const boardArea=el('div',undefined,host,'ness-fullboard-area');
   editor.visibility.openBoard(boardArea,{mode,preset});
   view.showConstructor();
@@ -1166,7 +1136,7 @@ async function openLibraryEditor(){
     (mode,preset)=>enterBoard(mode,preset));
   visibility.setFormat(appearanceFormat.value);
   const openConstructor=button('◫ Открыть конструктор тегов',appearance,()=>enterBoard(),'quiet ness-open-constructor');
-  openConstructor.title='Полноэкранный редактор ракурсов, отдельных тегов кожи и разделителей';
+  openConstructor.title='Полноэкранный редактор общего каталога тегов, ракурсов, открытой кожи и NSFW';
   function selectAppearanceFormat(next){
    if(!visibility.setFormat(next)){appearanceFormat.value=visibility.format;updateFormatButtons();return;}
    if(appearanceFormat.value===next)return;
