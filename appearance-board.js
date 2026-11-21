@@ -554,7 +554,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     let end=i+1;while(end<sequence.length&&sequence[end].kind!=='divider')end++;
     const count=sequence.slice(i+1,end).filter(x=>x.kind==='tag').length;
     const sectionKey=mode+':'+token.id,folded=collapsed.has(sectionKey);
-    const headButton=button((folded?'▸ ':'▾ ')+token.section.title+' · '+count+' тегов',heading,()=>{
+    const ending=count%100>=11&&count%100<=14?'тегов':count%10===1?'тег':count%10>=2&&count%10<=4?'тега':'тегов';
+    const headButton=button((folded?'▸ ':'▾ ')+token.section.title+' · '+count+' '+ending,heading,()=>{
      if(collapsed.has(sectionKey))collapsed.delete(sectionKey);else collapsed.add(sectionKey);
      render();
     },'quiet ness-unified-section-toggle');
