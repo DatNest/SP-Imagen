@@ -1,6 +1,7 @@
 // Generated from modules/media_slots.js.
 import { withOperationDeadline } from './operation-timeout.js';
 import { readPostDraft, discardPostDraft } from './post-drafts.js';
+import { isLocalGalleryImage } from './security-network.js';
 export async function installSpImagenMediaSlots(options) {
   'use strict';
   const { getExtension } = options || {};
@@ -37,8 +38,7 @@ export async function installSpImagenMediaSlots(options) {
   try { host[CLEANUP_KEY]?.(); } catch (_) {}
 
 
-  const safeUrl = value => typeof value === 'string'
-    && /^(?:\/|user\/images\/|https?:\/\/|data:image\/(?:png|jpeg|webp);base64,)/i.test(value)
+  const safeUrl = value => isLocalGalleryImage(value, host.location?.origin)
     && !/\[IMG:|\/error\.svg(?:\?|$)/i.test(value);
 
   function slotsOf(message, create = false) {
