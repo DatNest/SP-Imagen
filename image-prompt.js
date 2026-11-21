@@ -1,5 +1,5 @@
 /** Final image prompt normalization and consistent comic lettering. */
-export function normalizeImagePrompt(value) {
+export function normalizeImagePrompt(value,{parseLettering=true}={}) {
     const text = String(value || '');
     let description = '', quoted = false, escaped = false, textAt = -1;
     for (let i = 0; i < text.length; i++) {
@@ -7,7 +7,7 @@ export function normalizeImagePrompt(value) {
         if (escaped) { description += c; escaped = false; continue; }
         if (c === '\\') { description += c; escaped = true; continue; }
         if (c === '"') { quoted = !quoted; description += c; continue; }
-        if (!quoted && text.startsWith('Text:', i) && (i === 0 || /[\s;.]/.test(text[i - 1]))) { textAt = i; break; }
+        if (parseLettering && !quoted && text.startsWith('Text:', i) && (i === 0 || /[\s;.]/.test(text[i - 1]))) { textAt = i; break; }
         if (c === '|' && (quoted || !/^[ \t]*(?:girl|boy|cat|other)\b/.test(text.slice(i + 1)))) description += '—';
         else description += c;
     }
