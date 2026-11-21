@@ -111,7 +111,7 @@ export function normalizeAppearanceCatalog(raw,base,skin,nsfw={},legacySections=
   sectionIds.add(id);
   sections.push({id,title:validLabel(x.title),before:Number.isInteger(x.before)?Math.max(0,Math.min(tags.length,x.before)):tags.length});
  }
- return {tags,sections};
+ return {tags,sections,modes:normalizeAppearanceModeCatalog(data,base,skin,nsfw,legacySections).modes};
 }
 /** Edit legacy NSFW fields without reformatting existing multi-line text. */
 export function editNsfwTag(source,needle,replacement=''){
@@ -174,13 +174,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const header=el('div',undefined,frame,'ness-tagboard-header');
  el('strong','Редактор внешности',header);
  const tools=el('div',undefined,header,'ness-tagboard-actions');
- const boardButton=button('Конструктор',tools,()=>{if(mode==='base'&&appearanceFormat==='prose')return;layout='board';render();},'quiet');
- const textButton=button('Текстовый режим',tools,()=>{layout='text';render();},'quiet');
+ const boardButton=button('',tools,()=>{},'quiet');boardButton.hidden=true;
+ const textButton=button('',tools,()=>{},'quiet');textButton.hidden=true;
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
  const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
- const basic=button('Основа',modes,()=>{mode='base';preset='face';if(appearanceFormat==='prose')layout='text';checked.clear();render();},'quiet');
- const marks=button('Кожа и отметины',modes,()=>{mode='skin';layout='board';preset='upper_front';checked.clear();render();},'quiet');
+ const basic=button('Ракурсы',modes,()=>{mode='base';preset='face';if(appearanceFormat==='prose')layout='text';checked.clear();render();},'quiet');
+ const marks=button('Под одеждой',modes,()=>{mode='skin';layout='board';preset='upper_front';checked.clear();render();},'quiet');
  const nsfw=button('NSFW',modes,()=>{mode='nsfw';layout='board';preset='nsfwChest';checked.clear();render();},'quiet');
  const content=el('div',undefined,frame,'ness-tagboard-body');
   function getCatalog(){
@@ -285,9 +285,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const base=baseState(),existing=parseBaseTags(base.base);
   const reordered=sorted.map(tag=>existing.find(x=>norm(x.text)===norm(tag.text))).filter(Boolean);
   modeCatalog.modes[mode]={tags:sorted.map(x=>({...x})),sections:movedSections};
-  if(appearanceFormat!=='prose'&&reordered.length===existing.length&&!reordered.every((x,i)=>x.start===existing[i].start))
+  if(mode==='base'&&appearanceFormat!=='prose'&&reordered.length===existing.length&&!reordered.every((x,i)=>x.start===existing[i].start))
    writeBaseState(reorderBaseTags(base,reordered));
-  if(mode==='skin')skin.tags=sorted.map(t=>skinTag(t)).filter(Boolean);
+  if(mode==='skin'){
+   const known=sorted.map(t=>skinTag(t)).filter(Boolean);
+   skin.tags=[...known,...skin.tags.filter(t=>!known.includes(t))];
+   skin.sections=movedSections.map(x=>({...x}));
+  }
   after();
  }
  function moveSequenceToken(token,target,afterTarget=false){
@@ -391,19 +395,21 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(readOnly())return;
   if(!confirm('Удалить тег из выбранного режима и снять его назначения?'))return;
   const all=items(),at=all.indexOf(tag),source=parseBaseTags(baseState().base);
-  const existing=source.find(x=>norm(x.text)===norm(tag.text));
+  const existing=mode==='base'?source.find(x=>norm(x.text)===norm(tag.text)):null;
   if(existing&&appearanceFormat==='prose'){warn('Для обычного текста редактируй описание через текстовый режим. Удаление из каталога изменило бы исходный абзац.');return;}
   if(existing&&source.length===1){warn('Нельзя удалить последний тег основы: постоянная внешность должна быть заполнена.');return;}
   record();
   modeCatalog.modes[mode].tags=items().filter(x=>x.id!==tag.id);
   modeCatalog.modes[mode].sections=sectionsForMode().map(x=>({...x,before:Math.max(0,x.before-(at<x.before?1:0))}));
   if(existing)writeBaseState(reorderBaseTags(baseState(),source.filter(x=>x.start!==existing.start)));
-  const st=skinTag(tag);
-  if(st){
-   skin.tags=skin.tags.filter(x=>x.id!==st.id);
-   for(const id of Object.keys(skin.selections))skin.selections[id]=skin.selections[id].filter(x=>x!==st.id);
+  if(mode==='skin'){
+   const st=skinTag(tag);
+   if(st){
+    skin.tags=skin.tags.filter(x=>x.id!==st.id);
+    for(const id of Object.keys(skin.selections))skin.selections[id]=skin.selections[id].filter(x=>x!==st.id);
+   }
   }
-  writeNsfwState(cleanNsfwTags(readNsfwState(),tag.text));
+  if(mode==='nsfw')writeNsfwState(cleanNsfwTags(readNsfwState(),tag.text));
   after();
  }
  function renameTag(tag,next){
@@ -414,11 +420,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(appearanceFormat==='prose'&&parseBaseTags(baseState().base).some(t=>norm(t.text)===norm(tag.text))){warn('Для обычного текста меняй фразу в текстовом режиме, чтобы сохранить абзац.');return;}
   record();
   const previous=tag.text,source=parseBaseTags(baseState().base);
-  const existing=source.find(x=>norm(x.text)===norm(previous));
+  const existing=mode==='base'?source.find(x=>norm(x.text)===norm(previous)):null;
   if(existing)writeBaseState(reorderBaseTags(baseState(),source.map(x=>x.start===existing.start?{...x,text}:x)));
-  const st=skinTag(tag);
-  if(st)st.text=text;
-  writeNsfwState(cleanNsfwTags(readNsfwState(),previous,text));
+  if(mode==='skin'){const st=skinTag(tag);if(st)st.text=text;}
+  if(mode==='nsfw')writeNsfwState(cleanNsfwTags(readNsfwState(),previous,text));
   tag.text=text;after();
  }
  function preview(){
@@ -470,7 +475,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const undoBtn=button('↶ Отменить',act,()=>{if(!undo.length)return;redo.push(snapshot());applySnapshot(undo.pop());},'quiet');undoBtn.disabled=!undo.length;
    const redoBtn=button('↷ Повторить',act,()=>{if(!redo.length)return;undo.push(snapshot());applySnapshot(redo.pop());},'quiet');redoBtn.disabled=!redo.length;
    const search=el('input',undefined,bar,'ness-input');search.type='search';search.placeholder='Найти тег';search.value=filter;
-   search.oninput=()=>{filter=search.value;drawColumns();};
+   search.oninput=()=>{
+    filter=search.value;
+    for(const row of tagFlow.querySelectorAll('.ness-unified-tag-row')){
+     const label=row.querySelector('.ness-unified-chip')?.textContent||'';
+     row.hidden=!!filter&&!norm(label).includes(norm(filter));
+    }
+   };
    const inputTag=el('input',undefined,bar,'ness-input');inputTag.placeholder='Новый тег, Enter';
    inputTag.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addTag(inputTag.value);}};
    const add=button('+ Добавить тег',bar,()=>addTag(inputTag.value),'quiet');
@@ -583,7 +594,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();undo.push(snapshot());applySnapshot(redo.pop());}
  });
  render();
- return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:render,getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';render();}};
+ return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:render,getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';else layout='board';render();}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
