@@ -267,6 +267,19 @@ export async function installSpImagenMediaSlots(options) {
     .generate[aria-expanded="true"], .generate:focus-visible { opacity: 1; }
     .generate, .tool { min-inline-size: 32px; min-block-size: 32px; text-align: center; }
     .menu-empty {font-size:12px;line-height:1.45;opacity:.85;padding:8px;}
+    .option-row {display:flex;align-items:center;min-inline-size:0;gap:.25em;}
+    .option-row>.option {flex:1 1 auto;min-inline-size:0;}
+    .text-mode-toggle {display:inline-flex;align-items:center;gap:5px;min-block-size:44px;
+      padding:4px 7px;flex:none;white-space:nowrap;font-size:11px;cursor:pointer;
+      border-radius:7px;border:1px solid var(--ms-line);user-select:none;}
+    .text-mode-toggle input {position:absolute;inline-size:1px;block-size:1px;opacity:0;}
+    .text-mode-toggle .text-track {inline-size:25px;block-size:15px;flex:none;position:relative;
+      border-radius:99px;border:1px solid currentColor;opacity:.75;}
+    .text-mode-toggle .text-track::after {content:'';position:absolute;inset-block-start:2px;inset-inline-start:2px;
+      inline-size:9px;block-size:9px;border-radius:50%;background:currentColor;transition:transform 110ms ease;}
+    .text-mode-toggle input:checked+.text-track::after {transform:translateX(10px);}
+    .text-mode-toggle:focus-within {outline:2px solid currentColor;outline-offset:-2px;}
+    @media (prefers-reduced-motion: reduce) {.text-mode-toggle .text-track::after {transition:none;}}
     .option {
       display: block;
       inline-size: 100%;
@@ -625,7 +638,12 @@ export async function installSpImagenMediaSlots(options) {
     for (const item of available) {
       const kind=item.id;
       if(!validKind(kind))continue;
+      // The per-click switch exists only for the two built-in page profiles.
+      // It has no listeners outside this menu and never writes chat settings.
+      const toggleable = item.builtIn !== false && (kind === 'comic' || kind === 'story_page');
+      const row = toggleable ? element('div','option-row') : root;
       const option = element('button', 'option', item.name||LABEL[kind]);
+      let showText = true;
       option.addEventListener('click', () => {
         closeToolsMenu(true);
         // Training uses the REAL profile menu but never runs a model or saves chat data.
@@ -634,10 +652,25 @@ export async function installSpImagenMediaSlots(options) {
           return;
         }
         if (context().chat?.[view.index] === view.message) {
-          void executeCommand('sp_ness_generate_at', view, kind);
+          void executeCommand('sp_ness_generate_at', view, kind, showText);
         }
       });
-      root.append(option);
+      row.append(option);
+      if(toggleable){
+        const toggle=element('label','text-mode-toggle');
+        toggle.title='Переключает наличие реплик и надписей только для следующей генерации.';
+        const input=element('input');input.type='checkbox';input.checked=true;
+        input.setAttribute('aria-label','Показывать текст на изображении · '+(item.name||LABEL[kind]));
+        const track=element('span','text-track');
+        const label=element('span','text-mode-label','Текст');
+        input.addEventListener('change',()=>{
+          showText=input.checked;
+          label.textContent=showText?'Текст':'Без текста';
+        });
+        toggle.append(input,track,label);
+        row.append(toggle);
+        root.append(row);
+      }
     }
 
     positionPopup(node, view.toggle, { prefer: ['top', 'bottom', 'right', 'left'] });
@@ -1223,9 +1256,9 @@ export async function installSpImagenMediaSlots(options) {
   // Only one image request may start from this chat at a time. Navigation,
   // help, and settings remain usable while the image request is running.
   const pendingGenerationClicks = new WeakSet();
-  async function executeCommand(command, view, kind) {
+  async function executeCommand(command, view, kind, includeText = true) {
     const current = context();
-    const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind };
+    const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind, includeText };
     if (request && current.chat[request.index] !== request.message) return;
     if (command === 'sp_ness_generate_at' && typeof guideDemo !== 'undefined' && guideDemo) return;
     const extension = getExtension?.();
