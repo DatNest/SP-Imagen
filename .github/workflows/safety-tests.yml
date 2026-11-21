@@ -18,5 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Parse every packaged JavaScript module
+        run: |
+          for file in ./*.js; do node --experimental-default-type=module --check "$file"; done
       - name: Run built-in tests without dependencies or real credentials
         run: node --experimental-default-type=module --test tests/*.mjs
