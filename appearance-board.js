@@ -173,7 +173,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  frame.setAttribute('aria-label','Конструктор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
  el('strong','Редактор внешности',header);
- const tools=el('div',undefined,header,'ness-tagboard-actions');
+ const tools=el('div',undefined,header,'ness-tagboard-actions');tools.hidden=true;
  const boardButton=button('',tools,()=>{},'quiet');boardButton.hidden=true;
  const textButton=button('',tools,()=>{},'quiet');textButton.hidden=true;
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
@@ -292,6 +292,17 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    skin.tags=[...known,...skin.tags.filter(t=>!known.includes(t))];
    skin.sections=movedSections.map(x=>({...x}));
   }
+  if(mode==='nsfw'){
+   const fields={...readNsfwState()},current=Object.keys(NSFW_PRESETS);
+   for(const field of current){
+    const old=parseBaseTags(fields[field]);
+    const byText=new Map(old.map(t=>[norm(t.text),t.text]));
+    const reordered=sorted.filter(t=>byText.has(norm(t.text))).map(t=>byText.get(norm(t.text)));
+    if(reordered.length===old.length && reordered.some((v,i)=>v!==old[i].text))
+     fields[field]=reordered.join(', ')+(String(fields[field]||'').trimEnd().endsWith(';')?';':'');
+   }
+   writeNsfwState(fields);
+  }
   after();
  }
  function moveSequenceToken(token,target,afterTarget=false){
@@ -374,7 +385,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   after();
  }
  function deleteGroup(id){
-  if(readOnly()||!id)return;
+  if(readOnly()||!id||!confirm('Удалить разделитель? Теги внутри него останутся.'))return;
   record();
   modeCatalog.modes[mode].sections=sectionsForMode().filter(x=>x.id!==id);
   after();
@@ -417,7 +428,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!text||text===tag.text||readOnly())return;
   if(/[,\r\n]/.test(text)){warn('В одном теге нельзя использовать запятую.');return;}
   if(items().some(x=>x!==tag&&norm(x.text)===norm(text)))return;
-  if(appearanceFormat==='prose'&&parseBaseTags(baseState().base).some(t=>norm(t.text)===norm(tag.text))){warn('Для обычного текста меняй фразу в текстовом режиме, чтобы сохранить абзац.');return;}
+  if(mode==='base'&&appearanceFormat==='prose'&&parseBaseTags(baseState().base).some(t=>norm(t.text)===norm(tag.text))){warn('Для обычного текста меняй фразу в текстовом режиме, чтобы сохранить абзац.');return;}
   record();
   const previous=tag.text,source=parseBaseTags(baseState().base);
   const existing=mode==='base'?source.find(x=>norm(x.text)===norm(previous)):null;
