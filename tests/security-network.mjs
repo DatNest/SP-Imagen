@@ -6,7 +6,7 @@ import {
  requireTrustedDirectEndpoint, credentialRequestOptions, isLocalGalleryImage
 } from '../security-network.js';
 import { checkNovelAISubscription } from '../novelai.js';
-import { testTextApi } from '../text-api.js';
+import { testTextApi, generateTextCompletion } from '../text-api.js';
 
 test('NovelAI bearer token is pinned to the official HTTPS origin', () => {
  assert.equal(officialNovelAIEndpoint('https://image.novelai.net'),OFFICIAL_NOVELAI_ORIGIN);
@@ -72,6 +72,8 @@ test('No automatic web lookup of private character names remains',()=>{
  assert.doesNotMatch(runtime,/fetch\(['"]https:\/\/en\.wikipedia\.org/);
  const slots=readFileSync(new URL('../media-slots.js',import.meta.url),'utf8');
  assert.match(slots,/isLocalGalleryImage/);
+ assert.doesNotMatch(slots,/slot\.versions\s*=\s*slot\.versions\.filter\(/);
+ assert.match(slots,/openLegacyRemote\(item\.src\)/);
 });
 
 test('Rejected NovelAI and unapproved text targets cause zero fetch calls',async()=>{
@@ -87,4 +89,54 @@ test('Rejected NovelAI and unapproved text targets cause zero fetch calls',async
   }),/не подтверждён/i);
   assert.equal(requests.length,0);
  } finally { globalThis.fetch=previous; }
+});
+
+
+test('Normal official NovelAI subscription request still succeeds',async()=>{
+ const previous=globalThis.fetch, calls=[];
+ globalThis.fetch=async(url,options)=>{
+  calls.push({url,options});
+  return {ok:true,json:async()=>({active:true,tier:3,expiresAt:4102444800})};
+ };
+ try{
+  const result=await checkNovelAISubscription({endpoint:OFFICIAL_NOVELAI_ORIGIN,apiKey:'dummy-test-key'});
+  assert.equal(result.active,true);
+  assert.equal(calls.length,1);
+  assert.equal(String(calls[0].url),'https://image.novelai.net/user/subscription');
+  assert.equal(calls[0].options.headers.Authorization,'Bearer dummy-test-key');
+  assert.equal(calls[0].options.redirect,'error');
+  assert.equal(calls[0].options.credentials,'omit');
+ }finally{globalThis.fetch=previous;}
+});
+
+test('Approved direct text provider can list models and generate normally',async()=>{
+ const previous=globalThis.fetch,calls=[];
+ const input={mode:'direct',endpoint:'https://provider.example/v1',approvedOrigin:'https://provider.example',apiKey:'dummy-test-key',model:'example-model'};
+ globalThis.fetch=async(url,options)=>{
+  calls.push({url,options});
+  return {ok:true,json:async()=>String(url).endsWith('/models')
+   ? {data:[{id:'example-model'}]}
+   : {choices:[{message:{content:'ok'}}]}};
+ };
+ try{
+  const models=await testTextApi(input);
+  const content=await generateTextCompletion(input,[{role:'user',content:'hi'}],undefined,null);
+  assert.deepEqual(models,['example-model']);
+  assert.equal(content,'ok');
+  assert.equal(calls.length,2);
+  assert.equal(String(calls[0].url),'https://provider.example/v1/models');
+  assert.equal(String(calls[1].url),'https://provider.example/v1/chat/completions');
+  assert.equal(calls[1].options.headers.Authorization,'Bearer dummy-test-key');
+  assert.equal(calls[1].options.redirect,'error');
+  assert.equal(calls[1].options.credentials,'omit');
+  assert.match(calls[1].options.body,/"content":"hi"/);
+ }finally{globalThis.fetch=previous;}
+});
+
+test('Existing gallery version records survive even when previews are blocked',()=>{
+ const source=readFileSync(new URL('../media-slots.js',import.meta.url),'utf8');
+ assert.doesNotMatch(source,/slot\.versions\s*=\s*slot\.versions\.filter/);
+ assert.match(source,/if\s*\(safeUrl\(item\.src\)\)/);
+ assert.match(source,/frame\.append\(element\('span','external-image-warning'/);
+ assert.match(source,/host\.confirm\('Это изображение хранится на внешнем сайте/);
 });
