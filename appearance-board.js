@@ -96,7 +96,7 @@ export function normalizeAppearanceCatalog(raw,base,skin,nsfw={},legacySections=
  const baseTags=parseBaseTags(base);
  for(const t of baseTags)add(t.text);
  for(const t of skinState.tags)add(t.text,t.id);
- for(const key of Object.keys(NSFW_PRESETS))for(const t of parseBaseTags(nsfw?.[key]||''))add(t.text);
+ for(const key of [...Object.keys(NSFW_PRESETS),'nudeUpper','nudeLower'])for(const t of parseBaseTags(nsfw?.[key]||''))add(t.text);
  const sectionSource=Array.isArray(data.sections)?data.sections:[
   ...normalizeAppearanceSections(legacySections,base),
   ...skinState.sections.map(x=>({...x,before:baseTags.length+x.before}))
