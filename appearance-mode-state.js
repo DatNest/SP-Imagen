@@ -2,7 +2,10 @@
  * Appearance editor presentation data. This module does NOT construct image prompts:
  * the pre-existing base/visibility, skin, and explicit NSFW fields remain sources.
  */
-import { parseBaseTags, normalizeSkinTags, normalizeAppearanceSections } from './appearance-board.js';
+// Standalone parsers prevent a module import cycle with appearance-board.js.
+const parseBaseTags = source => String(source||'').split(',').map(t=>t.trim().replace(/;+$/,'').trim()).filter(Boolean).map(text=>({text}));
+const normalizeSkinTags = source => ({tags:Array.isArray(source?.tags)?source.tags:[],sections:Array.isArray(source?.sections)?source.sections:[]});
+const normalizeAppearanceSections = (sections,base) => (Array.isArray(sections)?sections:[]).map(s=>({id:s.id,title:s.title,before:Number.isInteger(s.before)?s.before:parseBaseTags(base).length}));
 
 export const APPEARANCE_MODES = Object.freeze(['base','skin','nsfw']);
 export const NSFW_AREAS = Object.freeze({
