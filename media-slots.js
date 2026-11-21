@@ -40,6 +40,16 @@ export async function installSpImagenMediaSlots(options) {
 
   const safeUrl = value => isLocalGalleryImage(value, host.location?.origin)
     && !/\[IMG:|\/error\.svg(?:\?|$)/i.test(value);
+  // Preserve historical image references without making background network requests.
+  // Old remote URLs must remain in chat data, but are NEVER assigned to an <img src>.
+  const storedSource = value => typeof value === 'string' && value.length > 0 && value.length <= 55 * 1024 * 1024;
+  const remoteImage = value => typeof value === 'string' && /^https?:\/\//i.test(value)
+    && !safeUrl(value) && value.length < 8192;
+  const openLegacyRemote = value => {
+    if (!remoteImage(value)) return;
+    if (!host.confirm('Это изображение хранится на внешнем сайте. Открытие передаст сайту твой IP-адрес и сведения браузера.\n\nОткрыть ссылку вручную?')) return;
+    host.open(value, '_blank', 'noopener,noreferrer');
+  };
 
   function slotsOf(message, create = false) {
     if (!message) return null;
@@ -63,9 +73,8 @@ export async function installSpImagenMediaSlots(options) {
     for (const kind of availableKinds(slots)) {
       const slot = slots[kind];
       if (!slot || !Array.isArray(slot.versions)) continue;
-      if (slot.versions.some(item => !safeUrl(item?.src))) {
-        slot.versions = slot.versions.filter(item => safeUrl(item?.src));
-      }
+      // Never discard imported external versions: hiding a remote preview is
+      // not permission to delete historical data from a user's saved chat.
       slot.selected = Math.max(0, Math.min(Math.trunc(Number(slot.selected)) || 0, Math.max(0, slot.versions.length - 1)));
       slot.collapsed = slot.collapsed !== false;
     }
@@ -73,7 +82,7 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   function addVersion(slot, item) {
-    if (!slot || !safeUrl(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
+    if (!slot || !storedSource(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
     slot.versions.push({ src: item.src, config: item.config || null, at: Number(item.at) || Date.now() });
     slot.selected = slot.versions.length - 1;
     slot.collapsed = false; // Show a newly generated image until the reader folds it.
@@ -87,7 +96,7 @@ export async function installSpImagenMediaSlots(options) {
     const slots = slotsOf(message, true);
     let changed = false;
     for (const item of legacy) {
-      if (!KINDS.includes(item?.kind) || !safeUrl(item?.src)) continue;
+      if (!KINDS.includes(item?.kind) || !storedSource(item?.src)) continue;
       changed = addVersion(slots[item.kind], {
         src: item.src,
         config: item.config || null,
@@ -685,12 +694,20 @@ export async function installSpImagenMediaSlots(options) {
     const frame = element('button', 'frame');
     frame.hidden = collapsed;
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
-    const image = element('img');
-    image.src = item.src;
-    image.alt = `${displayName} · версия ${selected + 1}`;
-    image.loading = 'lazy';
-    frame.addEventListener('click', () => host.open(item.src, '_blank', 'noopener'));
-    frame.append(image);
+    if (safeUrl(item.src)) {
+      const image = element('img');
+      image.src = item.src;
+      image.alt = `${displayName} · версия ${selected + 1}`;
+      image.loading = 'lazy';
+      frame.addEventListener('click', () => host.open(item.src, '_blank', 'noopener'));
+      frame.append(image);
+    } else {
+      // Do not load external URLs or potentially executable protocols automatically.
+      frame.append(element('span','external-image-warning',remoteImage(item.src)
+        ? 'Внешнее изображение скрыто · Нажми, чтобы открыть ссылку'
+        : 'Недопустимый источник изображения · исходная запись сохранена'));
+      frame.addEventListener('click', () => openLegacyRemote(item.src));
+    }
 
     const bar = element('div', 'bar');
     bar.hidden = collapsed;
@@ -1096,6 +1113,10 @@ export async function installSpImagenMediaSlots(options) {
     const slot = slotsOf(context().chat?.[index])?.[kind];
     const item = slot?.versions?.[slot.selected];
     if (!item) return;
+    if (!safeUrl(item.src)) {
+      openLegacyRemote(item.src);
+      return;
+    }
     const response = await host.fetch(item.src);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const url = host.URL.createObjectURL(await response.blob());
