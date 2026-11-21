@@ -170,9 +170,9 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
  assert.equal(saved.modes.skin.sections.at(-1).title,'Татуировки');
  assert.equal(saved.modes.base.sections.length,0);
  assert.equal(saved.modes.nsfw.sections.length,0);
- const create=board.element.querySelectorAll('input').find(i=>i.placeholder==='Новый тег, Enter');
+ const create=board.element.querySelectorAll('input').find(i=>i.placeholder==='Новый тег → Enter');
  create.value='flower tattoo on right arm';
- button('+ Добавить тег').onclick();
+ button('+ Тег').onclick();
  assert.ok(board.getSkin().tags.some(t=>t.text==='flower tattoo on right arm'));
  assert.equal(state.base,untouched);
  assert.equal(JSON.stringify(nsfw),beginNsfw);
