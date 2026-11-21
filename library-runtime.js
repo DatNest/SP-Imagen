@@ -473,7 +473,10 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(Object.hasOwn(entry,'appearanceSelections'))entry.appearanceSelections=normalizeAppearanceSelections(entry.base,entry.appearanceSelections);
   if(Object.hasOwn(entry,'appearanceSections'))entry.appearanceSections=normalizeAppearanceSections(entry.appearanceSections,entry.base);
   if(Object.hasOwn(entry,'appearanceSkin'))entry.appearanceSkin=normalizeSkinTags(entry.appearanceSkin);
-   if(Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog=normalizeAppearanceCatalog(entry.appearanceCatalog,entry.base,entry.appearanceSkin,{nudeUpper:entry.nudeUpper,nudeLower:entry.nudeLower},entry.appearanceSections);
+   if(Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog=normalizeAppearanceCatalog(entry.appearanceCatalog,entry.base,entry.appearanceSkin,{
+    nudeUpper:entry.nudeUpper,nudeLower:entry.nudeLower,
+    ...Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,entry[k]]))
+  },entry.appearanceSections);
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
  const normalize=s=>s.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
@@ -957,7 +960,8 @@ async function openLibraryEditor(){
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
   entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields))if(e.value!==''||Object.hasOwn(entry,key))entry[key]=e.value;
-  const {ranges,selections,skin,sections,catalog}=visibility.value;
+  const {ranges,selections,skin,sections,catalog,nsfw}=visibility.value;
+  if(nsfw)for(const key of Object.keys(NSFW_PRESETS))if(nsfw[key]||Object.hasOwn(entry,key))entry[key]=String(nsfw[key]||'');
   if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
   if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
    entry.appearanceCatalog=catalog;
@@ -1120,7 +1124,7 @@ async function openLibraryEditor(){
   formatSwitcher.setAttribute('aria-label','Формат описания');
   const formatHelp=button('?',formatStrip,undefined,'icon quiet ness-mini-help');
   formatHelp.setAttribute('aria-label','Как работает формат описания');
-  const formatTip=view.tip(formatHelp,'Теги: отдельные признаки через запятую, доступна разметка по ракурсам и конструктор. Текст: обычные предложения или абзацы. Переключение не преобразует, не удаляет и не переписывает исходное описание.');
+  const formatTip=view.tip(formatHelp,'Теги: единый редактор с подсветкой для ракурсов, открытой кожи и NSFW. Текст: свободное описание постоянной внешности. Переключение формата не удаляет источник.');
   formatHelp.onclick=e=>{e.preventDefault();formatTip.toggle();};
   function updateFormatButtons(){
    formatTags.setAttribute('aria-pressed',String(appearanceFormat.value==='tags'));
@@ -1130,13 +1134,62 @@ async function openLibraryEditor(){
   fields.base=field(appearance,labels.base,area(entry.base));fields.base.className+=' ness-appearance';
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
-  const visibility=createAppearanceVisibilityEditor({el,clear,button,input},appearance,fields.base,entry,changed,highlightTag?.color,()=>publishDraft(true),()=>!busy&&!done,
-    ()=>({nudeUpper:fields.nudeUpper?.value??entry.nudeUpper??'',nudeLower:fields.nudeLower?.value??entry.nudeLower??''}),
-    state=>{for(const key of Object.keys(NSFW_PRESETS))if(fields[key]&&Object.hasOwn(state,key))fields[key].value=state[key];changed();},
-    (mode,preset)=>enterBoard(mode,preset));
+  // One inline highlight editor. No extra full-screen constructor or duplicated tag UI.
+  const nsfwState=Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,String(entry[k]||'')]));
+  let appearanceState={
+    base:fields.base.value,
+    ranges:normalizeAppearanceRanges(fields.base.value,entry.appearanceRanges),
+    selections:normalizeAppearanceSelections(fields.base.value,entry.appearanceSelections)
+  };
+  const inlineHost=el('div',undefined,appearance,'ness-inline-appearance-editor');
+  const inlineBoard=createAppearanceBoard({
+    ui:{el,button,clear,input},parent:inlineHost,
+    initialSkin:entry.appearanceSkin,
+    initialSections:entry.appearanceSections,
+    initialCatalog:entry.appearanceCatalog,
+    initialMode:'base',
+    readBaseState:()=>appearanceState,
+    writeBaseState:next=>{
+      fields.base.value=next.base;
+      appearanceState={
+        base:next.base,
+        ranges:normalizeAppearanceRanges(next.base,next.ranges),
+        selections:normalizeAppearanceSelections(next.base,next.selections)
+      };
+      changed();
+    },
+    readNsfwState:()=>nsfwState,
+    writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');changed();},
+    changed,readOnly:()=>busy||done
+  });
+  const visibility={
+    setFormat(next){
+      const format=next==='prose'?'prose':'tags';
+      fields.base.parentElement.hidden=format!=='prose';
+      inlineBoard.setAvailableFormat(format);
+      return true;
+    },
+    get format(){return appearanceFormat.value;},
+    get value(){return {
+      ranges:appearanceState.ranges,selections:appearanceState.selections,
+      skin:inlineBoard.getSkin(),sections:inlineBoard.getSections(),
+      catalog:inlineBoard.getCatalog(),nsfw:nsfwState
+    };},
+    closeBoard:()=>{},refresh:()=>inlineBoard.refresh()
+  };
+  fields.base.oninput=()=>{
+    const newBase=fields.base.value;
+    if(newBase!==appearanceState.base){
+      appearanceState={
+        base:newBase,
+        ranges:normalizeAppearanceRanges(newBase,appearanceState.ranges),
+        selections:normalizeAppearanceSelections(newBase,appearanceState.selections)
+      };
+      inlineBoard.refresh();
+      changed();
+    }
+  };
   visibility.setFormat(appearanceFormat.value);
-  const openConstructor=button('◫ Открыть конструктор тегов',appearance,()=>enterBoard(),'quiet ness-open-constructor');
-  openConstructor.title='Полноэкранный редактор общего каталога тегов, ракурсов, открытой кожи и NSFW';
   function selectAppearanceFormat(next){
    if(!visibility.setFormat(next)){appearanceFormat.value=visibility.format;updateFormatButtons();return;}
    if(appearanceFormat.value===next)return;
@@ -1150,7 +1203,7 @@ async function openLibraryEditor(){
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
   const body=tabs.add('Старые поля отметин');
-  el('p','Старые поля сохранены для совместимости. Отдельные наборы «Кожа и отметины» доступны через кнопку «Открыть конструктор тегов» во вкладке «Внешность». Не дублируй признаки в обоих местах.',body,'ness-note');
+  el('p','Старые поля сохранены для совместимости. Для новых отметин используй режим «Под одеждой» во вкладке «Внешность».',body,'ness-note');
   const marks=el('section',undefined,body,'ness-body-section');marks.setAttribute('data-library-body-marks','');
   el('h4','Отметины на коже',marks);
   el('p','Шрамы, татуировки, родинки и другие постоянные отметины. Выбери часть тела и впиши короткие английские теги через запятую. Укажи сторону, если это важно.',marks,'ness-note');
@@ -1166,7 +1219,7 @@ async function openLibraryEditor(){
   el('strong','ВАЖНО!',important);
   el('p','Эти детали нужны только тогда, когда соответствующая часть тела открыта, видна в кадре и не закрыта одеждой. Если описать скрытую анатомию слишком подробно, NovelAI может попытаться показать её, оголив персонажа вопреки сцене. Для повседневной внешности используй вкладку «Внешность», а одежду описывай в ролевой или её отдельном источнике.',important);
 
-  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
+  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry)};
   let asked=false;const remove=button('Удалить персонажа',body,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();inBoardMode=false;delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
