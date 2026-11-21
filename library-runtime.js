@@ -1178,16 +1178,29 @@ async function openLibraryEditor(){
     closeBoard:()=>{},refresh:()=>inlineBoard.refresh()
   };
   fields.base.oninput=()=>{
-    const newBase=fields.base.value;
-    if(newBase!==appearanceState.base){
-      appearanceState={
-        base:newBase,
-        ranges:normalizeAppearanceRanges(newBase,appearanceState.ranges),
-        selections:normalizeAppearanceSelections(newBase,appearanceState.selections)
-      };
-      inlineBoard.refresh();
-      changed();
-    }
+    const newBase=fields.base.value,oldBase=appearanceState.base;
+    if(newBase===oldBase)return;
+    // Keep marked offsets when edits happen before or after a preserved phrase;
+    // clear only ranges overlapping an edited span (same rule as old editor).
+    let prefix=0,suffix=0;
+    while(prefix<Math.min(newBase.length,oldBase.length)&&newBase[prefix]===oldBase[prefix])prefix++;
+    while(suffix<Math.min(newBase.length,oldBase.length)-prefix
+      &&newBase.at(-suffix-1)===oldBase.at(-suffix-1))suffix++;
+    const delta=newBase.length-oldBase.length;
+    const remap=(list,allow)=>normalizeAppearanceRanges(newBase,(list||[]).flatMap(range=>{
+      if(range.end<=prefix)return [range];
+      if(range.start>=oldBase.length-suffix)return [{...range,start:range.start+delta,end:range.end+delta}];
+      return [];
+    }),allow);
+    appearanceState={
+      base:newBase,
+      ranges:remap(appearanceState.ranges,false),
+      selections:normalizeAppearanceSelections(newBase,Object.fromEntries(
+        Object.entries(appearanceState.selections||{}).map(([id,list])=>[id,remap(list,true)])
+      ))
+    };
+    inlineBoard.refresh();
+    changed();
   };
   visibility.setFormat(appearanceFormat.value);
   function selectAppearanceFormat(next){
