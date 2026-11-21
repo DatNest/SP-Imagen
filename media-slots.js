@@ -1,6 +1,8 @@
 // Generated from modules/media_slots.js.
 import { withOperationDeadline } from './operation-timeout.js';
 import { readPostDraft, discardPostDraft } from './post-drafts.js';
+import { getRequestHeaders } from '../../../../script.js';
+import { spImagenOwnedImagePath, isReferencedInCurrentChat, deleteSpImagenOwnedFile } from './gallery-file-cleanup.js';
 import { isLocalGalleryImage } from './security-network.js';
 export async function installSpImagenMediaSlots(options) {
   'use strict';
@@ -1015,7 +1017,7 @@ export async function installSpImagenMediaSlots(options) {
           { code: 'SP_IMAGEN_FILE_TIMEOUT' }
         )
       : item.src;
-    if (!safeUrl(storedSrc)) throw new Error('SP Imagen не смог сохранить файл изображения.');
+    if (!safeUrl(storedSrc) || /^data:/i.test(storedSrc)) throw new Error('SP Imagen не смог сохранить PNG как файл SillyTavern. Встраивание большого base64 в чат запрещено, чтобы не расходовать память.');
     if (context().chat !== originalChat || context().chatId !== originalId || originalChat[index] !== message) {
       throw new Error('Чат изменился до сохранения картинки.');
     }
@@ -1099,14 +1101,60 @@ export async function installSpImagenMediaSlots(options) {
     const current = context();
     const slot = slotsOf(current.chat?.[index], false)?.[kind];
     if (!slot?.versions?.length) return;
-    const selected = slot.selected;
-    if (!host.confirm(`Удалить версию ${selected + 1} из ${slot.versions.length}? Восстановить её через SP Imagen нельзя. Если нужна копия, сначала скачай картинку.`)) return;
+    const lock = `${current.chatId}|${index}|${kind}`;
+    if (busy.has(lock)) throw new Error('Дождись завершения генерации перед удалением изображения.');
+    const chat = current.chat, chatId = current.chatId, message = chat[index];
+    const selected = slot.selected, selectedImage = slot.versions[selected];
+    if (!selectedImage) return;
+    const ownedPath = spImagenOwnedImagePath(selectedImage.src, host.location?.origin);
+    const prompt = ownedPath
+      ? 'Удалить версию '+(selected+1)+' из '+slot.versions.length+'? Изображение исчезнет из этой галереи, а его файл на сервере SillyTavern будет удалён, если он не используется больше нигде в текущем чате. Это необратимо.'
+      : 'Удалить версию '+(selected+1)+' из '+slot.versions.length+'? Запись исчезнет из галереи. Внешние или старые источники файлов не удаляются.';
+    if (!host.confirm(prompt)) return;
+    if (context().chat !== chat || context().chatId !== chatId || chat[index] !== message) return;
+    busy.add(lock);
     const before = slot.versions.slice();
-    slot.versions.splice(selected, 1);
-    slot.selected = Math.min(selected, Math.max(0, slot.versions.length - 1));
-    paint();
-    try { await current.saveChat(); }
-    catch (error) { slot.versions = before; slot.selected = selected; paint(); throw error; }
+    const oldSelected = slot.selected;
+    const legacy = Array.isArray(message.extra?.sp_imagen_embeds) ? message.extra.sp_imagen_embeds : null;
+    const legacyBefore = legacy ? legacy.slice() : null;
+    try {
+      // Remove the legacy copy too, or migration would resurrect the deleted card.
+      if (legacy) message.extra.sp_imagen_embeds = legacy.filter(item =>
+        !(item?.kind === kind && item?.src === selectedImage.src));
+      slot.versions.splice(selected, 1);
+      slot.selected = Math.min(selected, Math.max(0, slot.versions.length - 1));
+      paint();
+      try {
+        await current.saveChat();
+      } catch (error) {
+        slot.versions = before;
+        slot.selected = oldSelected;
+        if (legacyBefore) message.extra.sp_imagen_embeds = legacyBefore;
+        paint();
+        throw error;
+      }
+      // Never delete an owned file still used by another version or RP message.
+      // Other chat files are not available for inspection from this active session.
+      if (!ownedPath) return;
+      if (isReferencedInCurrentChat(chat, selectedImage.src)) {
+        host.toastr?.info?.('Запись удалена. Файл оставлен на сервере: он всё ещё используется в текущем чате.', 'SP Imagen');
+        return;
+      }
+      try {
+        await deleteSpImagenOwnedFile(selectedImage.src, {
+          origin: host.location?.origin,
+          fetchImpl: host.fetch.bind(host),
+          headers: getRequestHeaders(),
+        });
+        host.toastr?.success?.('Изображение удалено из галереи и файлов SillyTavern.', 'SP Imagen');
+      } catch (error) {
+        // Do not restore a possibly deleted image when the network state is unknown.
+        host.toastr?.warning?.('Запись в галерее удалена, но удаление файла не подтверждено: '+String(error?.message||error), 'SP Imagen');
+      }
+    } finally {
+      busy.delete(lock);
+      paint();
+    }
   }
 
   async function saveSelected(index, kind) {
