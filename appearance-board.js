@@ -309,6 +309,46 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(from<0||to<0||to>=sequence.length)return;
   moveSequenceToken(sequence[from],sequence[to],delta>0);
  }
+ function jumpSection(tag,direction){
+  const next=repositionModeTag({tags:items(),sections:sectionsForMode()},tag.id,direction);
+  if(!next){warn('Нет соседнего раздела в этом направлении.');return;}
+  const groupMap=new Map(sectionsForMode().map(x=>[x.id,x]));
+  const tagMap=new Map(items().map(x=>[x.id,x]));
+  const sequence=[];
+  for(let i=0;i<=next.tags.length;i++){
+   for(const section of next.sections.filter(x=>x.before===i))
+    sequence.push({kind:'divider',id:section.id,section:groupMap.get(section.id)});
+   if(i<next.tags.length)sequence.push({kind:'tag',id:next.tags[i].id,tag:tagMap.get(next.tags[i].id)});
+  }
+  applySequence(sequence);
+ }
+ function transferTag(tag,target,remove){
+  if(readOnly()||target===mode)return;
+  const dest=modeCatalog.modes[target],exists=dest.tags.some(t=>norm(t.text)===norm(tag.text));
+  if(exists&&!remove){warn('Этот тег уже есть в выбранном режиме.');return;}
+  const source=mode==='base'?baseTag(tag):null;
+  if(remove&&mode==='base'&&source&&parseBaseTags(baseState().base).length<2){
+   warn('Нельзя перенести последний тег постоянной внешности.');return;
+  }
+  if(remove&&mode==='base'&&appearanceFormat==='prose'){warn('В текстовом режиме переноси теги через текстовое поле.');return;}
+  if(remove&&!confirm('Перенос удалит тег и его назначения в исходном режиме. Продолжить?'))return;
+  record();
+  if(!exists)dest.tags.push({id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:tag.text});
+  if(remove){
+   const old=items(),at=old.findIndex(t=>t.id===tag.id);
+   modeCatalog.modes[mode].tags=old.filter(t=>t.id!==tag.id);
+   modeCatalog.modes[mode].sections=sectionsForMode().map(x=>({...x,before:Math.max(0,x.before-(at>=0&&at<x.before?1:0))}));
+   if(mode==='base'&&source)writeBaseState(reorderBaseTags(baseState(),parseBaseTags(baseState().base).filter(t=>t.start!==source.start)));
+   else if(mode==='skin'){
+    const st=skinTag(tag);
+    if(st){
+     skin.tags=skin.tags.filter(x=>x.id!==st.id);
+     for(const id of Object.keys(skin.selections))skin.selections[id]=skin.selections[id].filter(x=>x!==st.id);
+    }
+   }else if(mode==='nsfw')writeNsfwState(cleanNsfwTags(readNsfwState(),tag.text));
+  }
+  transferTagId='';focusTagId='';warn((remove?'Перенесено':'Скопировано')+' в «'+(target==='base'?'Ракурсы':target==='skin'?'Под одеждой':'NSFW')+'». Назначь тег нужной области.');after();
+ }
  function cleanNsfwTags(state,changed,rename=''){
   const result={...state};
   for(const key of Object.keys(NSFW_PRESETS))result[key]=editNsfwTag(result[key],changed,rename);
