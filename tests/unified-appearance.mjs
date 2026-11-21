@@ -135,12 +135,12 @@ test('A divider folds without clearing highlighted selections, and shows its tag
   readNsfwState:()=>initialNsfw,writeNsfwState:()=>{},changed:()=>{},readOnly:()=>false
  });
  const buttons=()=>board.element.querySelectorAll('button');
- let heading=buttons().find(b=>/Face · 2 тегов/.test(b.textContent));
+ let heading=buttons().find(b=>/Face · 2 тега/.test(b.textContent));
  assert.ok(heading, 'The heading should include its count of two tags');
  assert.equal(heading.attributes['aria-expanded'],'true');
  const before=JSON.stringify(state.selections);
  heading.onclick();
- heading=buttons().find(b=>/Face · 2 тегов/.test(b.textContent));
+ heading=buttons().find(b=>/Face · 2 тега/.test(b.textContent));
  assert.equal(heading.attributes['aria-expanded'],'false');
  assert.equal(JSON.stringify(state.selections),before);
  const folded=board.element.querySelectorAll('.ness-unified-section-tags');
