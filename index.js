@@ -9,6 +9,8 @@ import { createSpImagenRuntime } from './runtime.js';
 import { createSpImagenLibraryRuntime } from './library-runtime.js';
 import { installSpImagenMediaSlots } from './media-slots.js';
 import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
+import { SP_IMAGEN_NO_TEXT_DIRECTORS } from './no-text-directors.js';
+import { pageTextEnabled } from './page-text-mode.js';
 import { decidePromptUpdate } from './update-policy.js';
 import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
@@ -16,7 +18,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.15';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.16';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -1200,10 +1202,15 @@ function openLastPrompt() {
     show();
 }
 
-function getDirector(kind) {
+function getDirector(kind,{includeText=true}={}) {
     const personal=profileById(settings(),kind);
     if(personal)return {name:personal.name,prompt:personal.directorPrompt,source:'custom',baseKind:personal.kind};
     if(!Object.hasOwn(PROFILE_KINDS,kind))return null;
+    if(!pageTextEnabled(kind,includeText)){
+        const prompt=SP_IMAGEN_NO_TEXT_DIRECTORS[kind];
+        return typeof prompt==='string'&&prompt.trim()?{name:'sp_ness_'+kind+'_no_text_director',prompt,source:'bundled',baseKind:kind}:null;
+    }
+    // Text remains the exact existing editable director, without changes.
     const name='sp_ness_'+kind+'_director',prompt=settings().prompts[name];
     return typeof prompt==='string'&&prompt.trim()?{name,prompt,source:'bundled',baseKind:kind}:null;
 }
