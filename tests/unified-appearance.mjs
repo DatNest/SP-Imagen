@@ -121,3 +121,63 @@ test('The primary character editor mounts the inline board without opening a con
  assert.match(director,/nsfwLowerFront.*Lower front anatomy/);
  assert.match(director,/nsfwLowerBack.*Lower rear anatomy/);
 });
+
+
+test('A divider folds without clearing highlighted selections, and shows its tag count',()=>{
+ const ui=makeUI();
+ const existing=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]).modes;
+ existing.base.sections=[{id:'g1',title:'Face',before:0},{id:'g2',title:'Other',before:2}];
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{modes:existing},
+  initialSections:[],readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  readNsfwState:()=>initialNsfw,writeNsfwState:()=>{},changed:()=>{},readOnly:()=>false
+ });
+ const buttons=()=>board.element.querySelectorAll('button');
+ let heading=buttons().find(b=>/Face · 2 тегов/.test(b.textContent));
+ assert.ok(heading, 'The heading should include its count of two tags');
+ assert.equal(heading.attributes['aria-expanded'],'true');
+ const before=JSON.stringify(state.selections);
+ heading.onclick();
+ heading=buttons().find(b=>/Face · 2 тегов/.test(b.textContent));
+ assert.equal(heading.attributes['aria-expanded'],'false');
+ assert.equal(JSON.stringify(state.selections),before);
+ const folded=board.element.querySelectorAll('.ness-unified-section-tags');
+ assert.equal(folded[0].hidden,true);
+ heading.onclick();
+ assert.equal(board.element.querySelectorAll('.ness-unified-section-tags')[0].hidden,false);
+});
+
+test('Long-lived mode state tracks independent dividers and tag assignment',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
+ let nsfw={...initialNsfw};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  readNsfwState:()=>nsfw,writeNsfwState:next=>{nsfw=next;},changed:()=>{},readOnly:()=>false
+ });
+ const button=label=>board.element.querySelectorAll('button').find(b=>b.textContent===label);
+ button('Под одеждой').onclick();
+ const untouched=state.base;
+ const beginNsfw=JSON.stringify(nsfw);
+ const edit=button('✎ Редактировать порядок и разделители');
+ edit.onclick();
+ const group=board.element.querySelector('[data-group-name]');
+ group.value='Татуировки';
+ button('+ Разделитель').onclick();
+ let saved=board.getCatalog();
+ assert.equal(saved.modes.skin.sections.at(-1).title,'Татуировки');
+ assert.equal(saved.modes.base.sections.length,0);
+ assert.equal(saved.modes.nsfw.sections.length,0);
+ const create=board.element.querySelectorAll('input').find(i=>i.placeholder==='Новый тег, Enter');
+ create.value='flower tattoo on right arm';
+ button('+ Добавить тег').onclick();
+ assert.ok(board.getSkin().tags.some(t=>t.text==='flower tattoo on right arm'));
+ assert.equal(state.base,untouched);
+ assert.equal(JSON.stringify(nsfw),beginNsfw);
+ saved=board.getCatalog();
+ assert.ok(saved.modes.skin.tags.some(t=>t.text==='flower tattoo on right arm'));
+ button('NSFW').onclick();
+ assert.ok(board.getCatalog().modes.skin.sections.length===1);
+});
