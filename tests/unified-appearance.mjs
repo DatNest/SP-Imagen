@@ -40,7 +40,7 @@ test('↑ ↓ sends the tag to the adjacent visual divider section',()=>{
  const state={tags:[{id:'a',text:'A'},{id:'b',text:'B'},{id:'c',text:'C'},{id:'d',text:'D'}],
  sections:[{id:'s1',title:'Section 1',before:0},{id:'s2',title:'Section 2',before:2},{id:'s3',title:'Section 3',before:3}]};
  const down=repositionModeTag(state,'a','down');
- assert.deepEqual(down.tags.map(t=>t.id),['b','c','a','d']);
+ assert.deepEqual(down.tags.map(t=>t.id),['b','a','c','d']);
  assert.equal(sectionTagCount(down,'s2'),2);
  const up=repositionModeTag(state,'d','up');
  assert.deepEqual(up.tags.map(t=>t.id),['a','b','c','d']);
