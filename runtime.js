@@ -1943,7 +1943,7 @@ for(const [id,e] of Object.entries({...data.personas,...data.characters})){
   visibility.set(id,{base:e.base,name:e.name,promptName:e.promptName,aliases:e.aliases||[],ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{},appearanceFormat:e.appearanceFormat||'tags',skinTags:e.appearanceSkin||{}});
   lines.push('NESS_VIS character ID: '+id);
  }else lines.push('Fixed appearance: '+e.base);
- for(const [key,label] of [['thighMarks','Thigh marks, only if visible'],['kneeMarks','Knee marks, only if visible'],['shinMarks','Shin marks, only if visible'],['shoulderMarks','Shoulder marks, only if visible'],['forearmMarks','Forearm marks, only if visible'],['nudeUpper','Upper body traits, only if uncovered and visible'],['nudeLower','Lower body traits, only if uncovered and visible']])if(e[key])lines.push(label+': '+e[key]);
+ for(const [key,label] of [['thighMarks','Thigh marks, only if visible'],['kneeMarks','Knee marks, only if visible'],['shinMarks','Shin marks, only if visible'],['shoulderMarks','Shoulder marks, only if visible'],['forearmMarks','Forearm marks, only if visible'],['nudeUpper','Upper body traits, only if uncovered and visible'],['nudeLower','Lower body traits, only if uncovered and visible'],['nsfwChest','Chest anatomy, only if bare and visible'],['nsfwLowerFront','Lower front anatomy, only if bare and visible from the front'],['nsfwLowerBack','Lower rear anatomy, only if bare and visible from behind']])if(e[key])lines.push(label+': '+e[key]);
  lines.push('');
 }
 delete v.sp_imagen_attribute_records;
