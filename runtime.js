@@ -2036,31 +2036,8 @@ async function runNpcRequest(st,scene,isActive){
   }
   let rows=await generate(instruction,{posts:scene,known_characters:known,regex_matched_library_characters:knownMatches});
   if(!current())return '';
-  const references=[];
-  // Public, anonymous Wikipedia search: only NPC name/franchise leave the app,
-  // never RP posts. Network failure does not block manual editing.
-  async function wiki(r){
-   if(!r.fandom.trim()||!r.english_name.trim())return;
-   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6500);
-   try{
-    const params=new URLSearchParams({action:'query',format:'json',origin:'*',generator:'search',gsrsearch:r.english_name+' '+r.fandom,gsrnamespace:'0',gsrlimit:'2',prop:'extracts|info',inprop:'url',explaintext:'1',exintro:'1',exlimit:'2',exchars:'4500'});
-    const response=await fetch('https://en.wikipedia.org/w/api.php?'+params,{signal:controller.signal,credentials:'omit'});
-    if(!response.ok)throw Error('HTTP '+response.status);
-    const data=await response.json();if(data.error)throw Error('Wikipedia API error');
-    for(const p of Object.values(data.query?.pages||{}))if(p.extract&&p.fullurl&&/^https:\/\/en\.wikipedia\.org\/wiki\//.test(p.fullurl))references.push({npc:r.name,title:p.title,url:p.fullurl,excerpt:String(p.extract).slice(0,4500)});
-   }catch{}finally{clearTimeout(timer);}
-  }
-  await Promise.all(rows.filter(r=>r.fandom&&r.english_name).slice(0,4).map(wiki));
-  if(!current())return '';
-  let refinementFailed=false;
-  if(references.length){
-   try{
-    const enriched=await generate(instruction+' '+codePrompt('npc_reference_refinement'),{posts:scene,known_characters:known,detected_npcs:rows,references});
-    const bySource=new Map(enriched.map(r=>[r.source_name,r]));
-    // Web lookup may enrich an evidenced person, never add/replace the cast or evidence.
-    rows=rows.map(r=>{const next=bySource.get(r.source_name);return next&&next.name===r.name?{...next,source_name:r.source_name,presence_quote:r.presence_quote,kind:r.kind,presence:r.presence}:r;});
-   }catch{refinementFailed=true;}
-  }
+  // Privacy: do not send NPC names, fandoms or story context to Wikipedia.
+  // NPC recognition uses only the user's selected text-model connection.
   if(!current())throw Error('Чат изменился');
   const draft=rows.map(r=>[
    'NPC: '+r.name+(r.english_name&&r.english_name!==r.name?' ('+r.english_name+')':''),
@@ -2069,7 +2046,7 @@ async function runNpcRequest(st,scene,isActive){
   ].filter(Boolean).join('\n')).join('\n\n');
   v.sp_imagen_npc_draft=draft;
   v.sp_imagen_npc_status=rows.length?'NPC: '+rows.length+'. Внешность и одежду можно отредактировать.':'NPC не найдены. Можно добавить вручную.';
-  if(refinementFailed)v.sp_imagen_npc_status+=' Не удалось уточнить по справкам. Показаны первые варианты.';
+
  }catch(e){if(current())v.sp_imagen_npc_status='Авторазбор NPC недоступен: '+String(e?.message||e).replace(/\.$/,'')+'. Впиши NPC вручную.';}
  if(current()&&typeof st.saveMetadata==='function')await st.saveMetadata();
  return v.sp_imagen_npc_status;
