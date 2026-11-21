@@ -1108,7 +1108,7 @@ export async function installSpImagenMediaSlots(options) {
     if (!selectedImage) return;
     const ownedPath = spImagenOwnedImagePath(selectedImage.src, host.location?.origin);
     const prompt = ownedPath
-      ? 'Удалить версию '+(selected+1)+' из '+slot.versions.length+'? Изображение исчезнет из этой галереи, а его файл на сервере SillyTavern будет удалён, если он не используется больше нигде в текущем чате. Это необратимо.'
+      ? 'Удалить версию '+(selected+1)+' из '+slot.versions.length+'? Изображение исчезнет из этой галереи, а его файл на сервере SillyTavern будет удалён, если он не используется больше нигде в текущем чате. Если этот же файл вставлен в другой чат, ссылка там перестанет работать. Это необратимо.'
       : 'Удалить версию '+(selected+1)+' из '+slot.versions.length+'? Запись исчезнет из галереи. Внешние или старые источники файлов не удаляются.';
     if (!host.confirm(prompt)) return;
     if (context().chat !== chat || context().chatId !== chatId || chat[index] !== message) return;
