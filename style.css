@@ -216,6 +216,49 @@
 .spi-generation-failed {border-inline-start: 3px solid #cd7777;}
 @media (max-width: 620px) {.spi-generation-progress {right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: min(320px, calc(100vw - 16px)); padding: 12px;}}
 
+/* The elapsed clock stays visible as a compact, expandable mobile pill.
+   It must stack above the library/review modal without taking over the chat. */
+.spi-generation-progress-body{display:grid;gap:7px;min-width:0;}
+.spi-generation-progress-toggle{display:none;}
+@media(max-width:620px){
+  .spi-generation-progress{
+    z-index:2147483400;
+    right:max(8px,env(safe-area-inset-right,0px));
+    bottom:max(72px,calc(68px + env(safe-area-inset-bottom,0px)));
+    max-width:calc(100vw - 16px);
+  }
+  .spi-generation-progress-toggle{
+    appearance:none;display:flex;align-items:center;gap:7px;
+    min-width:0;max-width:100%;min-height:38px;
+    padding:7px 11px;border:0;border-radius:999px;
+    background:transparent;color:inherit;font:600 12px/1.3 system-ui,sans-serif;
+    cursor:pointer;text-align:left;box-shadow:none;
+  }
+  .spi-generation-progress-toggle:focus-visible{outline:2px solid var(--SmartThemeQuoteColor,#c5a7c1);outline-offset:2px;}
+  .spi-generation-progress-clock{flex:none;font-size:17px;font-weight:500;line-height:1;}
+  .spi-generation-progress-compact-time{flex:none;font-variant-numeric:tabular-nums;font-weight:750;white-space:nowrap;}
+  .spi-generation-progress-compact-stage{
+    display:block;min-width:0;max-width:130px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;font-weight:500;opacity:.86;
+  }
+  .spi-generation-progress-arrow{flex:none;opacity:.75;font-size:15px;line-height:1;}
+  .spi-generation-progress[data-mobile-expanded="false"]{
+    display:block;width:max-content;max-width:calc(100vw - 16px);
+    padding:0;border-radius:999px;box-shadow:0 5px 18px rgba(0,0,0,.25);
+  }
+  .spi-generation-progress[data-mobile-expanded="false"] .spi-generation-progress-body{display:none;}
+  .spi-generation-progress[data-mobile-expanded="true"]{
+    width:min(320px,calc(100vw - 16px));padding:9px 11px 11px;border-radius:12px;
+  }
+  .spi-generation-progress[data-mobile-expanded="true"] .spi-generation-progress-toggle{
+    width:100%;padding:2px 3px 7px;border-radius:0;
+    border-bottom:1px solid var(--SmartThemeBorderColor,#928590);
+  }
+  .spi-generation-progress[data-mobile-expanded="true"] .spi-generation-progress-arrow{transform:rotate(180deg);}
+  .spi-generation-progress[data-mobile-expanded="true"] .spi-generation-progress-body{display:grid;}
+  .spi-generation-progress[data-mobile-expanded="true"] .spi-generation-progress-compact-stage{max-width:none;}
+}
+
 /* Compact, accessible confirmation before discarding a per-post generation draft. */
 .ness-save-confirm {
   display: grid; gap: 10px; min-width: 0; margin: 12px 0 0;
@@ -827,19 +870,19 @@
  color:var(--SmartThemeBodyColor,#eee);
 }
 .spi-prompt-center>.spi-profile-maintenance>.spi-dialog-actions{
- display:flex;justify-content:flex-start;flex-wrap:wrap;
- gap:6px;min-width:0;margin:6px 0 8px!important;
+ display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr));
+ gap:7px;min-width:0;width:100%;box-sizing:border-box;margin:6px 0 8px!important;
 }
 .spi-prompt-center>.spi-profile-maintenance .menu_button{
- flex:0 1 auto;max-width:100%;
- min-height:31px!important;padding:5px 9px!important;
+ width:100%!important;min-width:0!important;max-width:100%!important;
+ min-height:36px!important;padding:8px 11px!important;
  border-radius:8px!important;
  border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor,#777) 80%,transparent)!important;
- background:transparent!important;
- color:var(--SmartThemeBodyColor,#eee)!important;
+ background:transparent!important;color:var(--SmartThemeBodyColor,#eee)!important;
  box-shadow:none!important;text-shadow:none!important;
- font-size:11px!important;font-weight:500!important;
- white-space:normal;overflow-wrap:anywhere;text-align:center;
+ font-size:12px!important;font-weight:500!important;line-height:1.4!important;
+ white-space:normal!important;overflow-wrap:break-word!important;word-break:normal!important;
+ text-align:left!important;justify-content:flex-start!important;
 }
 .spi-prompt-center>.spi-profile-maintenance>.spi-status{
  display:block;margin:4px 0 10px;
@@ -847,3 +890,8 @@
  color:var(--SmartThemeEmColor,#aaa);
 }
 .spi-prompt-center>.spi-profile-maintenance>.spi-status:empty{display:none;}
+@media(max-width:620px){
+ .spi-prompt-center>.spi-profile-maintenance{width:100%;box-sizing:border-box;min-width:0;}
+ .spi-prompt-center>.spi-profile-maintenance>.spi-dialog-actions{grid-template-columns:minmax(0,1fr)!important;}
+ .spi-prompt-center>.spi-profile-maintenance .menu_button{min-height:42px!important;font-size:13px!important;}
+}
