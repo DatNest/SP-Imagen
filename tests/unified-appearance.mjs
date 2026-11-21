@@ -6,6 +6,7 @@ import {
   parseBaseTags,SKIN_PRESETS,NSFW_PRESETS
 } from '../appearance-board.js';
 import { normalizeAppearanceModeCatalog,modeTokens,repositionModeTag,sectionTagCount } from '../appearance-mode-state.js';
+import { createSpImagenLibraryRuntime } from '../library-runtime.js';
 
 const base='freckles, long blonde hair, blue eyes;';
 const skin={tags:[{id:'s1',text:'scar on left arm',section:''}],selections:{arms:['s1']},sections:[]};
@@ -180,4 +181,33 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
  assert.ok(saved.modes.skin.tags.some(t=>t.text==='flower tattoo on right arm'));
  button('NSFW').onclick();
  assert.ok(board.getCatalog().modes.skin.sections.length===1);
+});
+
+
+test('Library import/export validation roundtrips modes, camera marks and original NSFW text',()=>{
+ const helpers=createSpImagenLibraryRuntime({}).utilities;
+ const modeState=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]).modes;
+ modeState.base.sections=[{id:'face',title:'Лицо',before:1}];
+ modeState.skin.sections=[{id:'scars',title:'Шрамы',before:0}];
+ modeState.nsfw.sections=[{id:'detail',title:'Анатомия',before:0}];
+ const record={name:'Джи',base,appearanceFormat:'tags',
+  appearanceRanges:[],appearanceSelections:{face:[parseBaseTags(base)[2]]},
+  appearanceSkin:skin,appearanceCatalog:{modes:modeState,tags:[],sections:[]},
+  nudeUpper:'legacy bust, stomach\n',nudeLower:'legacy lower anatomy\n',
+  nsfwChest:initialNsfw.nsfwChest,
+  nsfwLowerFront:initialNsfw.nsfwLowerFront,
+  nsfwLowerBack:initialNsfw.nsfwLowerBack
+ };
+ const doc={version:1,personas:{},characters:{ji:record}};
+ const stored=helpers.validateMasterLibrary(doc);
+ const reimported=helpers.validateMasterLibrary(JSON.parse(JSON.stringify(stored)));
+ const ji=reimported.characters.ji;
+ assert.equal(ji.nudeUpper,'legacy bust, stomach\n');
+ assert.equal(ji.nudeLower,'legacy lower anatomy\n');
+ assert.deepEqual([ji.nsfwChest,ji.nsfwLowerFront,ji.nsfwLowerBack],Object.values(initialNsfw));
+ assert.equal(ji.appearanceCatalog.modes.base.sections[0].title,'Лицо');
+ assert.equal(ji.appearanceCatalog.modes.skin.sections[0].title,'Шрамы');
+ assert.equal(ji.appearanceCatalog.modes.nsfw.sections[0].title,'Анатомия');
+ assert.ok(ji.appearanceSkin.selections.arms.includes('s1'));
+ assert.ok(ji.appearanceSelections.face?.length);
 });
