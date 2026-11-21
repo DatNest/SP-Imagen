@@ -1,4 +1,5 @@
 import { extractNovelAiPng, imageBlobDataUrl } from './zip-image.js';
+import { OFFICIAL_NOVELAI_ORIGIN, officialNovelAIEndpoint, credentialRequestOptions } from './security-network.js';
 export const NOVELAI_MODELS = Object.freeze({
     'nai-diffusion-5-full': 'NAI V5 Full',
     'nai-diffusion-5-full-medium': 'NAI V5 Full Medium',
@@ -26,7 +27,7 @@ const DIMENSIONS = Object.freeze({
 export function defaultNovelAISettings() {
     return {
         enabled: false,
-        endpoint: 'https://image.novelai.net',
+        endpoint: OFFICIAL_NOVELAI_ORIGIN,
         apiKey: '',
         model: 'nai-diffusion-5-full',
         neverSpendAnlas: true,
@@ -134,7 +135,9 @@ function buildParameters(settings, prompt, negativePrompt, aspectRatio) {
 }
 
 function requestUrl(settings) {
-    return settings.endpoint.endsWith('/ai/generate-image') ? settings.endpoint : `${settings.endpoint}/ai/generate-image`;
+    // Reject tampered saved settings, then use the canonical URL.
+    officialNovelAIEndpoint(settings.endpoint);
+    return OFFICIAL_NOVELAI_ORIGIN + '/ai/generate-image';
 }
 
 async function fetchWithTimeout(url, options, timeoutMs, outerSignal) {
@@ -143,7 +146,7 @@ async function fetchWithTimeout(url, options, timeoutMs, outerSignal) {
     if (outerSignal?.aborted) abort();
     else outerSignal?.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(() => controller.abort(new DOMException('Время ожидания NovelAI истекло.', 'TimeoutError')), timeoutMs);
-    try { return await fetch(url, { ...options, signal: controller.signal }); }
+    try { return await fetch(url, credentialRequestOptions({ ...options, signal: controller.signal })); }
     catch (error) {
         if (controller.signal.aborted && !outerSignal?.aborted) throw new Error('Время ожидания NovelAI истекло. Повтори запуск.');
         if (outerSignal?.aborted) throw error;
@@ -162,6 +165,7 @@ async function fetchWithTimeout(url, options, timeoutMs, outerSignal) {
 export async function checkNovelAISubscription(input, signal) {
     const settings = normalizeNovelAISettings(input);
     if (!settings.apiKey) throw new Error('Сначала укажи API-токен NovelAI.');
+    officialNovelAIEndpoint(settings.endpoint);
     const url = new URL(requestUrl(settings));
     url.pathname = url.pathname.replace(/\/ai\/generate-image$/, '/user/subscription');
     const response = await fetchWithTimeout(url, { cache: 'no-store', headers: { Authorization: `Bearer ${settings.apiKey}`, Accept: 'application/json' } }, 15000, signal);
@@ -184,6 +188,7 @@ export async function generateNovelAI({ settings: input, prompt, style = '', asp
     const settings = resolveRequestSettings(input);
     const fullPrompt = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
     if (!fullPrompt) throw new Error('Промпт изображения пуст.');
+    officialNovelAIEndpoint(settings.endpoint);
     const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio);
     if (settings.neverSpendAnlas) await verifyFreeAccess(settings, signal);
     const response = await fetchWithTimeout(requestUrl(settings), {
@@ -192,8 +197,8 @@ export async function generateNovelAI({ settings: input, prompt, style = '', asp
         body: JSON.stringify({ action: 'generate', model: settings.model, input: basePrompt, parameters }),
     }, 600000, signal);
     if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(`NovelAI ${response.status}: ${detail.slice(0, 800)}`);
+        // Untrusted error pages must not echo credentials or chat content into UI/logs.
+        throw new Error(`NovelAI: сервер ответил HTTP ${response.status}. Проверь подписку и настройки в кабинете NovelAI.`);
     }
     const contentType = response.headers.get('content-type') || '';
     let src;
