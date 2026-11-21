@@ -469,11 +469,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    b.title=label;
   }
   const bar=el('div',undefined,content,'ness-tagboard-tools');
-  const pick=el('select',undefined,bar,'ness-input');
-  for(const [id,name] of Object.entries(headings)){
-   const opt=el('option',name,pick);opt.value=id;
-  }
-  pick.value=preset;pick.onchange=()=>{preset=pick.value;checked.clear();render();};
   if(layout==='text'){
    const note=el('p',mode==='base'?'Исходное описание сохраняет точный текст и разметку тегов. Для редактирования используй текстовое поле внешности в карточке.':mode==='skin'?'Метки открытой кожи вставляются после базовой внешности перед одеждой. Общие теги доступны во всех разделах.':'NSFW-особенности используются только при видимых открытых участках.',content,'ness-note');
    if(mode==='skin'||mode==='nsfw'){
@@ -493,9 +488,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
      row.hidden=!!filter&&!norm(label).includes(norm(filter));
     }
    };
-   const inputTag=el('input',undefined,bar,'ness-input');inputTag.placeholder='Новый тег, Enter';
-   inputTag.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addTag(inputTag.value);}};
-   const add=button('+ Добавить тег',bar,()=>addTag(inputTag.value),'quiet');
    const scene=el('div',undefined,content,'ness-unified-highlight-list');
    const help=button('?',act,()=>warn(mode==='base'
     ?'Нажимай на теги для подсветки в выбранном ракурсе. «Всегда» действует во всех ракурсах.'
