@@ -9,6 +9,7 @@ import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { parseImageHtml } from './image-transport.js';
 import { normalizeImagePrompt, limitComicDialogue } from './image-prompt.js';
+import { pageTextEnabled, verifyTextlessImagePrompt } from './page-text-mode.js';
 import { createSpImagenProgress } from './progress-ui.js';
 import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
@@ -1015,6 +1016,7 @@ function restoreParserToVariables(v,draft){
  v.sp_imagen_npc_status=String(parsed.npcStatus||'');
  v.sp_imagen_rp_source_count=String(parsed.sourceCount||'');
  v.sp_imagen_active_kind=draft.kind;
+ v.sp_imagen_page_text_enabled=pageTextEnabled(draft.kind,draft.includeText);
  v.sp_imagen_manual_mode=draft.review?.manualMode===true;
  v.sp_imagen_preview_status='cancelled';
  v.sp_imagen_run_ticket='';
@@ -1325,9 +1327,9 @@ function spImagenExtension(){
  if(extension?.installed)return extension;
  throw Error('SP Imagen не инициализирован. Перезагрузи SillyTavern.');
 }
-function getNessDirector(kind){
+function getNessDirector(kind,includeText=true){
  validateKind(kind);
- const director=spImagenExtension().getDirector?.(kind);
+ const director=spImagenExtension().getDirector?.(kind,{includeText});
  if(!director||typeof director.prompt!=='string'||!director.prompt.trim())throw Error('В SP Imagen не найден промпт '+kind+'.');
  return director;
 }
@@ -1482,8 +1484,9 @@ function loadMasterLibrary(){
 
 // Module: prepare_rp
 const nessGenerationTargets=new WeakMap();
-async function prepareRp(kind,targetIndex=null){
+async function prepareRp(kind,targetIndex=null,includeText=true){
 validateKind(kind);
+includeText=pageTextEnabled(kind,includeText);
 
   const st = SillyTavern.getContext();
   if (!st?.chatMetadata||!Array.isArray(st.chat)) throw new Error('SillyTavern chat context недоступен');
@@ -1516,6 +1519,7 @@ validateKind(kind);
   v.sp_imagen_rp_outfits=[...collected.wardrobe].map(([name,wear])=>name+'_outfit: '+wear).join('\n');
   v.sp_imagen_parsed_scene=formatConfiguredPosts(recent);
   v.sp_imagen_active_kind=kind;
+  v.sp_imagen_page_text_enabled=includeText;
   // NPC-only helper: independent of the unchanged RP/wardrobe preparation.
   v.sp_imagen_npc_request_scene=v.sp_imagen_parsed_scene;
   v.sp_imagen_tracker_npcs='';
@@ -1528,7 +1532,7 @@ validateKind(kind);
   v.sp_imagen_rp_source_count=String(recent.length);
   // Store the processed scene before opening the review window; no extra LLM call.
   if(targetIndex!==null)savePostDraft(st,targetIndex,{
-   kind,stage:'parsed',parser:parserDraftFromVariables(v)
+   kind,includeText,stage:'parsed',parser:parserDraftFromVariables(v)
   },{replace:true});
   if(typeof st.saveMetadata==='function')await st.saveMetadata();
   return 'RP-постов подготовлено: '+recent.length;
@@ -2116,7 +2120,9 @@ const requireOrigin=()=>{
 v.sp_imagen_preview_status='cancelled';
 await saveNessGenerationMetadata(st,'запуск режиссёра');
 requireOrigin();
-const director=getNessDirector(kind),baseKind=validateKind(kind);
+const baseKind=validateKind(kind);
+const includeText=pageTextEnabled(kind,v.sp_imagen_page_text_enabled);
+const director=getNessDirector(kind,includeText);
 const profile=getExtension?.()?.getActiveProfile?.(kind)||null;
 const runtimeSettings=loadGen2Settings();
 const directorSettings={...runtimeSettings,posts:{...runtimeSettings.posts,[baseKind]:profile?.parser?.posts||runtimeSettings.posts[baseKind]}};
@@ -2132,7 +2138,7 @@ const filteredSource=filterProfileSources(source,profile);
 const identityInstruction=/^(?:Prompt name|Subject):/m.test(filteredSource['FIXED CHARACTER APPEARANCE']) ? codePrompt('identity_fields') : '';
 const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
-const useDialogueSettings=profile?.parser?.options?.useDialogueSettings!==false;
+const useDialogueSettings=includeText && profile?.parser?.options?.useDialogueSettings!==false;
 const ratioOverride=runtimeSettings.aspectRatio?.[baseKind]||'auto';
 const ratioInstruction=ratioOverride==='auto'?'':'\n\nIMAGE RATIO: Set aspect_ratio to '+ratioOverride+' in the required JSON. Keep the original output contract unchanged.';
 const sharedRules=getExtension?.()?.getGlobalDirectorRules?.()||[];
@@ -2162,7 +2168,8 @@ requireOrigin();
 const config=parsedTransport.config;
 if(ratioOverride!=='auto')config.aspect_ratio=ratioOverride;
 v.sp_imagen_last_transport_repaired=parsedTransport.repaired;
-config.prompt=normalizeImagePrompt(config.prompt);
+verifyTextlessImagePrompt(config.prompt,baseKind,includeText);
+config.prompt=normalizeImagePrompt(config.prompt,{parseLettering:includeText});
 if(npcLanguage){
  progress.set('Перевод NPC', 'Перевожу только нужные описания из подготовленного NPC-блока.');
  config.prompt=await repairNpcPromptLanguage(kind,config.prompt,imageController.signal);
@@ -2175,6 +2182,7 @@ if(visibility.size && profile?.parser?.options?.includeCharacters!==false){
 // Personal composition rules are already included in the director's instructions.
 // Never prepend their raw text to the NAI5 image prompt.
 if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,baseKind,runtimeSettings);
+verifyTextlessImagePrompt(config.prompt,baseKind,includeText);
 config.kind=kind;
 config.profileName=getExtension?.()?.getGenerationProfileLabel?.(kind)||kind;
 const snapshot=spImagenExtension().snapshotGenerationConfig?.(config,kind);
@@ -2342,7 +2350,7 @@ async function generateAt(request=null){
  const checkStopped=()=>{if(progress.signal.aborted)throw Error('Генерация остановлена пользователем.');};
  try{
   progress.set('Сбор сцены и одежды', 'Читаю настроенное количество RP-постов и актуальный гардероб.');
-  await prepareRp(request.kind,request.index);
+  await prepareRp(request.kind,request.index,request.includeText);
   checkStopped();
   progress.set('Проверка сцены', 'Проверь подготовленную сцену, одежду и состав персонажей.',{stoppable:false});
   await reviewScene(progress);
