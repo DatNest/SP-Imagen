@@ -120,7 +120,8 @@ export function repositionModeTag(data,tagId,action){
     const dividerIndexes=tokens.map((t,i)=>t.kind==='divider'?i:-1).filter(i=>i>=0);
     const prior=dividerIndexes.filter(i=>i<from),following=dividerIndexes.filter(i=>i>from);
     if(action==='up'){
-      if(!prior.length)return null;
+      // The first heading has no preceding named section.
+      if(prior.length<2)return null;
       // End of previous section: immediately before the current heading.
       const target=prior.at(-1);
       next.splice(from,1);next.splice(target,0,source);
