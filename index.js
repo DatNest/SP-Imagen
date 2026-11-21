@@ -12,10 +12,11 @@ import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
 import { decidePromptUpdate } from './update-policy.js';
 import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
+import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } from './security-network.js';
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.11';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.15';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -754,6 +755,18 @@ function openTextApiSettings({ back = false } = {}) {
       reasoningMode:reasoningMode.value,reasoningProtocol:reasoningProtocol.value,
       reasoningEffort:reasoningEffort.value,reasoningBudget:Number(reasoningBudget.value)
     });
+    const approveTarget = next => {
+        if (next.mode !== 'direct') return next;
+        const origin = directTextOrigin(next.endpoint);
+        if (next.approvedOrigin !== origin) {
+            const warning = 'Этот API-сервер получит твой ключ и отправляемые режиссёру данные.\n\nАдрес: '+origin
+              +'\n\nРазрешить передачу ТОЛЬКО этому серверу? Отмена заблокирует запрос.';
+            if (!window.confirm(warning)) throw new Error('Подключение к стороннему API не разрешено.');
+            next.approvedOrigin = origin;
+            draft.approvedOrigin = origin;
+        }
+        return next;
+    };
     const refreshMode = () => {
         profileControl.parentElement.hidden = mode.value !== 'st';
         refreshProfilesButton.hidden = mode.value !== 'st';
@@ -806,7 +819,7 @@ function openTextApiSettings({ back = false } = {}) {
     button('Проверить подключение', actions, async event => {
         const control = event.currentTarget; control.disabled = true; status.textContent = 'Проверяю подключение…';
         try {
-            const next = readDraft();
+            const next = approveTarget(readDraft());
             if (next.mode === 'st') { await testSillyTavernProfile(context(), next, undefined, resolveCodePrompt(settings().codePrompts,'text_profile_connection_test')); status.textContent = 'Выбранный профиль SillyTavern ответил.'; }
             else { const models = await testTextApi(next); status.textContent = models.length ? `Подключение работает. Моделей найдено: ${models.length}.` : 'Подключение ответило, но список моделей пуст.'; }
         } catch (error) { status.textContent = String(error?.message || error); }
@@ -816,7 +829,7 @@ function openTextApiSettings({ back = false } = {}) {
       const control=event.currentTarget;control.disabled=true;
       status.textContent='Проверяю настройки реальным запросом к модели. Он может быть платным…';
       try {
-       const next=readDraft();
+       const next=approveTarget(readDraft());
        const response=await generateTextCompletion({...next,maxTokens:Math.max(1000,Math.min(2048,next.maxTokens))},
          [{role:'system',content:'Answer only OK.'},{role:'user',content:'OK'}],undefined,context());
        status.textContent='Ответ модели: '+response.slice(0,150);
@@ -825,7 +838,9 @@ function openTextApiSettings({ back = false } = {}) {
     });
     button('Отмена', actions, close);
     button('Сохранить', actions, () => {
-        const next = readDraft();
+        let next;
+        try { next = approveTarget(readDraft()); }
+        catch(error){status.textContent=String(error?.message||error);return;}
         if (next.mode === 'st' && !next.profileId) { status.textContent = 'Выбери отдельный профиль SillyTavern.'; return; }
         if (next.mode === 'direct' && (!next.endpoint || !next.apiKey || !next.model)) { status.textContent = 'Заполни endpoint, API-ключ и модель.'; return; }
         if(next.jailbreak&&!next.jailbreakText.trim()){status.textContent='Jailbreak включён, но текст пуст.';return;}
@@ -856,7 +871,9 @@ function openNovelAISettings({ back = false } = {}) {
     const tokenWrap = document.createElement('div'); tokenWrap.className = 'spi-token-row'; tokenWrap.append(token);
     button('Показать', tokenWrap, () => { token.type = token.type === 'password' ? 'text' : 'password'; tokenWrap.lastElementChild.textContent = token.type === 'password' ? 'Показать' : 'Скрыть'; });
     formField(grid, 'Постоянный API-токен NovelAI', tokenWrap, 'Токен NovelAI, обычно начинается с pst-.');
-    const endpoint = input(draft.endpoint); formField(grid, 'Адрес NovelAI', endpoint, 'Обычно https://image.novelai.net');
+    const endpoint = input(OFFICIAL_NOVELAI_ORIGIN);
+    endpoint.readOnly = true;
+    formField(grid, 'Защищённый адрес NovelAI', endpoint, 'Фиксирован: ключ отправляется только на официальный сервер. Сторонние адреса запрещены.');
     const model = select(NOVELAI_MODELS, draft.model); formField(grid, 'Модель', model);
     const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution); formField(grid, 'Размер', resolution, 'При защите Anlas используется Normal.');
     const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50'; formField(grid, 'Steps', steps);
@@ -870,7 +887,7 @@ function openNovelAISettings({ back = false } = {}) {
     model.addEventListener('change',updateModelFields);updateModelFields();
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: enabled.checked, neverSpendAnlas: neverSpend.checked,
-        apiKey: token.value, endpoint: endpoint.value, model: model.value, resolution: resolution.value,
+        apiKey: token.value, endpoint: OFFICIAL_NOVELAI_ORIGIN, model: model.value, resolution: resolution.value,
         steps: Number(steps.value), cfgScale: Number(cfg.value), cfgRescale: Number(rescale.value),
         sampler: sampler.value, seed: Number(seed.value), negativePrompt: negative.value,
     });
@@ -887,6 +904,8 @@ function openNovelAISettings({ back = false } = {}) {
     button('Отмена', actions, close);
     button('Сохранить', actions, () => {
         const next = readDraft();
+        try { officialNovelAIEndpoint(next.endpoint); }
+        catch(error){status.textContent=String(error?.message||error);return;}
         if (next.enabled && !next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Для автономной генерации требуется токен NovelAI.'; token.focus(); return; }
         const root = settings(); root.novelai = next; saveSettings(); close();
     }, true);

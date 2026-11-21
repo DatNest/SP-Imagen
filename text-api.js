@@ -1,5 +1,7 @@
+import { directTextOrigin, requireTrustedDirectEndpoint, credentialRequestOptions } from './security-network.js';
+
 export function defaultTextApiSettings() {
-    return { mode: 'st', profileId: '', endpoint: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000, streaming: false, jailbreak: false, jailbreakText: '', reasoningMode: 'inherit', reasoningProtocol: 'auto', reasoningEffort: 'medium', reasoningBudget: 4096 };
+    return { mode: 'st', profileId: '', endpoint: '', approvedOrigin: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000, streaming: false, jailbreak: false, jailbreakText: '', reasoningMode: 'inherit', reasoningProtocol: 'auto', reasoningEffort: 'medium', reasoningBudget: 4096 };
 }
 
 export function normalizeTextApiSettings(value) {
@@ -9,6 +11,7 @@ export function normalizeTextApiSettings(value) {
     settings.profileId = String(settings.profileId || '');
     settings.endpoint = String(settings.endpoint || '').trim().replace(/\/+$/, '');
     settings.apiKey = String(settings.apiKey || '').trim();
+    settings.approvedOrigin = String(settings.approvedOrigin || '').trim();
     settings.model = String(settings.model || '').trim();
     settings.temperature = Number(settings.temperature);
     settings.maxTokens = Math.trunc(Number(settings.maxTokens));
@@ -136,7 +139,7 @@ async function fetchWithTimeout(url, options, timeoutMs, outerSignal) {
     if (outerSignal?.aborted) abort();
     else outerSignal?.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try { return await fetch(url, { ...options, signal: controller.signal }); }
+    try { return await fetch(url, credentialRequestOptions({ ...options, signal: controller.signal })); }
     catch (error) {
         if (controller.signal.aborted && !outerSignal?.aborted) throw new Error('Текстовый API не ответил вовремя.');
         if (outerSignal?.aborted) throw error;
@@ -153,6 +156,7 @@ function validate(settings) {
     if (!settings.endpoint) throw new Error('Укажи endpoint текстового API.');
     if (!settings.apiKey) throw new Error('Укажи API-ключ текстовой модели.');
     if (!settings.model) throw new Error('Укажи модель текстового API.');
+    requireTrustedDirectEndpoint(settings.endpoint, settings.approvedOrigin);
 }
 
 async function collectDirectStream(response) {
@@ -206,6 +210,7 @@ export async function generateTextCompletion(input, messages, signal, context = 
     // their non-thinking sibling. Only send it without a manual reasoning override.
     if(settings.reasoningMode==='inherit')payload.temperature=settings.temperature;
     const url=chatUrl(settings.endpoint);
+    requireTrustedDirectEndpoint(settings.endpoint, settings.approvedOrigin);
     const optionsFetch={
         method:'POST',
         headers:{Authorization:`Bearer ${settings.apiKey}`,'Content-Type':'application/json',Accept:settings.streaming?'text/event-stream':'application/json'},
@@ -219,8 +224,8 @@ export async function generateTextCompletion(input, messages, signal, context = 
         if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
         const timeout=setTimeout(()=>controller.abort(),180000);
         try{
-            const response=await fetch(url,{...optionsFetch,signal:controller.signal});
-            if(!response.ok)throw new Error(`Текстовый API ${response.status}: ${(await response.text()).slice(0,800)}`);
+            const response=await fetch(url,credentialRequestOptions({...optionsFetch,signal:controller.signal}));
+            if(!response.ok)throw new Error(`Текстовый API: ошибка HTTP ${response.status}.`);
             return await collectDirectStream(response);
         }catch(error){
             if(controller.signal.aborted&&!signal?.aborted)throw new Error('Streaming текстовой модели превысил 3 минуты.');
@@ -229,8 +234,7 @@ export async function generateTextCompletion(input, messages, signal, context = 
     }
     const response=await fetchWithTimeout(url,optionsFetch,180000,signal);
     if(!response.ok) {
-        const detail=await response.text();
-        throw new Error(`Текстовый API ${response.status}: ${detail.slice(0,800)}`);
+        throw new Error(`Текстовый API: ошибка HTTP ${response.status}.`);
     }
     let data;
     try { data = await response.json(); } catch { throw new Error('Текстовый API вернул нечитаемый JSON.'); }
@@ -250,12 +254,12 @@ export async function testSillyTavernProfile(context, input, signal, systemPromp
 export async function testTextApi(input, signal) {
     const settings = normalizeTextApiSettings(input);
     if (!settings.endpoint || !settings.apiKey) throw new Error('Укажи endpoint и API-ключ.');
+    requireTrustedDirectEndpoint(settings.endpoint, settings.approvedOrigin);
     const response = await fetchWithTimeout(modelsUrl(settings.endpoint), {
         cache: 'no-store', headers: { Authorization: `Bearer ${settings.apiKey}`, Accept: 'application/json' },
     }, 15000, signal);
     if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(`Текстовый API ${response.status}: ${detail.slice(0, 500)}`);
+        throw new Error(`Текстовый API: ошибка HTTP ${response.status}.`);
     }
     const data = await response.json();
     const models = Array.isArray(data?.data) ? data.data.map(item => String(item?.id || '')).filter(Boolean) : [];

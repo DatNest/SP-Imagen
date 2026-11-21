@@ -1,6 +1,9 @@
 // Generated from modules/media_slots.js.
 import { withOperationDeadline } from './operation-timeout.js';
 import { readPostDraft, discardPostDraft } from './post-drafts.js';
+import { getRequestHeaders } from '../../../../script.js';
+import { spImagenOwnedImagePath, isReferencedInCurrentChat, deleteSpImagenOwnedFile } from './gallery-file-cleanup.js';
+import { isLocalGalleryImage } from './security-network.js';
 export async function installSpImagenMediaSlots(options) {
   'use strict';
   const { getExtension } = options || {};
@@ -37,9 +40,18 @@ export async function installSpImagenMediaSlots(options) {
   try { host[CLEANUP_KEY]?.(); } catch (_) {}
 
 
-  const safeUrl = value => typeof value === 'string'
-    && /^(?:\/|user\/images\/|https?:\/\/|data:image\/(?:png|jpeg|webp);base64,)/i.test(value)
+  const safeUrl = value => isLocalGalleryImage(value, host.location?.origin)
     && !/\[IMG:|\/error\.svg(?:\?|$)/i.test(value);
+  // Preserve historical image references without making background network requests.
+  // Old remote URLs must remain in chat data, but are NEVER assigned to an <img src>.
+  const storedSource = value => typeof value === 'string' && value.length > 0 && value.length <= 55 * 1024 * 1024;
+  const remoteImage = value => typeof value === 'string' && /^https?:\/\//i.test(value)
+    && !safeUrl(value) && value.length < 8192;
+  const openLegacyRemote = value => {
+    if (!remoteImage(value)) return;
+    if (!host.confirm('Это изображение хранится на внешнем сайте. Открытие передаст сайту твой IP-адрес и сведения браузера.\n\nОткрыть ссылку вручную?')) return;
+    host.open(value, '_blank', 'noopener,noreferrer');
+  };
 
   function slotsOf(message, create = false) {
     if (!message) return null;
@@ -63,9 +75,8 @@ export async function installSpImagenMediaSlots(options) {
     for (const kind of availableKinds(slots)) {
       const slot = slots[kind];
       if (!slot || !Array.isArray(slot.versions)) continue;
-      if (slot.versions.some(item => !safeUrl(item?.src))) {
-        slot.versions = slot.versions.filter(item => safeUrl(item?.src));
-      }
+      // Never discard imported external versions: hiding a remote preview is
+      // not permission to delete historical data from a user's saved chat.
       slot.selected = Math.max(0, Math.min(Math.trunc(Number(slot.selected)) || 0, Math.max(0, slot.versions.length - 1)));
       slot.collapsed = slot.collapsed !== false;
     }
@@ -73,7 +84,7 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   function addVersion(slot, item) {
-    if (!slot || !safeUrl(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
+    if (!slot || !storedSource(item?.src) || slot.versions.some(version => version.src === item.src)) return false;
     slot.versions.push({ src: item.src, config: item.config || null, at: Number(item.at) || Date.now() });
     slot.selected = slot.versions.length - 1;
     slot.collapsed = false; // Show a newly generated image until the reader folds it.
@@ -87,7 +98,7 @@ export async function installSpImagenMediaSlots(options) {
     const slots = slotsOf(message, true);
     let changed = false;
     for (const item of legacy) {
-      if (!KINDS.includes(item?.kind) || !safeUrl(item?.src)) continue;
+      if (!KINDS.includes(item?.kind) || !storedSource(item?.src)) continue;
       changed = addVersion(slots[item.kind], {
         src: item.src,
         config: item.config || null,
@@ -685,12 +696,20 @@ export async function installSpImagenMediaSlots(options) {
     const frame = element('button', 'frame');
     frame.hidden = collapsed;
     frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
-    const image = element('img');
-    image.src = item.src;
-    image.alt = `${displayName} · версия ${selected + 1}`;
-    image.loading = 'lazy';
-    frame.addEventListener('click', () => host.open(item.src, '_blank', 'noopener'));
-    frame.append(image);
+    if (safeUrl(item.src)) {
+      const image = element('img');
+      image.src = item.src;
+      image.alt = `${displayName} · версия ${selected + 1}`;
+      image.loading = 'lazy';
+      frame.addEventListener('click', () => host.open(item.src, '_blank', 'noopener'));
+      frame.append(image);
+    } else {
+      // Do not load external URLs or potentially executable protocols automatically.
+      frame.append(element('span','external-image-warning',remoteImage(item.src)
+        ? 'Внешнее изображение скрыто · Нажми, чтобы открыть ссылку'
+        : 'Недопустимый источник изображения · исходная запись сохранена'));
+      frame.addEventListener('click', () => openLegacyRemote(item.src));
+    }
 
     const bar = element('div', 'bar');
     bar.hidden = collapsed;
@@ -998,7 +1017,7 @@ export async function installSpImagenMediaSlots(options) {
           { code: 'SP_IMAGEN_FILE_TIMEOUT' }
         )
       : item.src;
-    if (!safeUrl(storedSrc)) throw new Error('SP Imagen не смог сохранить файл изображения.');
+    if (!safeUrl(storedSrc) || /^data:/i.test(storedSrc)) throw new Error('SP Imagen не смог сохранить PNG как файл SillyTavern. Встраивание большого base64 в чат запрещено, чтобы не расходовать память.');
     if (context().chat !== originalChat || context().chatId !== originalId || originalChat[index] !== message) {
       throw new Error('Чат изменился до сохранения картинки.');
     }
@@ -1082,20 +1101,70 @@ export async function installSpImagenMediaSlots(options) {
     const current = context();
     const slot = slotsOf(current.chat?.[index], false)?.[kind];
     if (!slot?.versions?.length) return;
-    const selected = slot.selected;
-    if (!host.confirm(`Удалить версию ${selected + 1} из ${slot.versions.length}? Восстановить её через SP Imagen нельзя. Если нужна копия, сначала скачай картинку.`)) return;
+    const lock = `${current.chatId}|${index}|${kind}`;
+    if (busy.has(lock)) throw new Error('Дождись завершения генерации перед удалением изображения.');
+    const chat = current.chat, chatId = current.chatId, message = chat[index];
+    const selected = slot.selected, selectedImage = slot.versions[selected];
+    if (!selectedImage) return;
+    const ownedPath = spImagenOwnedImagePath(selectedImage.src, host.location?.origin);
+    const prompt = ownedPath
+      ? 'Удалить версию '+(selected+1)+' из '+slot.versions.length+'? Изображение исчезнет из этой галереи, а его файл на сервере SillyTavern будет удалён, если он не используется больше нигде в текущем чате. Если этот же файл вставлен в другой чат, ссылка там перестанет работать. Это необратимо.'
+      : 'Удалить версию '+(selected+1)+' из '+slot.versions.length+'? Запись исчезнет из галереи. Внешние или старые источники файлов не удаляются.';
+    if (!host.confirm(prompt)) return;
+    if (context().chat !== chat || context().chatId !== chatId || chat[index] !== message) return;
+    busy.add(lock);
     const before = slot.versions.slice();
-    slot.versions.splice(selected, 1);
-    slot.selected = Math.min(selected, Math.max(0, slot.versions.length - 1));
-    paint();
-    try { await current.saveChat(); }
-    catch (error) { slot.versions = before; slot.selected = selected; paint(); throw error; }
+    const oldSelected = slot.selected;
+    const legacy = Array.isArray(message.extra?.sp_imagen_embeds) ? message.extra.sp_imagen_embeds : null;
+    const legacyBefore = legacy ? legacy.slice() : null;
+    try {
+      // Remove the legacy copy too, or migration would resurrect the deleted card.
+      if (legacy) message.extra.sp_imagen_embeds = legacy.filter(item =>
+        !(item?.kind === kind && item?.src === selectedImage.src));
+      slot.versions.splice(selected, 1);
+      slot.selected = Math.min(selected, Math.max(0, slot.versions.length - 1));
+      paint();
+      try {
+        await current.saveChat();
+      } catch (error) {
+        slot.versions = before;
+        slot.selected = oldSelected;
+        if (legacyBefore) message.extra.sp_imagen_embeds = legacyBefore;
+        paint();
+        throw error;
+      }
+      // Never delete an owned file still used by another version or RP message.
+      // Other chat files are not available for inspection from this active session.
+      if (!ownedPath) return;
+      if (isReferencedInCurrentChat(chat, selectedImage.src)) {
+        host.toastr?.info?.('Запись удалена. Файл оставлен на сервере: он всё ещё используется в текущем чате.', 'SP Imagen');
+        return;
+      }
+      try {
+        await deleteSpImagenOwnedFile(selectedImage.src, {
+          origin: host.location?.origin,
+          fetchImpl: host.fetch.bind(host),
+          headers: getRequestHeaders(),
+        });
+        host.toastr?.success?.('Изображение удалено из галереи и файлов SillyTavern.', 'SP Imagen');
+      } catch (error) {
+        // Do not restore a possibly deleted image when the network state is unknown.
+        host.toastr?.warning?.('Запись в галерее удалена, но удаление файла не подтверждено: '+String(error?.message||error), 'SP Imagen');
+      }
+    } finally {
+      busy.delete(lock);
+      paint();
+    }
   }
 
   async function saveSelected(index, kind) {
     const slot = slotsOf(context().chat?.[index])?.[kind];
     const item = slot?.versions?.[slot.selected];
     if (!item) return;
+    if (!safeUrl(item.src)) {
+      openLegacyRemote(item.src);
+      return;
+    }
     const response = await host.fetch(item.src);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const url = host.URL.createObjectURL(await response.blob());
@@ -1256,7 +1325,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 27,
-    bundleVersion: '2.9.11',
+    bundleVersion: '2.9.15',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},

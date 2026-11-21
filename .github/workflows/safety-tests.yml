@@ -1,0 +1,25 @@
+name: SP Imagen safety & regression checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Safety and regression tests (Node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse every packaged JavaScript module
+        run: |
+          for file in ./*.js; do node --experimental-default-type=module --check "$file"; done
+      - name: Run built-in tests without dependencies or real credentials
+        run: node --experimental-default-type=module --test tests/*.mjs
