@@ -2,7 +2,7 @@ import { loadNessTheme, applyNessTheme, normalizeNessTheme, activeNessThemeForEd
 import { withOperationDeadline } from './operation-timeout.js';
 import { DEFAULT_CARD_WARDROBE, DEFAULT_PERSONA_WARDROBE, normalizeCardWardrobeSource, getCardPersonaWardrobe } from './wardrobe-card.js';
 import { boundedWardrobe, parseLabeledWardrobeRows, mayMatchWardrobeBoundary, WARDROBE_NAME_PLACEHOLDER } from './wardrobe-literal.js';
-import { CODE_PROMPT_DEFAULTS } from './code-prompts.js';
+import { CODE_PROMPT_DEFAULTS, NPC_LANGUAGE_VISUAL_ONLY } from './code-prompts.js';
 import { filterProfileSources, directorProfileGuidance } from './profiles.js';
 import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
@@ -2137,7 +2137,7 @@ if(!visibility.size&&profile?.parser?.options?.includeCharacters!==false&&/^NESS
 const filteredSource=filterProfileSources(source,profile);
 const identityInstruction=/^(?:Prompt name|Subject):/m.test(filteredSource['FIXED CHARACTER APPEARANCE']) ? codePrompt('identity_fields') : '';
 const appearancePunctuation=codePrompt('appearance_punctuation');
-const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?codePrompt('npc_language'):'';
+const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?(includeText?codePrompt('npc_language'):NPC_LANGUAGE_VISUAL_ONLY):'';
 const useDialogueSettings=includeText && profile?.parser?.options?.useDialogueSettings!==false;
 const ratioOverride=runtimeSettings.aspectRatio?.[baseKind]||'auto';
 const ratioInstruction=ratioOverride==='auto'?'':'\n\nIMAGE RATIO: Set aspect_ratio to '+ratioOverride+' in the required JSON. Keep the original output contract unchanged.';
