@@ -12,6 +12,25 @@ export function createSpImagenProgress() {
     const heading = document.createElement('strong');
     const detail = document.createElement('p');
     const elapsed = document.createElement('small');
+    // One real elapsed clock powers both the desktop card and a small mobile pill.
+    const compact = document.createElement('button');
+    compact.type = 'button';
+    compact.className = 'spi-generation-progress-toggle';
+    const compactClock = document.createElement('span');
+    compactClock.className = 'spi-generation-progress-clock';
+    compactClock.textContent = '◷';
+    compactClock.setAttribute('aria-hidden', 'true');
+    const compactTime = document.createElement('span');
+    compactTime.className = 'spi-generation-progress-compact-time';
+    const compactStage = document.createElement('span');
+    compactStage.className = 'spi-generation-progress-compact-stage';
+    const compactArrow = document.createElement('span');
+    compactArrow.className = 'spi-generation-progress-arrow';
+    compactArrow.textContent = '⌄';
+    compactArrow.setAttribute('aria-hidden', 'true');
+    compact.append(compactClock, compactTime, compactStage, compactArrow);
+    const body = document.createElement('div');
+    body.className = 'spi-generation-progress-body';
     const actions = document.createElement('div');
     actions.className = 'spi-generation-progress-actions';
     const cancel = document.createElement('button');
@@ -25,7 +44,16 @@ export function createSpImagenProgress() {
     close.hidden = true;
     close.onclick = () => destroy();
     actions.append(cancel, close);
-    root.append(heading, detail, elapsed, actions);
+    body.append(heading, detail, elapsed, actions);
+    root.append(compact, body);
+    root.dataset.mobileExpanded = 'false';
+    compact.setAttribute('aria-expanded', 'false');
+    compact.onclick = () => {
+        const expanded = root.dataset.mobileExpanded !== 'true';
+        root.dataset.mobileExpanded = String(expanded);
+        compact.setAttribute('aria-expanded', String(expanded));
+        updateTime();
+    };
     const start = Date.now();
     let ended = false;
     let dispatched = false;
@@ -33,7 +61,10 @@ export function createSpImagenProgress() {
     const updateTime = () => {
         if (ended) return;
         const seconds = Math.floor((Date.now() - start) / 1000);
-        elapsed.textContent = `Прошло ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+        const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+        elapsed.textContent = `Прошло ${time}`;
+        compactTime.textContent = time;
+        compact.setAttribute('aria-label', `${compactStage.textContent}. Прошло ${time}. ${root.dataset.mobileExpanded === 'true' ? 'Скрыть подробности' : 'Показать подробности'}.`);
     };
     function destroy() {
         ended = true;
@@ -43,6 +74,7 @@ export function createSpImagenProgress() {
     const set = (stage, description = '', { stoppable = true } = {}) => {
         if (ended || root.dataset.finished === 'true') return;
         heading.textContent = stage;
+        compactStage.textContent = stage;
         detail.textContent = description;
         cancel.hidden = !stoppable || dispatched;
         updateTime();
@@ -56,7 +88,14 @@ export function createSpImagenProgress() {
     const finish = (stage, description, failed) => {
         if (ended || root.dataset.finished === 'true') return;
         heading.textContent = stage;
+        compactStage.textContent = stage;
         detail.textContent = description;
+        // A failure stays readable without requiring an extra mobile tap.
+        if (failed) {
+            root.dataset.mobileExpanded = 'true';
+            compact.setAttribute('aria-expanded', 'true');
+        }
+        updateTime();
         root.dataset.finished = 'true';
         root.classList.toggle('spi-generation-failed', failed);
         cancel.hidden = true;
