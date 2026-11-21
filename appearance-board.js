@@ -605,7 +605,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();undo.push(snapshot());applySnapshot(redo.pop());}
  });
  render();
- return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:render,getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';else layout='board';render();}};
+ return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:()=>{modeCatalog=normalizeAppearanceModeCatalog(getCatalog(),readBaseState().base,skin,readNsfwState(),initialSections);render();},getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';else layout='board';render();}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
