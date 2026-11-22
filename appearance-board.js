@@ -445,13 +445,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const tag={id,text};items().push(tag);
   changeMany([tag],true,false);
  }
- function removeTag(tag){
+ function removeTag(tag,ask=true){
   if(readOnly())return;
-  if(!confirm('Удалить тег из выбранного режима и снять его назначения?'))return;
+  if(ask&&!confirm('Удалить тег из выбранного режима и снять его назначения?'))return;
   const all=items(),at=all.indexOf(tag),source=parseBaseTags(baseState().base);
   const existing=mode==='base'?source.find(x=>norm(x.text)===norm(tag.text)):null;
   if(existing&&appearanceFormat==='prose'){warn('Для обычного текста редактируй описание через текстовый режим. Удаление из каталога изменило бы исходный абзац.');return;}
   if(existing&&source.length===1){warn('Нельзя удалить последний тег основы: постоянная внешность должна быть заполнена.');return;}
+  if(focusTagId===tag.id)focusTagId='';
   record();
   modeCatalog.modes[mode].tags=items().filter(x=>x.id!==tag.id);
   modeCatalog.modes[mode].sections=sectionsForMode().map(x=>({...x,before:Math.max(0,x.before-(at<x.before?1:0))}));
@@ -777,37 +778,32 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    if(renameMode){
     const field=el('input',undefined,row,'ness-input ness-tagboard-rename-input');
     field.value=tag.text;field.setAttribute('aria-label','Изменить '+tag.text);
-    field.style.width=Math.max(9,Math.min(34,tag.text.length+2))+'ch';
-    field.oninput=()=>{field.style.width=Math.max(9,Math.min(34,field.value.length+2))+'ch';};
+    field.style.width=Math.max(3,Math.min(30,tag.text.length+1))+'ch';
+    field.oninput=()=>{field.style.width=Math.max(3,Math.min(30,field.value.length+1))+'ch';};
     field.onchange=()=>renameTag(tag,field.value);
     field.onblur=()=>{if(field.value!==tag.text)renameTag(tag,field.value);};
     field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();field.blur?.();}};
    }else{
     const chip=button((marked?'✓ ':shared?'✦ ':'＋ ')+tag.text,row,()=>{
+     if(toolMode==='delete'){removeTag(tag,false);return;}
+     if(toolMode==='move'){
+      if(chip.dataset.ignoreClick==='true'){chip.dataset.ignoreClick='false';return;}
+      focusTagId=focusTagId===tag.id?'':tag.id;render();return;
+     }
      if(shared){warn('Этот тег берётся из «Всегда». Измени его там.');return;}
      toggle(tag,!isChosen(tag,preset));
     },'quiet ness-unified-chip');
     chip.setAttribute('aria-pressed',String(marked||shared));
     chip.setAttribute('data-highlighted',String(marked));
     chip.setAttribute('data-inherited',String(shared));
-    chip.title='Повторное нажатие снимает выбор · ПКМ — меню переноса';
+    chip.title=toolMode==='delete'?'Удалить тег (можно отменить ↶)':toolMode==='move'?'Выбрать для перемещения · удерживать для выбора раздела':'Добавить или снять тег в выбранном ракурсе';
+    if(toolMode==='move')chip.onpointerdown=e=>gripPointerDown(e,tag,row,chip);
    }
-   const grip=button('⠿',row,()=>{
-    if(grip.dataset.ignoreClick==='true'){grip.dataset.ignoreClick='false';return;}
-    focusTagId=focusTagId===tag.id?'':tag.id;render();
-   },'quiet ness-tagboard-grip');
-   grip.title='Тяни для перестановки · нажми для стрелок · удерживай для другого режима';
-   grip.setAttribute('aria-label','Переместить тег '+tag.text);
-   grip.setAttribute('aria-expanded',String(focusTagId===tag.id));
-   grip.onpointerdown=e=>gripPointerDown(e,tag,row,grip);
-   row.oncontextmenu=e=>{if(e.target?.closest?.('input'))return;e.preventDefault();showTransfer(tag,row);};
-   if(focusTagId===tag.id){
-    const arrows=el('div',undefined,row,'ness-unified-tag-controls');
-    for(const [sign,direction,title] of [['←','left','На тег раньше'],['→','right','На тег позже'],['↑','up','На раздел выше'],['↓','down','На раздел ниже']]){
-     const arrow=button(sign,arrows,()=>jumpSection(tag,direction),'quiet');
-     arrow.title=title;arrow.setAttribute('aria-label',title);
-    }
-   }
+   row.dataset.moveSelected=String(toolMode==='move'&&focusTagId===tag.id);
+   if(toolMode==='move')row.oncontextmenu=e=>{
+    if(e.target?.closest?.('input'))return;
+    e.preventDefault();focusTagId=tag.id;showTransfer(tag,row);
+   };
   };
   for(let i=0;i<sequence.length;i++){
    const token=sequence[i];
