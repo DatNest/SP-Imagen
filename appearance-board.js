@@ -169,6 +169,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let mode=['base','skin','nsfw'].includes(initialMode)?initialMode:'base';
  let preset=initialPreset||(mode==='skin'?'upper_front':mode==='nsfw'?'nsfwChest':'face');
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
+ const layouts={base:'board',skin:'board',nsfw:'board'};
+ let textDraft=null;
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Редактор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
@@ -176,9 +178,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
  const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
- const basic=button('Ракурсы',modes,()=>{mode='base';preset='face';if(appearanceFormat==='prose')layout='text';checked.clear();render();},'quiet');
- const marks=button('Под одеждой',modes,()=>{mode='skin';layout='board';preset='upper_front';checked.clear();render();},'quiet');
- const nsfw=button('NSFW',modes,()=>{mode='nsfw';layout='board';preset='nsfwChest';checked.clear();render();},'quiet');
+ const basic=button('Ракурсы',modes,()=>{if(!flushModeText())return;mode='base';layout=layouts.base;preset='face';checked.clear();closeTransfer();render();},'quiet');
+ const marks=button('Под одеждой',modes,()=>{if(!flushModeText())return;mode='skin';layout=layouts.skin;preset='upper_front';checked.clear();closeTransfer();render();},'quiet');
+ const nsfw=button('NSFW',modes,()=>{if(!flushModeText())return;mode='nsfw';layout=layouts.nsfw;preset='nsfwChest';checked.clear();closeTransfer();render();},'quiet');
  const content=el('div',undefined,frame,'ness-tagboard-body');
   function getCatalog(){
    const legacy=normalizeAppearanceCatalog(catalog,readBaseState().base,skin,readNsfwState(),initialSections);
@@ -549,7 +551,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
-  clear(content);
+  clear(content);textDraft=null;
   const headings=availablePresets(),ribbon=el('div',undefined,content,'ness-tagboard-ribbon');
   for(const [id,label] of Object.entries(headings)){
    const btn=button(label,ribbon,()=>{closeTransfer();preset=id;checked.clear();render();},'quiet');
@@ -557,7 +559,12 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   }
   if(layout==='text'){
    el('p',mode==='base'?'Текст внешности редактируется в поле выше.':'Выбранные особенности этого участка:',content,'ness-note');
-   if(mode!=='base'){const previewText=el('textarea',undefined,content,'ness-input');previewText.value=preview();previewText.readOnly=true;}
+   if(mode!=='base'){
+    textDraft=el('textarea',undefined,content,'ness-input ness-tagboard-textarea');
+    textDraft.value=items().map(t=>t.text).join(', ');
+    textDraft.setAttribute('aria-label','Текст тегов режима');
+    button('Применить к тегам',content,()=>flushModeText(),'quiet').title='Применить текст к тегам режима';
+   }
    return;
   }
   const columns=el('div',undefined,content,'ness-tagboard-columns');
@@ -606,7 +613,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     field.onchange=()=>renameTag(tag,field.value);
     field.onblur=()=>{if(field.value!==tag.text)renameTag(tag,field.value);};
     field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();field.blur?.();}};
-    row.appendChild(field);
    }else{
     const chip=button((marked?'✓ ':shared?'✦ ':'＋ ')+tag.text,row,()=>{
      if(shared){warn('Этот тег берётся из «Всегда». Измени его там.');return;}
@@ -703,7 +709,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();undo.push(snapshot());applySnapshot(redo.pop());}
  });
  render();
- return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:()=>{modeCatalog=normalizeAppearanceModeCatalog(getCatalog(),readBaseState().base,skin,readNsfwState(),initialSections);render();},getMode:()=>mode,setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';if(appearanceFormat==='prose'&&mode==='base')layout='text';else layout='board';render();}};
+ return {element:frame,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:()=>{modeCatalog=normalizeAppearanceModeCatalog(getCatalog(),readBaseState().base,skin,readNsfwState(),initialSections);render();},getMode:()=>mode,setModeLayout(value){if(!flushModeText())return false;layouts[mode]=value==='prose'?'text':'board';layout=layouts[mode];render();return true;},setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';layouts.base=appearanceFormat==='prose'?'text':'board';if(mode==='base')layout=layouts.base;render();}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
