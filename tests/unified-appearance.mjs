@@ -62,6 +62,7 @@ function makeUI(){
  class E{
   constructor(type,text='',parent=null,name=''){this.type=type;this.textContent=text||'';this.value='';this.className=name||'';this.parentElement=parent;this.children=[];this.hidden=false;this.disabled=false;this.style={};this.dataset={};this.attributes={};this.eventListeners={};this.classList={add:(...names)=>{this.className=[...new Set([...this.className.split(' ').filter(Boolean),...names])].join(' ');},remove:(...names)=>{this.className=this.className.split(' ').filter(n=>!names.includes(n)).join(' ');}};}
   appendChild(child){child.parentElement=this;this.children.push(child);return child}
+  insertBefore(child,before){if(child.parentElement){const at=child.parentElement.children.indexOf(child);if(at>=0)child.parentElement.children.splice(at,1);}const index=this.children.indexOf(before);this.children.splice(index<0?this.children.length:index,0,child);child.parentElement=this;return child}
   setAttribute(name,value){this.attributes[name]=String(value)}
   addEventListener(name,fn){this.eventListeners[name]=fn}
   querySelector(selector){const all=this.querySelectorAll(selector);return all[0]||null}
