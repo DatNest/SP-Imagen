@@ -688,7 +688,7 @@ async function openLibraryEditor(){
   const nameRow=el('div',undefined,identity,'ness-editor-name-row');
   fields.name=input(entry.name);fields.name.className+=' ness-editor-name-input';fields.name.setAttribute('aria-label','Имя персонажа');fields.name.placeholder='Имя персонажа';nameRow.appendChild(fields.name);
   const pencil=el('span','✎',nameRow,'ness-editor-name-pencil');pencil.setAttribute('aria-hidden','true');
-  const kind=choice([['personas','Персона'],['characters','Персонаж']],group);kind.className+=' ness-editor-type-select';kind.setAttribute('aria-label','Тип записи');identity.appendChild(kind);
+  const kind=choice([['personas','Персона'],['characters','Персонаж']],group);kind.className+=' ness-editor-type-select';kind.setAttribute('aria-label','Тип записи');kind.onchange=()=>changed(true);identity.appendChild(kind);
   const recordTagHost=el('div',undefined,identityCard,'ness-editor-meta-tags');
   function renderHeaderTags(){
     clear(recordTagHost);
