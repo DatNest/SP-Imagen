@@ -384,3 +384,114 @@ test('Library import/export validation roundtrips modes, camera marks and origin
  assert.ok(ji.appearanceSkin.selections.arms.includes('s1'));
  assert.ok(ji.appearanceSelections.face?.length);
 });
+
+
+test('Toolbar modes are mutually exclusive, deleting a tag is undoable, and historic selections survive',()=>{
+ const ui=makeUI();let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]],head:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false});
+ const buttons=board.element.querySelectorAll('.ness-tagboard-tool');
+ const pencil=buttons.find(x=>x.textContent==='✎'),trash=buttons.find(x=>x.textContent==='🗑'),move=buttons.find(x=>x.textContent==='✥');
+ assert.equal(buttons.length,3);
+ pencil.onclick();
+ assert.equal(board.getToolMode(),'edit');
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-rename-input').length,3);
+ trash.onclick();
+ assert.equal(board.getToolMode(),'delete');
+ assert.equal(pencil.attributes['aria-pressed'],'false');
+ assert.equal(trash.attributes['aria-pressed'],'true');
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-rename-input').length,0);
+ const chip=board.element.querySelectorAll('.ness-unified-chip').find(x=>x.textContent.includes('freckles'));
+ chip.onclick();
+ assert.equal(parseBaseTags(state.base).length,2);
+ assert.ok(!state.selections.face.some(x=>x.text==='freckles'));
+ board.undo();
+ assert.equal(parseBaseTags(state.base).length,3);
+ assert.ok(state.selections.face.some(x=>x.text==='freckles'));
+ assert.ok(state.selections.head.some(x=>x.text==='freckles'));
+ move.onclick();
+ assert.equal(board.getToolMode(),'move');
+ assert.equal(trash.attributes['aria-pressed'],'false');
+ assert.equal(move.attributes['aria-pressed'],'true');
+ move.onclick();
+ assert.equal(board.getToolMode(),'');
+ assert.equal(move.attributes['aria-pressed'],'false');
+});
+
+test('Local + adds into exact section, preserving source order and camera offsets with undo/redo',()=>{
+ const ui=makeUI(),catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+ catalog.modes.base.sections=[{id:'first',title:'Face',before:0},{id:'second',title:'Eyes',before:2}];
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]],head:[parseBaseTags(base)[2]]}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,initialSkin:skin,
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false});
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-add-plus').length,2);
+ board.element.querySelectorAll('.ness-tagboard-add-plus')[0].onclick();
+ const input=board.element.querySelector('.ness-tagboard-inline-add-input');
+ input.value='pretty eyelashes';input.onkeydown({key:'Enter',preventDefault(){}});
+ assert.deepEqual(parseBaseTags(state.base).map(x=>x.text),
+  ['freckles','long blonde hair','pretty eyelashes','blue eyes']);
+ assert.equal(sectionTagCount(board.getCatalog().modes.base,'first'),3);
+ assert.equal(sectionTagCount(board.getCatalog().modes.base,'second'),1);
+ assert.ok(state.selections.face.some(x=>x.text==='freckles'));
+ assert.ok(state.selections.head.some(x=>x.text==='blue eyes'));
+ board.undo();
+ assert.deepEqual(parseBaseTags(state.base).map(x=>x.text),['freckles','long blonde hair','blue eyes']);
+ board.redo();
+ assert.ok(state.base.includes('pretty eyelashes'));
+});
+
+test('No-divider mode exposes a tiny + at both beginning and end, with no large input form',()=>{
+ const ui=makeUI();let state={base,ranges:[],selections:{face:[]}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:{},initialSkin:skin,
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false});
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-add-plus').length,2);
+ assert.equal(board.element.querySelectorAll('.ness-unified-add').length,0);
+ const add=(index,value)=>{
+  board.element.querySelectorAll('.ness-tagboard-add-plus')[index].onclick();
+  const field=board.element.querySelector('.ness-tagboard-inline-add-input');
+  field.value=value;field.onkeydown({key:'Enter',preventDefault(){}});
+ };
+ add(0,'soft rosy cheeks');
+ add(1,'sunlit eyes');
+ assert.equal(parseBaseTags(state.base)[0].text,'soft rosy cheeks');
+ assert.equal(parseBaseTags(state.base).at(-1).text,'sunlit eyes');
+});
+
+test('Within-mode move-to-section repositions the selected chip without altering its assignments',()=>{
+ const ui=makeUI(),catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+ catalog.modes.base.sections=[{id:'first',title:'Face',before:0},{id:'second',title:'Eyes',before:2}];
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]],head:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,initialSkin:skin,
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false});
+ const oldWindow=globalThis.window;globalThis.window={innerHeight:900};
+ try{
+  board.element.querySelectorAll('.ness-tagboard-tool').find(b=>b.textContent==='✥').onclick();
+  const row=board.element.querySelectorAll('.ness-unified-tag-row').find(x=>x.dataset.tagId===board.getCatalog().modes.base.tags[0].id);
+  row.oncontextmenu({target:{closest:()=>null},preventDefault(){}});
+  const popup=board.element.querySelector('.ness-tagboard-context-menu');
+  popup.querySelectorAll('button').find(x=>x.textContent==='↳ Eyes').onclick();
+  assert.equal(sectionTagCount(board.getCatalog().modes.base,'first'),1);
+  assert.equal(sectionTagCount(board.getCatalog().modes.base,'second'),2);
+  assert.ok(state.selections.face.some(x=>x.text==='freckles'));
+  assert.ok(state.selections.head.some(x=>x.text==='freckles'));
+  assert.equal(board.element.querySelectorAll('.ness-unified-tag-row').find(x=>x.dataset.moveSelected==='true').dataset.tagId,row.dataset.tagId);
+ }finally{if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;}
+});
+
+test('History buttons are docked into a sticky shared appearance toolbar, not duplicated',()=>{
+ const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
+ const lib=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
+ assert.match(css,/\.ness-tagboard-tools\{\s*position:sticky;top:0/);
+ assert.match(lib,/inlineBoard\.historyHost\.append\(historyUndo,historyRedo\)/);
+ const ui=makeUI();let state={base,ranges:[],selections:{}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false});
+ assert.ok(board.element.querySelector('.ness-tagboard-tools'));
+ assert.ok(board.historyHost);
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-grip').length,0);
+});
