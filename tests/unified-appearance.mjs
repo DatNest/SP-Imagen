@@ -289,6 +289,50 @@ test('Dragging a tag by its grip moves its real source order and preserves camer
  assert.ok(state.selections.head.some(t=>t.text==='freckles'));
 });
 
+test('Context menu copies independently and moves across modes without duplicate tags',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const id=board.getCatalog().modes.base.tags.find(t=>t.text==='freckles').id;
+ const originalWindow=globalThis.window,originalConfirm=globalThis.confirm;
+ globalThis.window={innerHeight:900};
+ globalThis.confirm=()=>true;
+ try{
+  const rightClick=name=>{
+   const chip=board.element.querySelectorAll('.ness-unified-chip').find(b=>b.textContent.includes(name));
+   const row=chip.parentElement;
+   row.oncontextmenu({target:{closest:()=>null},preventDefault(){}});
+   return board.element.querySelector('.ness-tagboard-context-menu');
+  };
+  let menu=rightClick('freckles');
+  menu.querySelectorAll('button').find(b=>b.textContent==='Под одеждой').onclick();
+  assert.equal(board.getMode(),'skin');
+  const copy=board.getCatalog().modes.skin.tags.find(t=>t.text==='freckles');
+  assert.ok(copy);
+  assert.notEqual(copy.id,id);
+  assert.ok(state.base.includes('freckles'),'Copy does not remove the original');
+  assert.equal(board.getCatalog().modes.skin.tags.filter(t=>t.text==='freckles').length,1);
+  board.element.querySelectorAll('button').find(b=>b.textContent==='Ракурсы').onclick();
+  menu=rightClick('freckles');
+  menu.querySelectorAll('button').find(b=>b.textContent==='↗ Перенести').onclick();
+  menu.querySelectorAll('button').find(b=>b.textContent==='NSFW').onclick();
+  assert.equal(board.getMode(),'nsfw');
+  const moved=board.getCatalog().modes.nsfw.tags.find(t=>t.text==='freckles');
+  assert.ok(moved);
+  assert.equal(moved.id,id,'Move preserves the tag identifier in its new mode');
+  assert.ok(!parseBaseTags(state.base).some(t=>t.text==='freckles'));
+  assert.ok(!state.selections.face?.some(t=>t.text==='freckles'));
+  assert.ok(board.getCatalog().modes.skin.tags.some(t=>t.id===copy.id),'Independent copy stays');
+ }finally{
+  if(originalWindow===undefined)delete globalThis.window;else globalThis.window=originalWindow;
+  if(originalConfirm===undefined)delete globalThis.confirm;else globalThis.confirm=originalConfirm;
+ }
+});
+
 test('Library import/export validation roundtrips modes, camera marks and original NSFW text',()=>{
  const helpers=createSpImagenLibraryRuntime({}).utilities;
  const modeState=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]).modes;
