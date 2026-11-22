@@ -89,7 +89,7 @@ test('Visual-only NPC policy has no dialogue/lettering instruction; Text policy 
 
 test('Per-click star switch is local UI state; runtime freezes it into the post draft and restores it',()=>{
   const ui=source('media-slots.js'), runtime=source('runtime.js'), index=source('index.js');
-  assert.match(ui,/kind === 'comic' \|\| kind === 'story_page'/);
+  assert.match(ui,/\['comic','story_page'\]\.includes\(item\.baseKind\|\|kind\)/);
   assert.match(ui,/input\.type='checkbox';input\.checked=true/);
   assert.match(ui,/showText=input\.checked/);
   assert.match(ui,/executeCommand\('sp_ness_generate_at', view, kind, showText\)/);
@@ -105,7 +105,7 @@ test('No text path omits dialogue-limit integration, printed-text parsing and au
   const runtime=source('runtime.js');
   assert.match(runtime,/const useDialogueSettings=includeText && profile\?\.parser\?\.options\?\.useDialogueSettings!==false/);
   assert.match(runtime,/normalizeImagePrompt\(config\.prompt,\{parseLettering:includeText\}\)/);
-  assert.match(runtime,/if\(useDialogueSettings\)config\.prompt=limitComicDialogue/);
+  assert.match(runtime,/if\(useDialogueSettings&&!experimental\)config\.prompt=limitComicDialogue/);
   assert.match(runtime,/verifyTextlessImagePrompt\(config\.prompt,baseKind,includeText\)/);
   const helper=source('page-text-mode.js');
   assert.doesNotMatch(helper,/\b(?:fetch|setInterval|Worker|setTimeout|requestAnimationFrame)\s*\(/);
