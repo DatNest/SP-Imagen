@@ -97,7 +97,7 @@ test('Corrupted, invalid or incomplete model slot JSON is rejected without fabri
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots)),/служебные маркеры/);
  slots=sample();slots.characters.push({...slots.characters[0]});
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots)),/продублирован/);
- slots=sample();slots.bubbles=[];
+ slots=sample();
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots),{kind:'snapshot'}),/Snapshot/);
 });
 
@@ -109,7 +109,7 @@ test('Test mode is controlled in the star menu and leaves the legacy output pars
  assert.match(menu,/Тест: OFF/);
  assert.match(menu,/setExperimentalMode/);
  assert.match(runtime,/parseExperimentalDirector\(raw/);
- assert.match(runtime,/experimental\?parseExperimentalDirector/);
+ assert.match(runtime,/experimental\s*\?\s*parseExperimentalDirector/);
  assert.match(runtime,/if\(!experimental\)config.prompt=normalizeImagePrompt/);
  assert.match(runtime,/if\(useDialogueSettings&&!experimental\)/);
  assert.match(runtime,/if\(npcLanguage&&!experimental\)/);
