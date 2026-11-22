@@ -117,6 +117,6 @@ test('Previously combined old skin text never reappears as a base appearance tag
 
 test('Switching between Tags and Prose updates the visible input immediately',()=>{
  const library=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
- assert.match(library,/fields\.base\.parentElement\.hidden=inlineBoard\.getMode\(\)!=='base'\|\|format!=='prose'/);
- assert.match(library,/fields\.base\.parentElement\.hidden=mode!=='base'\|\|appearanceFormat\.value!=='prose'/);
+ assert.match(library,/fields\.base\.parentElement\.hidden=!baseMode\|\|format!=='prose'/);
+ assert.match(library,/fields\.base\.parentElement\.hidden=mode!=='base'\|\|layout!=='text'/);
 });
