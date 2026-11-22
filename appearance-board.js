@@ -172,10 +172,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Конструктор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
- el('strong','Редактор внешности',header);
- const tools=el('div',undefined,header,'ness-tagboard-actions');tools.hidden=true;
- const boardButton=button('',tools,()=>{},'quiet');boardButton.hidden=true;
- const textButton=button('',tools,()=>{},'quiet');textButton.hidden=true;
+ el('strong','Внешность',header);
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
  const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
@@ -456,10 +453,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
-  boardButton.disabled=mode==='base'&&appearanceFormat==='prose';
-  boardButton.title=boardButton.disabled?'Для обычного текста используй текстовый редактор; кожа остаётся независимым набором тегов.':'';
-  boardButton.setAttribute('aria-pressed',String(layout==='board'));
-  textButton.setAttribute('aria-pressed',String(layout==='text'));
   clear(content);
   const headings=availablePresets();
   const ribbon=el('div',undefined,content,'ness-tagboard-ribbon');
@@ -476,10 +469,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    }
   }else{
    const act=el('div',undefined,content,'ness-tagboard-history');
-   const reorderToggle=button('✎ Редактировать порядок и разделители',act,()=>{frame.dataset.moveMode=frame.dataset.moveMode==='true'?'false':'true';render();},'quiet');
+   const reorderToggle=button('✎',act,()=>{frame.dataset.moveMode=frame.dataset.moveMode==='true'?'false':'true';render();},'quiet ness-edit-toggle');
+   reorderToggle.title='Редактировать названия, разделы и порядок тегов';
+   reorderToggle.setAttribute('aria-label','Редактировать названия, разделы и порядок тегов');
    reorderToggle.setAttribute('aria-pressed',String(frame.dataset.moveMode==='true'));
-   const undoBtn=button('↶ Отменить',act,()=>{if(!undo.length)return;redo.push(snapshot());applySnapshot(undo.pop());},'quiet');undoBtn.disabled=!undo.length;
-   const redoBtn=button('↷ Повторить',act,()=>{if(!redo.length)return;undo.push(snapshot());applySnapshot(redo.pop());},'quiet');redoBtn.disabled=!redo.length;
+   const undoBtn=button('↶',act,()=>{if(!undo.length)return;redo.push(snapshot());applySnapshot(undo.pop());},'quiet');undoBtn.disabled=!undo.length;
+   undoBtn.title='Отменить';undoBtn.setAttribute('aria-label','Отменить');
+   const redoBtn=button('↷',act,()=>{if(!redo.length)return;undo.push(snapshot());applySnapshot(redo.pop());},'quiet');redoBtn.disabled=!redo.length;
+   redoBtn.title='Повторить';redoBtn.setAttribute('aria-label','Повторить');
    const search=el('input',undefined,bar,'ness-input');search.type='search';search.placeholder='Найти тег';search.value=filter;
    search.oninput=()=>{
     filter=search.value;
@@ -492,7 +489,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const help=button('?',act,()=>warn(mode==='base'
     ?'Нажимай на теги для подсветки в выбранном ракурсе. «Всегда» действует во всех ракурсах.'
     :mode==='skin'?'Отмечай особенности открытого участка: закрытые одеждой детали не передаются.'
-    :'Грудь, нижняя передняя и нижняя задняя анатомия отмечаются отдельно. Старые описания сохранены.'),'quiet ness-mini-help');
+    :'Грудь, нижняя передняя и нижняя задняя анатомия отмечаются отдельно.'),'quiet ness-mini-help');
    help.title='Как работает режим';
    const tagFlow=el('div',undefined,scene,'ness-unified-tagflow');
    const sequence=orderedSequence(),editMode=frame.dataset.moveMode==='true';
@@ -500,25 +497,30 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const inherited=mode==='nsfw'?new Set():new Set(items().filter(tag=>isChosen(tag,'always')).map(tag=>norm(tag.text)));
    let flow=tagFlow;
    function drawTag(tag){
-    if(filter&&!norm(tag.text).includes(norm(filter)))return;
     const row=el('div',undefined,flow,'ness-unified-tag-row');
+    row.hidden=!!filter&&!norm(tag.text).includes(norm(filter));
     const marked=selected.has(norm(tag.text));
-    const chip=button((marked?'✓ ':'')+tag.text,row,()=>{focusTagId=tag.id;toggle(tag,!marked);},'quiet ness-unified-chip');
+    let held=false,hold=null,x=0,y=0;
+    const chip=button((marked?'✓ ':'')+tag.text,row,()=>{
+     if(held){held=false;return;}
+     focusTagId=tag.id;toggle(tag,!marked);
+    },'quiet ness-unified-chip');
     chip.setAttribute('aria-pressed',String(marked));
     chip.setAttribute('data-highlighted',String(marked));
     chip.setAttribute('data-inherited',String(preset!=='always'&&!marked&&inherited.has(norm(tag.text))));
-    chip.title='Нажми для подсветки; ПКМ — копирование и перенос';
+    chip.title='Нажми для подсветки; ПКМ или удержание — копирование и перенос';
     chip.oncontextmenu=e=>{e.preventDefault();transferTagId=tag.id;focusTagId=tag.id;render();};
-    const grip=button('⠿',row,()=>{focusTagId=tag.id;transferTagId=transferTagId===tag.id?'':tag.id;render();},'quiet ness-unified-grip');
-    grip.title='Удерживай для переноса между режимами';grip.setAttribute('aria-label','Действия с тегом '+tag.text);
-    let hold=null,x=0,y=0;
-    grip.onpointerdown=e=>{
+    chip.onpointerdown=e=>{
      if(e.pointerType==='mouse')return;
-     x=e.clientX;y=e.clientY;
-     hold=setTimeout(()=>{hold=null;focusTagId=tag.id;transferTagId=tag.id;render();},520);
+     x=e.clientX;y=e.clientY;held=false;
+     hold=setTimeout(()=>{hold=null;held=true;focusTagId=tag.id;transferTagId=tag.id;render();},530);
     };
-    grip.onpointermove=e=>{if(hold!==null&&(Math.abs(x-e.clientX)>9||Math.abs(y-e.clientY)>9)){clearTimeout(hold);hold=null;}};
-    grip.onpointerup=grip.onpointercancel=()=>{if(hold!==null){clearTimeout(hold);hold=null;}};
+    chip.onpointermove=e=>{
+     if(hold!==null&&(Math.abs(x-e.clientX)>9||Math.abs(y-e.clientY)>9)){
+      clearTimeout(hold);hold=null;
+     }
+    };
+    chip.onpointerup=chip.onpointercancel=()=>{if(hold!==null){clearTimeout(hold);hold=null;}};
     if(focusTagId===tag.id){
      const actions=el('div',undefined,row,'ness-unified-tag-controls');
      for(const [label,direction,title] of [['←','left','На тег раньше'],['→','right','На тег позже'],['↑','up','На раздел выше'],['↓','down','На раздел ниже']]){
