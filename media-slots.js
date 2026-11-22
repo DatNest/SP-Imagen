@@ -986,9 +986,12 @@ export async function installSpImagenMediaSlots(options) {
       view.toggle.scrollIntoView?.({ block: 'center', behavior: 'instant' });
       return view.toggle;
     }
-    if (section === 'post-formats') {
+    if (section === 'post-formats' || section === 'post-formats-text') {
       if (openMenu?.toggle !== view.toggle) toggleToolsMenu(view);
-      return openMenu?.node.shadowRoot?.querySelector('.option') ?? null;
+      const root=openMenu?.node.shadowRoot;
+      return section === 'post-formats-text'
+        ? root?.querySelector('.text-mode-toggle') ?? root?.querySelector('.option') ?? null
+        : root?.querySelector('.option') ?? null;
     }
     if (section === 'post-saved' || section === 'post-view') {
       if (!guideDemo.marker) {
