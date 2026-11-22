@@ -760,7 +760,7 @@ export async function installSpImagenMediaSlots(options) {
     editorButton.classList.add('prompt-edit');
     actions.append(
       editorButton,
-      galleryButton(locked ? '⏳' : '↻', 'Повторить эту версию', () => regenerate(index, kind), locked || !item.config),
+      galleryButton(locked ? '⏳' : '↻', 'Повторить с текущим активным стилем', () => regenerate(index, kind), locked || !item.config),
       galleryButton('↓', 'Скачать', () => saveSelected(index, kind)),
       galleryButton('🗑', 'Удалить из галереи', () => deleteSelected(index, kind), locked),
     );
@@ -1231,17 +1231,26 @@ export async function installSpImagenMediaSlots(options) {
     busy.add(lock);
     paint();
     try {
-      // The viewer always shows the most recent request, including a regeneration.
-      if (typeof config.prompt === 'string' && config.prompt.trim()) {
-        current.chatMetadata.variables ||= {};
-        current.chatMetadata.variables.sp_imagen_last_final_image_prompt = config.prompt;
-        await current.saveMetadata?.();
-      }
-      const generated = await extension.generateImage(config, { reuseSnapshot: true });
+      // Repeat uses the NEW active style; an editor submission uses its explicitly
+      // chosen style. Both reuse model/sampler settings saved with the image.
+      // Never await chat metadata before a paid NAI request: a stalled save must
+      // not prevent sending the actual image prompt.
+      const generated = await extension.generateImage(config, {
+        reuseSnapshot: true,
+        useActiveStyle: overrideConfig === null,
+      });
       if (context().chat !== chat || context().chatId !== current.chatId || chat[index] !== message) {
         throw new Error('Чат изменился во время повторной генерации.');
       }
       await publish(index, kind, generated);
+      // The image is safely published before updating last-prompt history.
+      if (typeof generated.config?.prompt === 'string' && generated.config.prompt.trim()) {
+        current.chatMetadata.variables ||= {};
+        current.chatMetadata.variables.sp_imagen_last_final_image_prompt = generated.config.prompt;
+        // Saving last-prompt history is best effort and must not lock the gallery.
+        void Promise.resolve().then(() => current.saveMetadata?.())
+          .catch(error => console.warn('[SP Imagen] Не удалось сохранить последний промпт:', error));
+      }
     } finally {
       busy.delete(lock);
       paint();
