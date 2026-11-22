@@ -823,7 +823,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const heading=el('div',undefined,header);
   el('span','БИБЛИОТЕКА ТЕГОВ',heading,'ness-tagboard-overline');
   el('strong','Все теги · '+items().length,heading);
-  el('p','Нажми на тег, чтобы добавить или убрать.',heading,'ness-note');
+  el('p',toolMode==='delete'?'🗑 Нажимай на теги для удаления. Можно отменить ↶.':toolMode==='move'?'✥ Выбери тег, стрелки появятся сверху. Удерживай для выбора раздела.':toolMode==='edit'?'✎ Меняй названия в компактных полях.':'Нажми на тег, чтобы добавить или убрать.',heading,'ness-note');
   const renameMode=toolMode==='edit';
   const search=el('input',undefined,left,'ness-input ness-tagboard-search');
   search.type='search';search.placeholder='Найти тег...';search.value=filter;

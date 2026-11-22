@@ -285,7 +285,7 @@
 /* Appearance editor: original compact two-column selection and wrapping chips. */
 #sp-imagen-review-panel .ness-inline-appearance-editor{width:100%;min-width:0;margin:8px 0 16px}
 #sp-imagen-review-panel .ness-tagboard{
- display:flex;flex-direction:column;gap:11px;min-width:0;
+ position:relative;display:flex;flex-direction:column;gap:11px;min-width:0;
  padding:4px 0;border:0;background:transparent;box-shadow:none;border-radius:0;
 }
 
@@ -558,18 +558,15 @@
 #sp-imagen-review-panel .ness-transfer-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 #sp-imagen-review-panel .ness-transfer-head strong{min-width:0;overflow-wrap:anywhere}
 #sp-imagen-review-panel .ness-tagboard-context-menu>.ness-note{margin:9px 0 5px}
-#sp-imagen-review-panel .ness-transfer-options{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #sp-imagen-review-panel .ness-transfer-targets{display:grid;gap:6px}
-#sp-imagen-review-panel .ness-transfer-options>.ness-button,
-#sp-imagen-review-panel .ness-transfer-targets>.ness-button{
+#sp-imagen-review-panel .ness-transfer-section-buttons{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:5px;min-width:0}
+#sp-imagen-review-panel .ness-transfer-mode-title{margin:5px 0 1px;font-weight:700}
+#sp-imagen-review-panel .ness-transfer-active-tag{overflow-wrap:anywhere;color:var(--ness-accent)}
+#sp-imagen-review-panel .ness-transfer-section-buttons>.ness-button{
  padding:8px!important;border:1px solid var(--ness-border)!important;
  border-radius:7px!important;background:transparent!important;
  text-align:left!important;justify-content:flex-start!important;
  min-height:35px!important;font-size:12px!important;
-}
-#sp-imagen-review-panel .ness-transfer-options>.ness-button[aria-pressed=true]{
- border-color:var(--ness-accent)!important;
- background:color-mix(in srgb,var(--ness-accent) 17%,transparent)!important;
 }
 #sp-imagen-review-panel .ness-tagboard-drag-ghost{
  position:fixed;z-index:9999;pointer-events:none;
@@ -586,7 +583,7 @@
 #sp-imagen-review-panel .ness-drag-before::before{left:-5px}
 #sp-imagen-review-panel .ness-drag-after::after{right:-5px}
 #sp-imagen-review-panel .ness-drag-group{background:color-mix(in srgb,var(--ness-accent) 10%,transparent)}
-#sp-imagen-review-panel :is(.ness-unified-chip,.ness-tagboard-grip,.ness-unified-section-toggle,.ness-tagboard-modes>.ness-button):focus-visible{
+#sp-imagen-review-panel :is(.ness-unified-chip,.ness-tagboard-tool,.ness-tagboard-move-arrow,.ness-unified-section-toggle,.ness-tagboard-modes>.ness-button):focus-visible{
  outline:2px solid var(--ness-accent);outline-offset:2px;
 }
 @media(max-width:670px),(pointer:coarse) and (max-width:930px){
