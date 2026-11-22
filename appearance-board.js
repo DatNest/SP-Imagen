@@ -171,6 +171,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const layouts={base:'board',skin:'board',nsfw:'board'};
  let textDraft=null,renderedMode='',renderedPreset='';
+ let toolMode='select',followMovedTag=false;
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Редактор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
@@ -221,20 +222,73 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const basic=button('Ракурсы',modes,()=>{if(!flushModeText())return;mode='base';layout=layouts.base;preset='face';checked.clear();closeTransfer();render();},'quiet');
  const marks=button('Под одеждой',modes,()=>{if(!flushModeText())return;mode='skin';layout=layouts.skin;preset='upper_front';checked.clear();closeTransfer();render();},'quiet');
  const nsfw=button('NSFW',modes,()=>{if(!flushModeText())return;mode='nsfw';layout=layouts.nsfw;preset='nsfwChest';checked.clear();closeTransfer();render();},'quiet');
+ // One persistent toolbar for BASE, SKIN and NSFW; mutually exclusive tools.
+ const tools=el('div',undefined,frame,'ness-tagboard-tools');
+ frame.insertBefore(tools,modes);
+ const toolActions=el('div',undefined,tools,'ness-tagboard-toolmodes');
+ const toolButtons={};
+ for(const [key,glyph,label] of [
+  ['rename','✎','Редактировать названия тегов'],
+  ['delete','🗑','Удалять теги (можно отменить)'],
+  ['move','✥','Перемещать теги']
+ ]){
+  const b=button(glyph,toolActions,()=>setToolMode(key),'quiet ness-tagboard-tool');
+  b.title=label;b.setAttribute('aria-label',label);toolButtons[key]=b;
+ }
+ const moveControls=el('div',undefined,tools,'ness-tagboard-move-controls');
+ const moveName=el('span','',moveControls,'ness-tagboard-move-name');
+ const moveArrows=[];
+ for(const [glyph,direction,label] of [
+  ['←','left','На один тег раньше'],['→','right','На один тег позже'],
+  ['↑','up','В предыдущий раздел'],['↓','down','В следующий раздел']
+ ]){
+  const b=button(glyph,moveControls,()=>moveFocusedTag(direction),'quiet ness-tagboard-move-arrow');
+  b.title=label;b.setAttribute('aria-label',label);moveArrows.push(b);
+ }
+ const historyTools=el('div',undefined,tools,'ness-tagboard-history-tools');
+ const historyUndo=button('↶',historyTools,undoAction,'quiet ness-tagboard-tool');
+ const historyRedo=button('↷',historyTools,redoAction,'quiet ness-tagboard-tool');
+ historyUndo.title='Отменить';historyRedo.title='Повторить';
+ historyUndo.setAttribute('aria-label','Отменить изменение тегов');
+ historyRedo.setAttribute('aria-label','Повторить изменение тегов');
+ function updateTools(){
+  frame.dataset.toolMode=toolMode;
+  for(const [id,b] of Object.entries(toolButtons))b.setAttribute('aria-pressed',String(toolMode===id));
+  const tag=toolMode==='move'?items().find(t=>t.id===focusTagId):null;
+  moveControls.hidden=!tag;
+  moveName.textContent=tag?tag.text:'';
+  for(const b of moveArrows)b.disabled=readOnly()||!tag;
+  historyUndo.disabled=readOnly()||!undo.length;
+  historyRedo.disabled=readOnly()||!redo.length;
+ }
+ function setToolMode(next){
+  if(readOnly())return;
+  toolMode=toolMode===next?'select':next;
+  if(toolMode!=='move')focusTagId='';
+  closeTransfer();render();
+ }
+ function moveFocusedTag(direction){
+  const tag=items().find(t=>t.id===focusTagId);
+  if(!tag||toolMode!=='move'||readOnly())return;
+  followMovedTag=true;
+  jumpSection(tag,direction);
+ }
  const content=el('div',undefined,frame,'ness-tagboard-body');
   function getCatalog(){
    const legacy=normalizeAppearanceCatalog(catalog,readBaseState().base,skin,readNsfwState(),initialSections);
    return {...legacy,modes:copy(modeCatalog.modes)};
   }
- const snapshot=()=>copy({base:readBaseState(),catalog:getCatalog(),skin,nsfw:readNsfwState()});
+ const snapshot=()=>copy({base:readBaseState(),catalog:getCatalog(),skin,nsfw:readNsfwState(),editor:{mode,preset,focusTagId}});
  function applySnapshot(s){
   writeBaseState(copy(s.base));writeNsfwState(copy(s.nsfw||{}));
   skin=normalizeSkinTags(s.skin);
   catalog=normalizeAppearanceCatalog(s.catalog,s.base.base,skin,s.nsfw);
    modeCatalog=normalizeAppearanceModeCatalog(s.catalog,s.base.base,skin,s.nsfw);
+  if(s.editor){mode=s.editor.mode;preset=s.editor.preset;focusTagId=s.editor.focusTagId||'';layout=layouts[mode]||'board';}
+  followMovedTag=!!focusTagId;
   changed();render();historyState();
  }
- function historyState(){onHistoryChange(undo.length>0,redo.length>0);}
+ function historyState(){updateTools();onHistoryChange(undo.length>0,redo.length>0);}
  function record(){undo.push(snapshot());if(undo.length>50)undo.shift();redo.length=0;historyState();}
  function undoAction(){if(readOnly()||!undo.length)return;redo.push(snapshot());applySnapshot(undo.pop());}
  function redoAction(){if(readOnly()||!redo.length)return;undo.push(snapshot());applySnapshot(redo.pop());}
@@ -353,6 +407,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(from<0||at<0||from===at)return;
   const result=[...sequence],item=result.splice(from,1)[0],to=result.findIndex(t=>t.kind===target.kind&&t.id===target.id);
   result.splice(to+(afterTarget?1:0),0,item);
+  followMovedTag=true;
   applySequence(result);
  }
  function moveTokenOne(token,direction){
