@@ -2325,7 +2325,7 @@ async function resumePost(request=null) {
     st.chatMetadata.variables.sp_imagen_last_final_image_prompt=config.prompt;
     await saveNessGenerationMetadata(st,'восстановленный финальный промпт');
     ensureOrigin();
-    validateImagePromptLayout(config.prompt,validateKind(kind));
+    validateImagePromptLayout(config.prompt,kind);
     progress.submitted();
     const output=await spImagenExtension().generateImage(config,{reuseSnapshot:true,signal:progress.signal});
     ensureOrigin();
