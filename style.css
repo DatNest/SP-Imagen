@@ -299,6 +299,16 @@
 #sp-imagen-review-panel :is(.ness-tagboard-tool-modes,.ness-tagboard-tool-history,.ness-tagboard-tool-movement,.ness-tagboard-move-arrows){
  display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0;
 }
+#sp-imagen-review-panel .ness-button.ness-tagboard-help{
+ display:inline-grid;place-items:center;width:26px;min-width:26px!important;
+ min-height:26px!important;height:26px;padding:0!important;
+ border:1px solid var(--ness-border)!important;border-radius:50%!important;
+ color:var(--ness-muted)!important;background:transparent!important;
+ font-size:13px!important;font-weight:700;line-height:1!important;
+}
+#sp-imagen-review-panel .ness-button.ness-tagboard-help:hover{
+ border-color:var(--ness-accent)!important;color:var(--ness-accent)!important;
+}
 #sp-imagen-review-panel .ness-tagboard-tool-history{margin-inline-start:auto}
 #sp-imagen-review-panel .ness-tagboard-tool-movement{flex:1 1 100%;justify-content:flex-end;gap:6px;padding-top:5px;border-top:1px solid var(--ness-border)}
 #sp-imagen-review-panel .ness-tagboard-tool-movement[hidden]{display:none!important}
@@ -1049,6 +1059,7 @@
  display:flex;align-items:center;gap:10px;width:min(272px,100%);font-size:12px;
 }
 #sp-imagen-review-panel .ness-character-icon-zoom input{flex:1;min-width:0}
+#sp-imagen-review-panel .ness-character-icon-preview>.ness-character-icon-help{align-self:flex-end;width:28px;min-width:28px;min-height:28px;border:1px solid var(--ness-border);border-radius:50%;color:var(--ness-muted);background:transparent;font-weight:700;}
 #sp-imagen-review-panel .ness-character-icon-status{min-height:22px}
 #sp-imagen-review-panel[data-dialog=library] .ness-editor-identity-fields{
  display:flex;flex-direction:column;align-items:flex-start;gap:5px;
