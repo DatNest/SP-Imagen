@@ -3,7 +3,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
-import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
+import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, parseBaseTags, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
 import { migrateLegacyBodyFields, LEGACY_BODY_FIELDS } from './legacy-body-migration.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
@@ -574,12 +574,12 @@ async function openLibraryEditor(){
  const status=text=>{if(message.textContent!==text)message.textContent=text;};
  let revision=0,indexedRevision=-1,searchIndex=[],currentVisibleRecords=[];
  const changed=(indexChanged=false)=>{if(indexChanged===true)revision++;dirty=true;discardAsked=false;status('Не сохранено');};
- const setBusy=value=>{busy=value;for(const tag of ['input','textarea','select','button'])for(const e of panel.querySelectorAll(tag))e.disabled=value;};
+ const setBusy=value=>{busy=value;for(const tag of ['input','textarea','select','button'])for(const e of panel.querySelectorAll(tag))e.disabled=value;editor?.visibility?.syncHistory?.();};
  function flushEditor(){
   if(!editor)return;
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
   entry.appearanceFormat=appearanceFormat.value;
-  for(const [key,e] of Object.entries(fields))if(e.value!==''||Object.hasOwn(entry,key))entry[key]=e.value;
+  for(const [key,e] of Object.entries(fields)){const value=key==='base'?visibility.base:e.value;if(value!==''||Object.hasOwn(entry,key))entry[key]=value;}
   const {ranges,selections,skin,sections,catalog,nsfw}=visibility.value;
   if(nsfw)for(const key of Object.keys(NSFW_PRESETS))if(nsfw[key]||Object.hasOwn(entry,key))entry[key]=String(nsfw[key]||'');
   if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
@@ -654,7 +654,7 @@ async function openLibraryEditor(){
   function paint(){clear(choices);const ids=new Set(draft.organizer.characters[id]?.tagIds||[]);
    if(!draft.organizer.tags.length)el('p','Сначала создай тег кнопкой «+ Тег» над списком.',choices,'ness-note');
    for(const tag of draft.organizer.tags){const chip=el('button',(ids.has(tag.id)?'✓ ':'+ ')+tag.name,choices,'ness-tag-filter');chip.type='button';chip.setAttribute('data-record-tag',tag.id);chip.setAttribute('aria-pressed',String(ids.has(tag.id)));chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',tag.color);
-    chip.onclick=()=>{if(busy)return;if(ids.has(tag.id))ids.delete(tag.id);else ids.add(tag.id);draft.organizer.characters[id]={...draft.organizer.characters[id],tagIds:[...ids]};if(editor?.id===id)editor.tagIds=new Set(ids);changed();renderList();paint();};
+    chip.onclick=()=>{if(busy)return;if(ids.has(tag.id))ids.delete(tag.id);else ids.add(tag.id);draft.organizer.characters[id]={...draft.organizer.characters[id],tagIds:[...ids]};if(editor?.id===id)editor.tagIds=new Set(ids);changed();renderList();editor?.refreshMetaTags?.();paint();};
    }
   }
   function outside(e){if(!box.contains(e.target)&&!anchor.contains(e.target))closeTagPicker();}
@@ -680,11 +680,34 @@ async function openLibraryEditor(){
 
  function editCharacter(id,group){
   if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);const entry=draft[group][id],fields={};
-  const heading=el('div',undefined,form,'ness-editor-heading');button('← К списку',heading,()=>{if(!tryFlush())return;editor=null;view.resetEditor();renderList();},'quiet ness-editor-back');el('h4',entry.name,heading);
+  const heading=el('div',undefined,form,'ness-editor-heading');
+  const identityCard=el('div',undefined,heading,'ness-editor-identity');
+  const emblem=el('div','✦',identityCard,'ness-editor-emblem');emblem.setAttribute('aria-hidden','true');
+  const identity=el('div',undefined,identityCard,'ness-editor-identity-fields');
+  const nameRow=el('div',undefined,identity,'ness-editor-name-row');
+  fields.name=input(entry.name);fields.name.className+=' ness-editor-name-input';fields.name.setAttribute('aria-label','Имя персонажа');fields.name.placeholder='Имя персонажа';nameRow.appendChild(fields.name);
+  const pencil=el('span','✎',nameRow,'ness-editor-name-pencil');pencil.setAttribute('aria-hidden','true');
+  const kind=choice([['personas','Персона'],['characters','Персонаж']],group);kind.className+=' ness-editor-type-select';kind.setAttribute('aria-label','Тип записи');identity.appendChild(kind);
+  const recordTagHost=el('div',undefined,identityCard,'ness-editor-meta-tags');
+  function renderHeaderTags(){
+    clear(recordTagHost);
+    const ids=draft.organizer.characters[id]?.tagIds||[];
+    for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){
+      const chip=button(tag.name,recordTagHost,undefined,'quiet ness-editor-meta-tag');chip.style.setProperty('--ness-tag-color',tag.color);
+      chip.title='Изменить теги записи';chip.onclick=()=>openRecordTags(id,chip);
+    }
+    const plus=button('+',recordTagHost,undefined,'quiet ness-editor-meta-add');plus.title='Добавить тег записи';plus.setAttribute('aria-label','Добавить тег записи');plus.onclick=()=>openRecordTags(id,plus);
+  }
+  renderHeaderTags();
+  const toolbar=el('div',undefined,heading,'ness-editor-toolbar');
+  let runUndo=()=>{},runRedo=()=>{};
+  const historyUndo=button('↶',toolbar,()=>runUndo(),'quiet ness-editor-history-button');
+  historyUndo.title='Отменить изменение тегов';historyUndo.setAttribute('aria-label','Отменить изменение тегов');historyUndo.disabled=true;
+  const historyRedo=button('↷',toolbar,()=>runRedo(),'quiet ness-editor-history-button');
+  historyRedo.title='Повторить изменение тегов';historyRedo.setAttribute('aria-label','Повторить изменение тегов');historyRedo.disabled=true;
+  button('← К списку',toolbar,()=>{if(!tryFlush())return;editor=null;view.resetEditor();renderList();},'quiet ness-editor-back');
   const tabs=createNessTabs({el,button},form,'Карточка персонажа');
   const appearance=tabs.add('Внешность');
-  const identity=el('div',undefined,appearance,'ness-grid');fields.name=field(identity,labels.name,input(entry.name));
-  const kind=field(identity,'Тип записи',choice([['personas','Персона'],['characters','Персонаж']],group));kind.onchange=()=>{changed(true);};
   const formatStrip=el('div',undefined,appearance,'ness-format-strip');
   el('span','Формат',formatStrip,'ness-label');
   const formatSwitcher=el('div',undefined,formatStrip,'ness-format-switch');
@@ -705,7 +728,9 @@ async function openLibraryEditor(){
    formatText.setAttribute('aria-pressed',String(appearanceFormat.value==='prose'));
   }
   updateFormatButtons();
-  fields.base=field(appearance,labels.base,area(entry.base));fields.base.className+=' ness-appearance';
+  const proseWrap=el('div',undefined,appearance,'ness-prose-editor');
+  el('span','Описание внешности · через запятую',proseWrap,'ness-label');
+  fields.base=area(entry.base);fields.base.className+=' ness-appearance';fields.base.setAttribute('aria-label','Внешность в текстовом формате');proseWrap.appendChild(fields.base);
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
   // One inline highlight editor. No extra full-screen constructor or duplicated tag UI.
@@ -735,27 +760,31 @@ async function openLibraryEditor(){
     readNsfwState:()=>nsfwState,
     writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');changed();},
     changed,readOnly:()=>busy||done,
+    onHistoryChange:(canUndo,canRedo)=>{historyUndo.disabled=busy||!canUndo;historyRedo.disabled=busy||!canRedo;},
     onLayoutChange:(layout,mode)=>{
       formatStrip.hidden=false;
       formatTags.setAttribute('aria-pressed',String(layout!=='text'));
       formatText.setAttribute('aria-pressed',String(layout==='text'));
-      fields.base.parentElement.hidden=mode!=='base'||layout!=='text';
+      proseWrap.hidden=mode!=='base'||layout!=='text';
     }
   });
   // Move, rather than duplicate, the format selector and the original prose input.
   const headingBar=inlineBoard.element.querySelector('.ness-tagboard-header');
   const editorBody=inlineBoard.element.querySelector('.ness-tagboard-body');
   headingBar.appendChild(formatStrip);
-  inlineBoard.element.insertBefore(fields.base.parentElement,editorBody);
+  inlineBoard.element.insertBefore(proseWrap,editorBody);
+  runUndo=()=>inlineBoard.undo();runRedo=()=>inlineBoard.redo();
   const visibility={
     setFormat(next){
       const format=next==='prose'?'prose':'tags';
       const baseMode=inlineBoard.getMode()==='base';
       const applied=baseMode?(inlineBoard.setAvailableFormat(format),true):inlineBoard.setModeLayout(format);
-      fields.base.parentElement.hidden=!baseMode||format!=='prose';
+      proseWrap.hidden=!baseMode||format!=='prose';
       return applied;
     },
     get format(){return appearanceFormat.value;},
+    get base(){return appearanceState.base;},
+    syncHistory:()=>{historyUndo.disabled=busy||!inlineBoard.canUndo();historyRedo.disabled=busy||!inlineBoard.canRedo();},
     get value(){return {
       ranges:appearanceState.ranges,selections:appearanceState.selections,
       skin:inlineBoard.getSkin(),sections:inlineBoard.getSections(),
@@ -791,6 +820,7 @@ async function openLibraryEditor(){
   visibility.setFormat(appearanceFormat.value);
   function selectAppearanceFormat(next){
    const baseMode=inlineBoard.getMode()==='base';
+   if(next==='prose'&&baseMode)fields.base.value=parseBaseTags(appearanceState.base).map(t=>t.text).join(', ');
    if(!visibility.setFormat(next))return;
    if(!baseMode)return; // Changing the skin or NSFW text view never alters the base format.
    if(appearanceFormat.value===next)return;
@@ -805,7 +835,7 @@ async function openLibraryEditor(){
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
   const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
-  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry)};
+  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags};
   let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }
