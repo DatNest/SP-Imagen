@@ -565,7 +565,7 @@ async function openLibraryEditor(){
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
  let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=Boolean(baseline&&JSON.stringify(draft)!==(typeof baseline==='string'?baseline:JSON.stringify(baseline))),busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
  const restored=restoreLibraryBodyFields(draft);
- if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;}
+ if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;dirty=false;}
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  const view=createLibraryView(document);
  const {overlay,panel,el,clear,input,area,field,button,choice,section,search,bulkActions,list,form,message,save,close}=view;
