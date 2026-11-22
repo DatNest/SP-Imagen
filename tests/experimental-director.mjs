@@ -11,7 +11,7 @@ const read=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
 const sample=()=>({
  schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
  opening:'3 panels, expressive comic page',
- scene:'Panel 1: Clark and Ness face each other near an office window. Panel 2: a close-up of their hands. Panel 3: a quiet glance.',
+ scene:'top wide panel: afternoon office window and skyline; narrow middle inset: warm window light; bottom panel: quiet corridor background',
  borders:'irregular sepia ink outlines, delicate flower corners, cream parchment gutters and soft torn-paper inset edges',
  bubbles:[{panel:2,speaker:'Clark Kent',design:'upper-right cream balloon with thin black ink border, tail pointing to Clark',words:'Ты слышишь меня?'}],
  characters:[
