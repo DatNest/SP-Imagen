@@ -510,17 +510,32 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   modeCatalog.modes[mode].sections=sectionsForMode().filter(x=>x.id!==id);
   after();
  }
- function addTag(value){
-  const text=String(value||'').trim().replace(/[;,\s]+$/,'').trim();
-  if(!text||readOnly())return;
-  if(/[,\r\n]/.test(text)){warn('Добавляй по одному тегу.');return;}
+ function addTag(value,insertAt=items().length,sectionId=null){
+  const text=String(value||'').trim().replace(/[;,\\s]+$/,'').trim();
+  if(!text||readOnly())return false;
+  if(/[,\\r\\n]/.test(text)){warn('Добавляй по одному тегу.');return false;}
   const existing=items().find(x=>norm(x.text)===norm(text));
-  if(existing){toggle(existing,true);return;}
-  warn('');
-  record();
+  if(existing){warn('Такой тег уже есть в этом режиме.');return false;}
+  warn('');record();
   const id='t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-  const tag={id,text};items().push(tag);
+  const tag={id,text},tags=items(),index=Math.max(0,Math.min(tags.length,insertAt));
+  tags.splice(index,0,tag);
+  modeCatalog.modes[mode].sections=sectionsForMode().map(section=>({
+   ...section,before:section.id===sectionId?section.before:section.before>=index?section.before+1:section.before
+  }));
+  // Keep the physical source text in the same order as the visible board.
+  // Offset-backed camera selections are remapped by reorderBaseTags.
+  if(mode==='base'&&appearanceFormat!=='prose'){
+   const state=baseState(),source=parseBaseTags(state.base);
+   const lookup=new Map(source.map(t=>[norm(t.text),t]));
+   lookup.set(norm(text),{text});
+   const ordered=items().map(t=>lookup.get(norm(t.text))).filter(Boolean);
+   const used=new Set(ordered.map(t=>norm(t.text)));
+   ordered.push(...source.filter(t=>!used.has(norm(t.text))));
+   writeBaseState(reorderBaseTags(state,ordered));
+  }
   changeMany([tag],true,false);
+  after();return true;
  }
  function removeTag(tag,ask=true){
   if(readOnly())return;
