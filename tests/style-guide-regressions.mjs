@@ -121,3 +121,19 @@ test('Cast picker avoids resetting the list when an asynchronous save succeeds',
  assert.match(body,/if\(failed\)render\(\)/);
  assert.match(body,/list\.refresh\(\)/);
 });
+
+
+test('Library selection updates preserve existing buttons, viewport, and sidebar compactness',()=>{
+ const board=read('appearance-board.js'),css=read('style.css'),library=read('library-runtime.js');
+ const start=board.indexOf('function refreshSelection()'),end=board.indexOf('function render()',start);
+ assert.ok(start>=0&&end>start);
+ const update=board.slice(start,end);
+ assert.match(board,/after\(false\);/);
+ assert.doesNotMatch(update,/clear\(chosenList\)/);
+ assert.match(update,/previous=new Map/);
+ assert.match(update,/insertBefore\(chip/);
+ assert.match(update,/focus\(\{preventScroll:true\}\)/);
+ assert.match(css,/\.ness-tagboard-chosen-list\{\s*flex:1 1 auto;height:0;min-height:0;max-height:none;/);
+ assert.match(css,/\.ness-tagboard-columns\{\s*display:grid;grid-template-columns:[^\n]+\n align-items:stretch/);
+ assert.match(library,/rulesButton\.setAttribute\('aria-label','Правила ракурсов'\)/);
+});
