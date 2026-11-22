@@ -76,13 +76,17 @@ test('Novice guide uses existing controls, explains new modes, textless comics a
  assert.equal(b.length,a.length+1,'Empty library includes the create-character invitation.');
  assert.ok(!a.some(step=>step.view==='library-body'));
  for(const css of ['.ness-tagboard-modes','.ness-tagboard-ribbon','.ness-unified-tagflow',
-   '.ness-unified-add','.ness-edit-toggle','.ness-format-strip','.ness-tagboard-right','.ness-tagboard-grip','.text-mode-toggle']){
+   '.ness-tagboard-tools','.ness-tagboard-tool-modes','.ness-tagboard-section-add','.ness-format-strip','.ness-tagboard-right','.text-mode-toggle']){
    assert.ok(a.some(step=>step.selector?.includes(css)),css);
  }
  for(const mode of ['library-appearance','library-skin','library-nsfw']){
    assert.ok(a.some(step=>step.view===mode),mode);
  }
  assert.ok(a.some(step=>step.view==='post-formats-text'));
+ assert.ok(a.some(step=>step.view==='post-test-mode'));
+ assert.ok(a.some(step=>/промпт/i.test(step.title)&&/режиссёра/.test(step.text)));
+ assert.ok(!a.some(step=>/ness-tagboard-grip|ness-unified-add|ness-edit-toggle/.test(step.selector||'')));
+ assert.match(read('media-slots.js'),/collectPostPrompts\(view\.message,draft,saved\)/);
  assert.ok(a.some(step=>/Старые отметины|старых полей|Старую вкладку|Отметины из старых/.test(step.text)));
  assert.ok(a.some(step=>/спис|стил/.test(step.text)&&/↻/.test(step.text)));
  assert.ok(a.some(step=>/Anlas/.test(step.text)));
