@@ -910,6 +910,8 @@
  --ness-library-rose:color-mix(in srgb,var(--ness-accent) 52%,#c88478);
  --ness-library-line:color-mix(in srgb,var(--ness-border) 58%,#ab735d);
  --ness-library-card:color-mix(in srgb,var(--ness-bg) 84%,#754632);
+ container-type:inline-size;
+ container-name:spi-library;
  width:min(1420px,100%)!important;
  height:min(875px,100%)!important;
  border-color:var(--ness-library-line)!important;
@@ -956,7 +958,7 @@
  border-radius:11px!important;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools{
- display:flex;flex-wrap:nowrap;align-items:center;gap:4px;
+ display:flex;flex-wrap:wrap;align-items:center;gap:4px;
  margin:0;min-width:0;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-appearance-rules-trigger{
@@ -966,13 +968,43 @@
 }
 /* Two compact rows of filters; hidden scrollbar, native vertical wheel and touch swiping. */
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip{
- display:flex!important;flex:1 1 0;min-width:0;
+ display:flex!important;order:2;flex:1 1 100%;width:100%;min-width:0;
  flex-flow:row wrap!important;align-content:flex-start;align-items:flex-start;
  column-gap:5px;row-gap:5px;height:59px;min-height:59px;max-height:59px!important;
  overflow-x:hidden!important;overflow-y:auto!important;
  white-space:normal;overscroll-behavior-y:contain;
  scrollbar-width:none;-ms-overflow-style:none;
  touch-action:pan-y;-webkit-overflow-scrolling:touch;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-appearance-rules-trigger{
+ order:1;margin-inline-start:auto;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-editor{
+ order:3;flex:1 1 100%;min-width:0;
+}
+/* Bulk-tag chips get a full second row instead of a sliver beside action buttons. */
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>.ness-note,
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>.ness-row{
+ flex:1 1 100%;min-width:0;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>.ness-row{
+ display:flex;flex-wrap:wrap;gap:5px;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>[data-bulk-tags]{
+ display:flex;flex:1 1 100%;width:100%;min-width:0;
+ flex-flow:row wrap;align-content:flex-start;align-items:flex-start;gap:5px;
+ height:59px;min-height:59px;max-height:59px;
+ overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;
+ scrollbar-width:none;-ms-overflow-style:none;
+ touch-action:pan-y;-webkit-overflow-scrolling:touch;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>[data-bulk-tags]::-webkit-scrollbar{
+ display:none;width:0;height:0;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>[data-bulk-tags]>.ness-tag-filter{
+ flex:0 0 auto;max-width:100%;min-width:0;min-height:27px!important;
+ height:27px!important;padding:3px 9px!important;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip::-webkit-scrollbar{
  display:none;width:0;height:0;
@@ -1397,6 +1429,46 @@
  #sp-imagen-review-panel[data-dialog=library] .ness-unified-tagflow{height:245px;max-height:38dvh}
  #sp-imagen-review-panel[data-dialog=library] .ness-tab-strip .ness-tab{
   padding:8px 11px!important;font-size:12px!important;
+ }
+}
+/* Respond to the actual dialog width, even in a large browser or at high zoom. */
+@container spi-library (max-width:760px){
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-workspace{
+  display:flex;flex-direction:column;min-width:0;
+ }
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-listpane{
+  flex:1 1 auto;width:100%;min-width:0;min-height:0;
+  border-right:0;
+ }
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-editorpane{
+  display:none;flex:1 1 auto;width:100%;min-width:0;min-height:0;
+ }
+ #sp-imagen-review-panel[data-dialog=library][data-view=editor] .ness-library-listpane{
+  display:none;
+ }
+ #sp-imagen-review-panel[data-dialog=library][data-view=editor] .ness-library-editorpane{
+  display:flex;
+ }
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-back{
+  display:inline-flex;
+ }
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters{
+  grid-template-columns:minmax(0,1fr) auto;
+ }
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-tools{
+  max-height:52%;min-width:0;
+ }
+}
+/* The small-screen fallback also switches between list and editor, not both at once. */
+@media(max-width:670px),(pointer:coarse) and (max-width:930px){
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-editorpane{
+  display:none;
+ }
+ #sp-imagen-review-panel[data-dialog=library][data-view=editor] .ness-library-listpane{
+  display:none;
+ }
+ #sp-imagen-review-panel[data-dialog=library][data-view=editor] .ness-library-editorpane{
+  display:flex;
  }
 }
 @media(hover:none),(pointer:coarse){
