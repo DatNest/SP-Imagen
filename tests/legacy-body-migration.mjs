@@ -22,7 +22,7 @@ test('All seven old body fields migrate into their actual visible skin regions',
  const entry={name:'Example',base:'black hair, brown eyes;',...legacy};
  const result=migrateLegacyBodyFields(entry);
  assert.equal(result.changed,true);
- assert.equal(result.added,12);
+ assert.equal(result.added,13);
  assert.deepEqual(text(entry,'arms'),['small flower tattoo on left shoulder','blue tattoo on right forearm']);
  assert.deepEqual(text(entry,'legs'),['thin scar on left thigh','birthmark on right thigh','tiny scar below left knee','freckles on both shins']);
  assert.deepEqual(text(entry,'upper_front'),['natural chest','small round scars around nipples','soft stomach','narrow waist']);
