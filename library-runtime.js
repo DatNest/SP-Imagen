@@ -4,6 +4,7 @@ import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
+import { migrateLegacyBodyFields, LEGACY_BODY_FIELDS } from './legacy-body-migration.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -464,6 +465,7 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(!entry||typeof entry!=='object'||Array.isArray(entry)||typeof entry.name!=='string'||!entry.name.trim()||typeof entry.base!=='string'||!entry.base.trim())throw Error('Заполни имя и постоянную внешность: '+id);
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
   if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
+  migrateLegacyBodyFields(entry);
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
@@ -561,7 +563,7 @@ async function openLibraryEditor(){
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  const view=createLibraryView(document);
  const {overlay,panel,el,clear,input,area,field,button,choice,section,search,bulkActions,list,form,message,save,close}=view;
- const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта',thighMarks:'Отметины на бёдрах',kneeMarks:'Отметины на коленях',shinMarks:'Отметины на голенях',shoulderMarks:'Отметины на плечах',forearmMarks:'Отметины на предплечьях',nudeUpper:'Особенности открытого верха тела',nudeLower:'Особенности открытого низа тела'};
+ const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта'};
  const norm=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
  const status=text=>{if(message.textContent!==text)message.textContent=text;};
  let revision=0,indexedRevision=-1,searchIndex=[],currentVisibleRecords=[];
@@ -781,27 +783,10 @@ async function openLibraryEditor(){
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
-  const body=tabs.add('Старые поля отметин');
-  el('p','Старые поля сохранены для совместимости. Для новых отметин используй режим «Под одеждой» во вкладке «Внешность».',body,'ness-note');
-  const marks=el('section',undefined,body,'ness-body-section');marks.setAttribute('data-library-body-marks','');
-  el('h4','Отметины на коже',marks);
-  el('p','Шрамы, татуировки, родинки и другие постоянные отметины. Выбери часть тела и впиши короткие английские теги через запятую. Укажи сторону, если это важно.',marks,'ness-note');
-  el('p','Например: small scar on left thigh, flower tattoo on right forearm.',marks,'ness-body-example');
-  const marksGrid=el('div',undefined,marks,'ness-grid');
-  for(const key of ['thighMarks','kneeMarks','shinMarks','shoulderMarks','forearmMarks'])fields[key]=field(marksGrid,labels[key],area(entry[key]||''));
-  const details=el('section',undefined,body,'ness-body-section');details.setAttribute('data-library-body-details','');
-  el('h4','Особенности открытого тела',details);
-  el('p','«Верх» — грудь, живот и торс. «Низ» — бёдра, таз и интимная анатомия. Записывай особенности короткими английскими тегами. Обе графы можно оставить пустыми.',details,'ness-note');
-  const bodyGrid=el('div',undefined,details,'ness-grid');
-  for(const key of ['nudeUpper','nudeLower'])fields[key]=field(bodyGrid,labels[key],area(entry[key]||''));
-  const important=el('aside',undefined,body,'ness-body-important');important.setAttribute('data-library-body-important','');important.setAttribute('role','note');
-  el('strong','ВАЖНО!',important);
-  el('p','Эти детали нужны только тогда, когда соответствующая часть тела открыта, видна в кадре и не закрыта одеждой. Если описать скрытую анатомию слишком подробно, NovelAI может попытаться показать её, оголив персонажа вопреки сцене. Для повседневной внешности используй вкладку «Внешность», а одежду описывай в ролевой или её отдельном источнике.',important);
-
-  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
+  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry)};
-  let asked=false;const remove=button('Удалить персонажа',body,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
+  let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }
  guideOpenFirstRecord = () => {
