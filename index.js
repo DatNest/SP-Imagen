@@ -1,4 +1,5 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
+import { resolveImageStyle } from './image-style-selection.js';
 import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
@@ -1270,18 +1271,23 @@ function snapshotGenerationConfig(config, kind='snapshot') {
     };
 }
 
-async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
+async function generateImage(config, { reuseSnapshot = false, useActiveStyle = false, signal } = {}) {
     const saved = settings().novelai;
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
     const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
-    const style = snapshot?.style || activeStyle(saved) || { id: '', name: 'Без стиля', value: '' };
     const profile = profileById(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
+    const style = resolveImageStyle({
+        activeStyle:activeStyle(saved),
+        snapshotStyle:snapshot?.style,
+        useActiveStyle,
+        allowArtStyle:profile?.parser?.options?.useArtStyle!==false,
+    });
     const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
     if (!snapshot && profile?.parser?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
-        style: snapshot?.style ? style.value : (profile?.parser?.options?.useArtStyle === false ? '' : style.value),
+        style: style.value,
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
     });
@@ -1297,7 +1303,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         src: result.src,
         config: {
             ...config,
-            spImagenDirect: { version: 1, provider: 'novelai', style: snapshot?.style ? clone(style) : (profile?.parser?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style)), settings: publicSettings, generatedSeed: result.seed },
+            spImagenDirect: { version: 1, provider: 'novelai', style: clone(style), settings: publicSettings, generatedSeed: result.seed },
         },
     };
 }
