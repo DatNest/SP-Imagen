@@ -2,7 +2,7 @@ name: SP Imagen safety & regression checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'wip/appearance-library-approved-layout-migrate-legacy']
   pull_request:
 
 permissions:
