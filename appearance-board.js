@@ -724,10 +724,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   tagInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addTag(tagInput.value);}};
   button('＋ Добавить',add,()=>addTag(tagInput.value),'quiet');
   const addSection=el('div',undefined,left,'ness-tagboard-section-add');
+  const groupToggle=button('＋ Новый раздел',addSection,()=>{
+   groupInput.hidden=!groupInput.hidden;createGroup.hidden=groupInput.hidden;
+   if(!groupInput.hidden)groupInput.focus?.();
+  },'quiet');
   const groupInput=el('input',undefined,addSection,'ness-input');groupInput.placeholder='Название нового раздела';
-  groupInput.setAttribute('data-group-name','');
+  groupInput.setAttribute('data-group-name','');groupInput.hidden=true;
   groupInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGroup();}};
-  button('＋ Новый раздел',addSection,addGroup,'quiet');
+  const createGroup=button('Создать',addSection,addGroup,'quiet');createGroup.hidden=true;
   const chosenHeader=el('div',undefined,right,'ness-tagboard-pane-head');
   const chosenHeading=el('div',undefined,chosenHeader);
   el('span','ТЕКУЩИЙ РАКУРС / УЧАСТОК',chosenHeading,'ness-tagboard-overline');
