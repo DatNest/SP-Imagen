@@ -465,7 +465,9 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(!entry||typeof entry!=='object'||Array.isArray(entry)||typeof entry.name!=='string'||!entry.name.trim()||typeof entry.base!=='string'||!entry.base.trim())throw Error('Заполни имя и постоянную внешность: '+id);
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
   if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
-  migrateLegacyBodyFields(entry);
+  const migrated=migrateLegacyBodyFields(entry);
+  // Make the new highlighted catalogue explicit even for pre-2.9.12 cards.
+  if(migrated.changed&&!Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog={};
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
