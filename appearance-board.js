@@ -626,16 +626,17 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const chosenList=right?.querySelector('.ness-tagboard-chosen-list');
   if(chosenList){
    const scroll=chosenList.scrollTop;
-   const focused=chosenList.contains(document.activeElement)?document.activeElement:null;
+   const focused=chosenList.contains(frame.ownerDocument?.activeElement)?frame.ownerDocument.activeElement:null;
    // Keep existing buttons mounted: destroying the focused chip on every click
    // causes browsers to scroll the whole dialog to the beginning.
-   let title=chosenList.querySelector(':scope > .ness-tagboard-overline');
+   const direct=className=>[...chosenList.children].find(node=>node.className?.split(' ').includes(className));
+   let title=direct('ness-tagboard-overline');
    if(!title)title=el('p',undefined,chosenList,'ness-tagboard-overline');
    title.textContent=preset==='always'?'✦ ДЛЯ ВСЕХ РАКУРСОВ':'В ЭТОМ РАКУРСЕ / УЧАСТКЕ';
-   let flow=chosenList.querySelector(':scope > .ness-tagboard-chosen-flow');
+   let flow=direct('ness-tagboard-chosen-flow');
    if(!flow)flow=el('div',undefined,chosenList,'ness-tagboard-chosen-flow');
    function reconcile(flow,tags,inheritedFlow=false){
-    const previous=new Map([...flow.querySelectorAll('[data-selected-tag-id]')].map(node=>[node.dataset.selectedTagId,node]));
+    const previous=new Map([...flow.children].filter(node=>node.dataset?.selectedTagId).map(node=>[node.dataset.selectedTagId,node]));
     const empty=flow.querySelector('.ness-note');
     if(tags.length)empty?.remove();
     for(let i=0;i<tags.length;i++){
