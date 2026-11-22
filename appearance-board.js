@@ -170,7 +170,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let preset=initialPreset||(mode==='skin'?'upper_front':mode==='nsfw'?'nsfwChest':'face');
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const layouts={base:'board',skin:'board',nsfw:'board'};
- let textDraft=null;
+ let textDraft=null,renderedMode='',renderedPreset='';
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Редактор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
@@ -339,7 +339,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function transferTag(tag,target,remove){
   if(readOnly()||target===mode)return;
   const dest=modeCatalog.modes[target],exists=dest.tags.some(t=>norm(t.text)===norm(tag.text));
-  if(exists&&!remove){warn('Этот тег уже есть в выбранном режиме.');return;}
+  if(exists){warn('Этот тег уже есть в выбранном режиме. Дубликат не создан.');return;}
   const source=mode==='base'?baseTag(tag):null;
   if(remove&&mode==='base'&&source&&parseBaseTags(baseState().base).length<2){
    warn('Нельзя перенести последний тег постоянной внешности.');return;
@@ -347,7 +347,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(remove&&mode==='base'&&appearanceFormat==='prose'){warn('В текстовом режиме переноси теги через текстовое поле.');return;}
   if(remove&&!confirm('Перенос удалит тег и его назначения в исходном режиме. Продолжить?'))return;
   record();
-  if(!exists)dest.tags.push({id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:tag.text});
+  dest.tags.push({id:remove&&!dest.tags.some(t=>t.id===tag.id)?tag.id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:tag.text});
   if(remove){
    const old=items(),at=old.findIndex(t=>t.id===tag.id);
    modeCatalog.modes[mode].tags=old.filter(t=>t.id!==tag.id);
@@ -361,7 +361,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     }
    }else if(mode==='nsfw')writeNsfwState(cleanNsfwTags(readNsfwState(),tag.text));
   }
-  transferTagId='';focusTagId='';warn((remove?'Перенесено':'Скопировано')+' в «'+(target==='base'?'Ракурсы':target==='skin'?'Под одеждой':'NSFW')+'». Назначь тег нужной области.');after();
+  transferTagId='';focusTagId='';mode=target;layout=layouts[mode];preset=target==='base'?'face':target==='skin'?'upper_front':'nsfwChest';checked.clear();
+   warn((remove?'Перенесено':'Скопировано')+' в «'+(target==='base'?'Ракурсы':target==='skin'?'Под одеждой':'NSFW')+'». Назначь тег нужной области.');after();
  }
  function cleanNsfwTags(state,changed,rename=''){
   const result={...state};
@@ -596,6 +597,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   grip.onpointercancel=clean;
  }
  function render(){
+  const sameMode=renderedMode===mode;
+  const tagScroll=sameMode?(content.querySelector('.ness-unified-tagflow')?.scrollTop||0):0;
+  const chosenScroll=sameMode&&renderedPreset===preset?(content.querySelector('.ness-tagboard-chosen-list')?.scrollTop||0):0;
+  renderedMode=mode;renderedPreset=preset;
   onLayoutChange(layout,mode);
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
@@ -745,6 +750,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    for(const tag of inherited)el('span','✦ '+tag.text,inheritedChips,'ness-tagboard-inherited');
   }
   el('p',preset==='always'?'Эти теги появляются во всех ракурсах данного режима.':'Слева — добавить или убрать. Справа — убрать через ×.',right,'ness-tagboard-right-hint');
+  tagFlow.scrollTop=tagScroll;chosenList.scrollTop=chosenScroll;
   const details=el('details',undefined,content,'ness-tagboard-preview');
   el('summary','Предпросмотр строки',details);el('p',preview(),details,'ness-tagboard-preview-text');
  }
