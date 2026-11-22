@@ -187,6 +187,108 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
 });
 
 
+test('Two-column selection toggles from both the left and right, without losing other camera choices',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]],head:[parseBaseTags(base)[2]]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const chip=name=>board.element.querySelectorAll('.ness-unified-chip').find(b=>b.textContent.includes(name));
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,1);
+ chip('freckles').onclick();
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,0);
+ assert.equal(state.selections.face.length,0);
+ chip('freckles').onclick();
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,1);
+ assert.ok(state.selections.face.some(t=>t.text==='freckles'));
+ const rightRemove=board.element.querySelectorAll('.ness-tagboard-chosen-chip')[0].querySelectorAll('button')[0];
+ rightRemove.onclick();
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,0);
+ assert.ok(state.selections.head.some(t=>t.text==='blue eyes'),'Other camera assignments survive');
+});
+
+test('Pencil renames tag text in-place, retaining the catalog ID and camera selection offsets',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]],head:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const initial=board.getCatalog().modes.base.tags.find(t=>t.text==='freckles').id;
+ board.element.querySelectorAll('button').find(b=>b.textContent==='✎').onclick();
+ const inputs=board.element.querySelectorAll('.ness-tagboard-rename-input');
+ assert.equal(inputs.length,3,'Every visible tag becomes an editable field');
+ const field=inputs.find(e=>e.value==='freckles');
+ field.value='freckles across nose';field.onchange();
+ assert.equal(board.getCatalog().modes.base.tags.find(t=>t.text==='freckles across nose').id,initial);
+ assert.ok(state.selections.face.some(t=>t.text==='freckles across nose'));
+ assert.ok(state.selections.head.some(t=>t.text==='freckles across nose'));
+ assert.ok(state.base.includes('freckles across nose'));
+});
+
+test('Text editing of skin/NSFW keeps assignments and cannot change base prose format',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
+ let nsfw={...initialNsfw};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  readNsfwState:()=>nsfw,writeNsfwState:next=>{nsfw=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const click=name=>board.element.querySelectorAll('button').find(b=>b.textContent===name).onclick();
+ click('Под одеждой');
+ assert.equal(board.setModeLayout('prose'),true);
+ let area=board.element.querySelectorAll('textarea')[0];
+ assert.ok(area.value.includes('scar on left arm'));
+ area.value=area.value.replace('scar on left arm','thin scar across left arm');
+ click('Применить к тегам');
+ assert.ok(board.getSkin().tags.some(t=>t.id==='s1'&&t.text==='thin scar across left arm'));
+ assert.deepEqual(board.getSkin().selections.arms,['s1']);
+ click('NSFW');
+ assert.equal(board.setModeLayout('prose'),true);
+ area=board.element.querySelectorAll('textarea')[0];
+ area.value=area.value.replace('small areolae','small rounded areolae');
+ click('Применить к тегам');
+ assert.ok(nsfw.nsfwChest.includes('small rounded areolae'));
+ assert.ok(board.getCatalog().modes.nsfw.tags.some(t=>t.text==='small rounded areolae'));
+ assert.equal(state.base,base);
+ click('Ракурсы');
+ assert.equal(board.element.querySelectorAll('.ness-unified-chip').length,3,'Base is still in Tags mode');
+});
+
+test('Dragging a tag by its grip moves its real source order and preserves camera selection',()=>{
+ const ui=makeUI();
+ const preset=parseBaseTags(base);
+ let state={base,ranges:[],selections:{face:[preset[0]],head:[preset[0]]}};
+ const catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+ catalog.modes.base.sections=[{id:'g1',title:'Лицо',before:0},{id:'g2',title:'Остальное',before:2}];
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:catalog,
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const grips=board.element.querySelectorAll('.ness-tagboard-grip');
+ const rows=board.element.querySelectorAll('.ness-unified-tag-row');
+ assert.equal(grips.length,3);
+ const priorDocument=globalThis.document;
+ try{
+  globalThis.document={elementFromPoint:()=>rows[2]};
+  grips[0].onpointerdown({button:0,pointerId:3,clientX:0,clientY:0});
+  grips[0].onpointermove({pointerId:3,clientX:70,clientY:18,preventDefault(){}});
+  grips[0].onpointerup({pointerId:3});
+ }finally{
+  if(priorDocument===undefined)delete globalThis.document;
+  else globalThis.document=priorDocument;
+ }
+ assert.deepEqual(parseBaseTags(state.base).map(t=>t.text),['long blonde hair','blue eyes','freckles']);
+ assert.ok(state.selections.face.some(t=>t.text==='freckles'));
+ assert.ok(state.selections.head.some(t=>t.text==='freckles'));
+});
+
 test('Library import/export validation roundtrips modes, camera marks and original NSFW text',()=>{
  const helpers=createSpImagenLibraryRuntime({}).utilities;
  const modeState=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]).modes;
