@@ -931,6 +931,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    groupInput.hidden=!groupInput.hidden;createGroup.hidden=groupInput.hidden;
    if(!groupInput.hidden)groupInput.focus?.();
   },'quiet');
+  const sectionHelp=button('?',addSection,()=>openExplanation('Добавление тегов','Маленький ＋ рядом с заголовком добавляет тег внутрь этого раздела. В списке без разделов два плюса стоят в начале и в конце. «＋ Новый раздел» создаёт ещё одну группу. Нажми Enter, чтобы сохранить новый тег.'),'quiet ness-tagboard-help');
+  sectionHelp.title='Как добавлять теги и разделы';sectionHelp.setAttribute('aria-label','Помощь по добавлению тегов');
   const groupInput=el('input',undefined,addSection,'ness-input');groupInput.placeholder='Название нового раздела';
   groupInput.setAttribute('data-group-name','');groupInput.hidden=true;
   groupInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGroup();}};
