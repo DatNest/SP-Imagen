@@ -1,3 +1,39 @@
+
+/**
+ * Pure, single-pass format guard for the director's FINAL prompt.
+ * Never repair, reorder, split, translate, or rewrite any character/lettering.
+ * This only validates block placement before a paid image request.
+ */
+export function validateImagePromptLayout(value,kind='comic') {
+    const text=String(value??'');
+    if(!text.trim())throw new Error('Итоговый промпт пуст.');
+    const actors=[...text.matchAll(/\|\s*(?:girl|boy|cat|other)\s*,/giu)].map(m=>m.index);
+    const firstActor=actors[0]??-1;
+    let inQuote=false,escaped=false;
+    const textMarks=[];
+    for(let i=0;i<text.length;i++){
+        const c=text[i];
+        if(escaped){escaped=false;continue;}
+        if(c==='\\'){escaped=true;continue;}
+        if(c==='"'){inQuote=!inQuote;continue;}
+        if(!inQuote&&text.startsWith('Text:',i)&&(i===0||/[\s;.]/u.test(text[i-1])))textMarks.push(i);
+    }
+    if(textMarks.length>1)throw new Error('В промпте несколько блоков Text:. Нужен ровно один, в самом конце после персонажей.');
+    const textAt=textMarks[0]??-1;
+    if(textAt>=0&&firstActor>=0&&textAt<actors.at(-1))
+        throw new Error('Блок Text: расположен ДО описаний персонажей. Перемести его в самый конец после последней секции | персонажа.');
+    if(textAt>=0&&!text.slice(textAt+5).trim())
+        throw new Error('Блок Text: пуст. Убери метку или добавь текст для печати.');
+    // Speech bubble descriptions belong to BASE, before the first character separator.
+    // Restrict matching to real structural labels instead of ordinary prose.
+    const bubbles=[...text.matchAll(/(?:^|[;\s])Speech bubble\s+\d+\s*:/giu)].map(m=>m.index+(m[0].startsWith('Speech')?0:1));
+    if(firstActor>=0&&bubbles.some(at=>at>firstActor&&(textAt<0||at<textAt)))
+        throw new Error('Speech bubble N находится ПОСЛЕ секции персонажа. Все описания пузырей должны стоять в BASE перед первым | персонажа.');
+    if(textAt>=0&&bubbles.some(at=>at>textAt))
+        throw new Error('Speech bubble N оказался внутри Text:. В Text: должны быть только печатные слова.');
+    return text;
+}
+
 /** Final image prompt normalization and consistent comic lettering. */
 export function normalizeImagePrompt(value,{parseLettering=true}={}) {
     const text = String(value || '');
