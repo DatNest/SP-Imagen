@@ -8,7 +8,7 @@ import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { parseImageHtml } from './image-transport.js';
-import { normalizeImagePrompt, limitComicDialogue } from './image-prompt.js';
+import { normalizeImagePrompt, limitComicDialogue, validateImagePromptLayout } from './image-prompt.js';
 import { pageTextEnabled, verifyTextlessImagePrompt } from './page-text-mode.js';
 import { createSpImagenProgress } from './progress-ui.js';
 import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
@@ -1114,6 +1114,8 @@ async function previewFinalPrompt(config, origin) {
    if(now.chat!==origin.chat||now.chatId!==origin.id||now.chat.length!==origin.count||now.chat[origin.index]!==origin.message){error.textContent='Чат или целевой пост изменился. Отмени отправку и запусти профиль заново.';error.style.display='block';return;}
    const edited=field.value.trim();
    if(!edited||edited.length>45000){error.textContent=!edited?'Промпт не может быть пустым.':'Промпт длиннее 45 000 символов.';error.style.display='block';return;}
+   try{validateImagePromptLayout(edited,validateKind(origin.kind));}
+   catch(layoutError){error.textContent=String(layoutError?.message||layoutError);error.style.display='block';return;}
    config.prompt=edited;
    savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
    getMediaSlots?.()?.refresh?.();
@@ -2185,6 +2187,9 @@ const config=parsedTransport.config;
 if(ratioOverride!=='auto')config.aspect_ratio=ratioOverride;
 v.sp_imagen_last_transport_repaired=parsedTransport.repaired;
 verifyTextlessImagePrompt(config.prompt,baseKind,includeText);
+// Pure structural check: prevent the legacy normalizer from interpreting
+// misplaced character sections as terminal printed Text.
+validateImagePromptLayout(config.prompt,baseKind);
 config.prompt=normalizeImagePrompt(config.prompt,{parseLettering:includeText});
 if(npcLanguage){
  progress.set('Перевод NPC', 'Перевожу только нужные описания из подготовленного NPC-блока.');
@@ -2198,6 +2203,7 @@ if(visibility.size && profile?.parser?.options?.includeCharacters!==false){
 // Personal composition rules are already included in the director's instructions.
 // Never prepend their raw text to the NAI5 image prompt.
 if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,baseKind,runtimeSettings);
+validateImagePromptLayout(config.prompt,baseKind);
 verifyTextlessImagePrompt(config.prompt,baseKind,includeText);
 config.kind=kind;
 config.profileName=getExtension?.()?.getGenerationProfileLabel?.(kind)||kind;
@@ -2218,6 +2224,7 @@ if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount,index:targetIndex,kind,message:target});
  if(!accepted){finished=true;progress.close();return 'Отправка в NAI5 отменена';}
 }
+validateImagePromptLayout(config.prompt,baseKind);
 const imagePrompt=config.prompt,cast=Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[];
 savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
 const live = SillyTavern.getContext();
@@ -2247,6 +2254,8 @@ const live = SillyTavern.getContext();
   if(!Array.isArray(persisted)||!persisted.some(item=>item?.src===stored?.src)){
     throw new Error('SP Imagen: сохранение картинки в собственной галерее не подтвердилось.');
   }
+  // A fully saved image no longer needs its draft. Keep recovery if chat save is pending.
+  if(!stored.savePending)discardPostDraft(live,targetIndex);
   finished=true;
   try{await slotManager.focus(targetIndex,kind,true);}catch(error){console.warn('SP Imagen: gallery focus skipped',error);}
   finished=true;
@@ -2316,6 +2325,7 @@ async function resumePost(request=null) {
     st.chatMetadata.variables.sp_imagen_last_final_image_prompt=config.prompt;
     await saveNessGenerationMetadata(st,'восстановленный финальный промпт');
     ensureOrigin();
+    validateImagePromptLayout(config.prompt,validateKind(kind));
     progress.submitted();
     const output=await spImagenExtension().generateImage(config,{reuseSnapshot:true,signal:progress.signal});
     ensureOrigin();
