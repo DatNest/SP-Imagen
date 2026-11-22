@@ -53,6 +53,8 @@ test('Valid artistic slots produce stable exact output order without rephrasing 
  assert.deepEqual(result.config.aspect_ratio,'2:3');
  assert.ok(prompt.startsWith('1boy, 1girl, 3 panels, expressive comic page;'));
  assert.ok(prompt.indexOf('cream parchment gutters')<prompt.indexOf('Speech bubble 1:'));
+ assert.ok(prompt.indexOf('comic panel frames and gutters:')<prompt.indexOf('Panel 1:'));
+ assert.ok(prompt.indexOf('Panel 1:')<prompt.indexOf('| boy, Clark Kent'));
  assert.ok(prompt.indexOf('Speech bubble 1:')<prompt.indexOf('| boy, Clark Kent'));
  assert.ok(prompt.indexOf('| boy, Clark Kent')<prompt.indexOf('| girl, Ness'));
  assert.ok(prompt.indexOf('| girl, Ness')<prompt.indexOf('\n\nText:'));
@@ -136,8 +138,8 @@ test('Art director asks for expressive natural panel prose without numbered-list
  const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
  assert.match(result.config.prompt,/first panel: Large establishing panel/);
  assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
- assert.match(experimentalDirectorPrompt('comic'),/NEVER use 1\), 2\), 3\)/);
- assert.match(experimentalDirectorPrompt('story_page'),/natural descriptive phrases WITHOUT numbered lists/);
+ assert.match(experimentalDirectorPrompt('comic'),/scene: for each panel give its size, page position, framing and visible setting or background/);
+ assert.match(experimentalDirectorPrompt('story_page'),/individual actions and expressions are detailed in their own character entries/);
 });
 
 test('All original explicit intimacy guidelines are included verbatim in test modes only',()=>{
@@ -153,5 +155,50 @@ test('All original explicit intimacy guidelines are included verbatim in test mo
  const unmodified=read('official-prompts.js');
  assert.equal(unmodified,defaults,'Original prompts remain unchanged');
  const original=experimentalDirectorPrompt('comic');
- assert.match(original,/Apply ONLY when the RP explicitly establishes intimate activity among adults/);
+ assert.match(original,/For established adult intimacy, apply these original composition and continuity instructions within the JSON fields/);
+});
+
+
+test('Graphic panel framing is prominent in the base section, before background descriptions',()=>{
+ const slots=sample();
+ slots.scene='Top-left panel: sunlit room, window in back; wide bottom panel: distant courtyard.';
+ slots.borders='thick burgundy hand-painted frame, torn cream-paper gutters and gold floral corner inlays';
+ const {config}=parseExperimentalDirector(JSON.stringify(slots),{kind:'comic'});
+ const opening='1boy, 1girl, 3 panels, expressive comic page; ';
+ assert.ok(config.prompt.startsWith(opening+'comic panel frames and gutters: '+slots.borders+'; '));
+ assert.ok(config.prompt.includes('; '+slots.scene+'; Speech bubble 1:')===false,
+  'Lettering precedes bubbles but should follow the scene');
+ assert.ok(config.prompt.indexOf(slots.scene)<config.prompt.indexOf('Speech bubble 1:'));
+ assert.ok(config.prompt.indexOf(slots.scene)<config.prompt.indexOf('| boy, Clark Kent'));
+ assert.equal(config.prompt.split(slots.borders).length,2);
+ assert.equal(config.prompt.split(slots.scene).length,2);
+});
+
+test('Each page requires an actual border specification; single-frame snapshot accepts an empty frame',()=>{
+ const slots=sample();slots.borders='';
+ assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots),{kind:'comic'}),/borders/);
+ assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'}),/borders/);
+ slots.bubbles=[];slots.lettering=[];
+ const snapshot=parseExperimentalDirector(JSON.stringify(slots),{kind:'snapshot'});
+ assert.ok(!snapshot.config.prompt.includes('comic panel frames and gutters:'));
+ assert.ok(!snapshot.config.prompt.includes('decorative image frame:'));
+});
+
+test('Scene and character slots keep distinct content, without repeating actions during assembly',()=>{
+ const slots=sample();
+ slots.scene='Wide top panel: dawn in the laundry courtyard; slim side inset: river beyond the porch';
+ slots.characters[0].action='top panel: holding a staff against the railing, left hand on wood, blue eyes on Ness';
+ slots.characters[1].action='side inset: fingers brushing the scarf, half-smile at Clark';
+ const {config}=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
+ const prompt=config.prompt;
+ assert.equal(prompt.split(slots.scene).length,2);
+ assert.equal(prompt.split(slots.characters[0].action).length,2);
+ assert.equal(prompt.split(slots.characters[1].action).length,2);
+ assert.ok(prompt.indexOf(slots.scene)<prompt.indexOf('| boy, Clark Kent'));
+ assert.ok(prompt.indexOf(slots.characters[0].action)>prompt.indexOf('| boy, Clark Kent'));
+ assert.ok(prompt.indexOf(slots.characters[1].action)>prompt.indexOf('| girl, Ness'));
+ const instruction=experimentalDirectorPrompt('story_page');
+ assert.match(instruction,/scene: short page-wide setting and panel-by-panel placement/);
+ assert.match(instruction,/Reserve specific character movements, facial expressions, hand positions, gaze targets and physical contacts for characters\[\]\.action/);
+ assert.match(instruction,/borders: intentional visible design for outer and inner panel frames/);
 });
