@@ -94,7 +94,8 @@ test('Approved library layout has a single board, no legacy tab or constructor C
  assert.match(board,/const basic=button\('Ракурсы'/);
  assert.match(board,/const marks=button\('Под одеждой'/);
  assert.match(board,/const nsfw=button\('NSFW'/);
- assert.match(board,/grip\.onpointerdown=e=>gripPointerDown/);
+ assert.match(board,/chip\.onpointerdown=e=>gripPointerDown/);
+ assert.doesNotMatch(board,/const grip=button\('⠿'/);
  assert.doesNotMatch(runtime,/\['thighMarks','Thigh marks/);
 });
 
