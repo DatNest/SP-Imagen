@@ -306,7 +306,10 @@ export async function installSpImagenMediaSlots(options) {
     .menu-empty {font-size:12px;line-height:1.45;opacity:.85;padding:8px;}
     .option-row {display:flex;align-items:center;min-inline-size:0;gap:.25em;}
     .option-row>.option {flex:1 1 auto;min-inline-size:0;}
-    .experimental-toggle {display:flex;align-items:center;justify-content:space-between;gap:12px;min-block-size:45px;padding:9px 10px;margin:3px 3px 6px;border:1px solid var(--ms-line);border-radius:9px;cursor:pointer;white-space:normal;}
+    .experimental-row {display:flex;align-items:center;gap:5px;min-inline-size:0;margin:3px 3px 6px;}
+    .experimental-toggle {display:flex;flex:1;align-items:center;justify-content:space-between;gap:12px;min-block-size:45px;min-inline-size:0;padding:9px 10px;border:1px solid var(--ms-line);border-radius:9px;cursor:pointer;white-space:normal;}
+    .menu-help {flex:none;display:inline-grid;place-items:center;inline-size:30px;block-size:30px;padding:0;border:1px solid var(--ms-line);border-radius:50%;color:inherit;background:transparent;font-weight:700;cursor:pointer;}
+    .menu-help:hover,.menu-help:focus-visible {background:var(--ms-panel);outline-offset:2px;}
     .experimental-toggle-text {display:grid;gap:2px;min-inline-size:0;}
     .experimental-toggle-text strong {font-size:13px;font-weight:750;}
     .experimental-toggle-text small {font-size:11px;opacity:.8;white-space:normal;}
@@ -729,7 +732,11 @@ export async function installSpImagenMediaSlots(options) {
       getExtension?.()?.setExperimentalMode?.(testInput.checked);
       closeToolsMenu();toggleToolsMenu(view);
     });
-    testToggle.append(toggleText,testInput);root.append(testToggle);
+    const testRow=element('div','experimental-row');
+    const testHelp=element('button','menu-help','?');
+    testHelp.setAttribute('aria-label','Справка: тестовые профили');
+    testHelp.addEventListener('click',event=>{event.stopPropagation();openExplanation('Тестовый режим','OFF оставляет обычные встроенные и собственные профили. ON добавляет 🧪 Snapshot, 🧪 Comic и 🧪 Story Page. Тестовый режиссёр заполняет отдельные поля JSON за один запрос: начало, короткую сцену, рамки, пузыри, персонажей и надписи. Код собирает их для NovelAI; предыдущие профили и картинки не меняются.');});
+    testToggle.append(toggleText,testInput);testRow.append(testToggle,testHelp);root.append(testRow);
     const available=getExtension?.()?.getVisibleGenerationProfiles?.()||KINDS.map(id=>({id,name:LABEL[id]}));
     let testHeaderAdded=false;
     if(!available.length){const note=element('div','menu-empty','Включи хотя бы один профиль в настройках SP Imagen.');root.append(note);}
@@ -767,7 +774,10 @@ export async function installSpImagenMediaSlots(options) {
           label.textContent=showText?'Текст':'Без текста';
         });
         toggle.append(input,track,label);
-        row.append(toggle);
+        const textHelp=element('button','menu-help','?');
+        textHelp.title='Что делает текст в комиксе';textHelp.setAttribute('aria-label','Справка: текст и пузыри');
+        textHelp.addEventListener('click',event=>{event.stopPropagation();openExplanation('Текст в комиксе','«Текст» разрешает режиссёру использовать установленные в RP реплики и надписи. В тестовом профиле каждый Speech bubble привязан к панели и персонажу, а точные слова повторяются в Text: в конце промпта. «Без текста» отключает пузыри и надписи только на этот запуск.');});
+        row.append(toggle,textHelp);
         root.append(row);
       }
     }
