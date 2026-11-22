@@ -625,12 +625,14 @@ async function openLibraryEditor(){
   },'primary');
  },'quiet');
  function renderTags(){
+  const stripScroll=view.tagStrip.scrollLeft;
   view.tagStrip.hidden=!view.tagEditor.hidden;
   clear(view.tagStrip);
   const selectedTag=draft.organizer.filterTagId;
-  const addFilter=(id,name,color)=>{const chip=el('button',name,view.tagStrip,'ness-tag-filter');chip.type='button';chip.setAttribute('data-tag-filter',id);chip.setAttribute('aria-pressed',String(selectedTag===id));if(color){chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',color);}chip.onclick=()=>{if(busy||draft.organizer.filterTagId===id)return;draft.organizer.filterTagId=id;changed();renderTags();searchNow();};};
+  const addFilter=(id,name,color)=>{const chip=el('button',name,view.tagStrip,'ness-tag-filter');chip.type='button';chip.setAttribute('data-tag-filter',id);chip.setAttribute('aria-pressed',String(selectedTag===id));if(color){chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',color);}chip.onclick=()=>{if(busy||draft.organizer.filterTagId===id)return;draft.organizer.filterTagId=id;changed();for(const node of view.tagStrip.querySelectorAll('[data-tag-filter]'))node.setAttribute('aria-pressed',String(node.getAttribute('data-tag-filter')===id));view.editTag.hidden=!draft.organizer.tags.some(t=>t.id===id);searchNow();};};
   addFilter('*','Все');addFilter('','Без тегов');for(const tag of draft.organizer.tags)addFilter(tag.id,tag.name,tag.color);
   view.editTag.hidden=!view.tagEditor.hidden||!draft.organizer.tags.some(t=>t.id===selectedTag);
+  view.tagStrip.scrollLeft=stripScroll;
  }
  function renderBulkTags(){
   clear(view.bulkTags);if(!selected.size)return;
@@ -662,7 +664,7 @@ async function openLibraryEditor(){
    choices.scrollTop=scroll;
   }
   function outside(e){if(!box.contains(e.target)&&!anchor.contains(e.target))closeTagPicker();}
-  function scroll(e){if(!box.contains(e.target))closeTagPicker();}
+  function scroll(e){if(box.contains(e.target))return;if(anchor.isConnected)positionNessPopover(box,anchor,true);else closeTagPicker();}
   closeTagPicker=()=>{box.remove();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('scroll',scroll,true);closeTagPicker=()=>{};};
   paint();positionNessPopover(box,anchor,true);document.addEventListener('pointerdown',outside,true);document.addEventListener('scroll',scroll,true);
  }
