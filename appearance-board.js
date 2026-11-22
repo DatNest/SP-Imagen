@@ -451,6 +451,55 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   return (preset===NESS_APPEARANCE_ALWAYS||configured?tags:state.base.trim())||'(нет тегов)';
  }
 
+ function flushModeText(){
+  if(!textDraft||layout!=='text'||mode==='base')return true;
+  const source=textDraft.value,previous=items().slice();
+  if(source===previous.map(t=>t.text).join(', '))return true;
+  const values=source.split(/[,;\r\n]+/).map(t=>t.trim()).filter(Boolean);
+  const unique=[],seen=new Set();
+  for(const value of values)if(!seen.has(norm(value))){seen.add(norm(value));unique.push(value);}
+  if(unique.some(t=>t.length>1200)||unique.length>700){warn('Слишком длинное описание или много тегов.');return false;}
+  if(readOnly())return false;
+  const result=new Array(unique.length),used=new Set(),renames=[];
+  for(let i=0;i<unique.length;i++){
+   const exact=previous.find(t=>!used.has(t.id)&&norm(t.text)===norm(unique[i]));
+   if(exact){result[i]={...exact};used.add(exact.id);}
+  }
+  const left=previous.filter(t=>!used.has(t.id));let cursor=0;
+  for(let i=0;i<unique.length;i++){
+   if(result[i])continue;
+   const prior=left[cursor++];
+   if(prior){used.add(prior.id);renames.push({prior,value:unique[i]});result[i]={...prior,text:unique[i]};}
+   else result[i]={id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:unique[i]};
+  }
+  const removed=previous.filter(t=>!used.has(t.id));
+  record();
+  if(mode==='skin'){
+   for(const {prior,value} of renames){
+    const tag=skin.tags.find(t=>norm(t.text)===norm(prior.text));
+    if(tag)tag.text=value;
+   }
+   for(const entry of removed){
+    const tag=skin.tags.find(t=>norm(t.text)===norm(entry.text));
+    if(!tag)continue;
+    skin.tags=skin.tags.filter(t=>t.id!==tag.id);
+    for(const key of Object.keys(skin.selections))skin.selections[key]=skin.selections[key].filter(id=>id!==tag.id);
+   }
+  }else if(mode==='nsfw'){
+   let state=readNsfwState();
+   for(const {prior,value} of renames)state=cleanNsfwTags(state,prior.text,value);
+   for(const tag of removed)state=cleanNsfwTags(state,tag.text);
+   writeNsfwState(state);
+  }
+  const sections=sectionsForMode().map(section=>{
+   const preceding=new Set(previous.slice(0,section.before).map(t=>t.id));
+   return {...section,before:result.filter(t=>preceding.has(t.id)).length};
+  });
+  modeCatalog.modes[mode]={tags:result,sections};
+  textDraft=null;
+  after();
+  return true;
+ }
  const popup=el('div',undefined,frame,'ness-tagboard-context-menu');popup.hidden=true;
  let transferOperation='copy',drag=null;
  function closeTransfer(){transferTagId='';popup.hidden=true;clear(popup);}
