@@ -426,6 +426,7 @@ function createLibraryView(D){
  const applyTag=button('✓ Готово',tagEditor),deleteTag=button('Удалить',tagEditor,undefined,'danger'),cancelTag=button('×',tagEditor,undefined,'icon quiet');cancelTag.setAttribute('aria-label','Закрыть редактирование тега');
  const bulk=el('div',undefined,tools,'ness-library-bulk');bulk.hidden=true;const count=note(bulk,''),bulkActions=el('div',undefined,bulk,'ness-row'),bulkTags=el('div',undefined,bulk,'ness-tag-strip');bulkTags.setAttribute('data-bulk-tags','');
  const workspace=el('div',undefined,panel,'ness-library-workspace'),listpane=el('div',undefined,workspace,'ness-library-listpane');
+ listpane.appendChild(tools); // Search and filters belong to the left library sidebar.
  const resultCount=el('p','',listpane,'ness-library-count'),list=el('div',undefined,listpane);list.setAttribute('data-library-list','');
  const form=el('div',undefined,workspace,'ness-library-editorpane');form.setAttribute('data-library-editor','');
   const actions=el('footer',undefined,panel,'ness-footer-library');actions.setAttribute('data-review-actions','');
