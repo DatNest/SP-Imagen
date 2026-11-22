@@ -1104,11 +1104,27 @@ async function showGuideSection(view) {
             const api = await getLibraryRuntime();
             api.openFirstVisibleRecordForGuide();
         }
-        const tabNames = { 'library-appearance': 'Внешность', 'library-aliases': 'Другие имена', 'library-prompt': 'Данные для промпта', 'library-body': 'Отметины и тело' };
+        const tabNames = {
+            'library-appearance':'Внешность',
+            'library-skin':'Внешность',
+            'library-nsfw':'Внешность',
+            'library-aliases':'Другие имена',
+            'library-prompt':'Данные для промпта',
+        };
         const tab = tabNames[view];
         if (tab) {
             const element = [...libraryOverlay.querySelectorAll('[role="tab"]')].find(node => node.textContent.trim() === tab);
             element?.click();
+        }
+        // The tour changes only which mode is visible. It never saves or
+        // mutates the user's selected appearance tags.
+        const modeLabel = view==='library-appearance'?'Ракурсы'
+            :view==='library-skin'?'Под одеждой'
+            :view==='library-nsfw'?'NSFW':null;
+        if(modeLabel){
+            const button=[...libraryOverlay.querySelectorAll('.ness-tagboard-modes button')]
+              .find(node=>node.textContent.trim()===modeLabel);
+            button?.click();
         }
         return;
     }
