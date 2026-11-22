@@ -1,6 +1,8 @@
 // Generated from modules/media_slots.js.
 import { withOperationDeadline } from './operation-timeout.js';
 import { readPostDraft, discardPostDraft } from './post-drafts.js';
+import { collectPostPrompts } from './post-prompt-state.js';
+import { openExplanation } from './onboarding.js';
 import { getRequestHeaders } from '../../../../script.js';
 import { spImagenOwnedImagePath, isReferencedInCurrentChat, deleteSpImagenOwnedFile } from './gallery-file-cleanup.js';
 import { isLocalGalleryImage } from './security-network.js';
@@ -155,6 +157,7 @@ export async function installSpImagenMediaSlots(options) {
     .prompt-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: min(40dvh, 320px);
       overflow: auto; font: 12px/1.5 ui-monospace, monospace; padding: 9px; border: 1px solid var(--ms-line);
       border-radius: 6px; background: color-mix(in srgb, var(--ms-panel) 65%, transparent); }
+    .prompt-source-select { display:block;inline-size:100%;min-block-size:38px;margin-block:8px;padding:6px 8px;border:1px solid var(--ms-line);border-radius:8px;background:var(--ms-panel);color:inherit;font:inherit; }
     .prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-block-start: 9px; flex-wrap: wrap; }
     .prompt-actions button { border: 1px solid var(--ms-line); border-radius: 6px; padding: 7px 10px; }
     .prompt-inputs { display: grid; gap: 10px; margin-block-start: 10px; }
@@ -500,7 +503,7 @@ export async function installSpImagenMediaSlots(options) {
     if (!node.isConnected) doc.body.append(node);
   }
 
-  function showPromptPopup(anchor, prompt, label) {
+  function showPromptPopup(anchor, prompt, label, sources = null) {
     closeToolsMenu();
     if (!requestClosePromptPopup()) return null;
     const { node, root } = component('prompt-preview');
@@ -512,7 +515,21 @@ export async function installSpImagenMediaSlots(options) {
     const close = element('button', '', 'Закрыть');
     close.addEventListener('click', () => requestClosePromptPopup());
     actions.append(close);
-    root.append(title, text, actions);
+    if(Array.isArray(sources)&&sources.length){
+      const picker=element('select','prompt-source-select');
+      picker.setAttribute('aria-label','Выбрать этап сохранённого промпта');
+      for(const item of sources){
+        const option=element('option','',item.label);option.value=item.id;picker.append(option);
+      }
+      picker.value=sources.find(item=>item.id==='final')?.id||sources[0].id;
+      const selected=sources.find(item=>item.id===picker.value);
+      text.textContent=selected?.text||'Промпт отсутствует.';
+      picker.addEventListener('change',()=>{
+       const current=sources.find(item=>item.id===picker.value);
+       text.textContent=current?.text||'Промпт отсутствует.';
+      });
+      root.append(title,picker,text,actions);
+    }else root.append(title,text,actions);
     positionPopup(node, anchor);
     promptPopup = { node, anchor, text, type: 'preview' };
     return text;
@@ -862,25 +879,37 @@ export async function installSpImagenMediaSlots(options) {
     return latest;
   }
 
+  function promptSources(view,slots){
+    const ctx=context();
+    const draft=eligible(view.message)?readPostDraft(ctx,view.index):null;
+    const saved=newestSavedPrompt(slots);
+    const source=collectPostPrompts(view.message,draft,saved);
+    const items=[];
+    if(source.finalPrompt)items.push({id:'final',label:'Итоговый промпт NovelAI',text:source.finalPrompt});
+    if(source.directorRaw)items.push({id:'director',label:'Ответ режиссёра · JSON / HTML',text:source.directorRaw});
+    if(source.parsedScene)items.push({id:'parsed',label:'Собранные RP-посты',text:source.parsedScene});
+    return items;
+  }
+
   function updatePostPromptIcon(view, slots) {
-    const saved = newestSavedPrompt(slots);
-    if (!saved) {
+    const sources=promptSources(view,slots);
+    if (!sources.length) {
       view.promptButton?.remove();
       view.promptButton = null;
       return;
     }
     if (!view.promptButton) {
-      const button = element('button', 'tool prompt-saved', '▤');
-      button.title = 'Открыть промпт последней сохранённой картинки';
-      button.setAttribute('aria-label', button.title);
-      button.addEventListener('click', () => {
-        if (guideDemo?.view === view) return;
-        const actual = newestSavedPrompt(slotsOf(context().chat?.[view.index]));
-        if (actual) showPromptPopup(button, actual.config.prompt, `Промпт · ${LABEL[actual.kind]}`);
+      const button=element('button','tool prompt-saved','▤');
+      button.title='Просмотреть сохранённые RP-посты, ответ режиссёра и итоговый промпт';
+      button.setAttribute('aria-label',button.title);
+      button.addEventListener('click',()=>{
+        if(guideDemo?.view===view)return;
+        const actual=promptSources(view,slotsOf(context().chat?.[view.index]));
+        if(actual.length)showPromptPopup(button,actual[0].text,'Промпты этого RP-поста',actual);
       });
-      view.tools.append(button);
-      view.promptButton = button;
+      view.tools.append(button);view.promptButton=button;
     }
+    view.promptButton.title='Сохранено этапов: '+sources.length+'. Открыть промпты этого поста';
   }
 
   function updatePostDraftControls(view) {
