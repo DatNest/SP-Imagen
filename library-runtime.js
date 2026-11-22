@@ -701,6 +701,7 @@ async function openLibraryEditor(){
    else emblem.textContent='✦';
   }
   drawEmblem();
+  ui.help(identityCard,'Иконка персонажа',emblem);
   const identity=el('div',undefined,identityCard,'ness-editor-identity-fields');
   const nameRow=el('div',undefined,identity,'ness-editor-name-row');
   fields.name=input(entry.name);fields.name.className+=' ness-editor-name-input';fields.name.setAttribute('aria-label','Имя персонажа');fields.name.placeholder='Имя персонажа';nameRow.appendChild(fields.name);
