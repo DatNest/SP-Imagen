@@ -379,7 +379,23 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   }
   applySequence(sequence);
  }
- function transferTag(tag,target,remove){
+ function moveTagToSection(tag,sectionId){
+  if(readOnly())return;
+  const seq=orderedSequence(),from=seq.findIndex(t=>t.kind==='tag'&&t.id===tag.id);
+  if(from<0)return;
+  const token=seq[from],next=seq.filter((_,i)=>i!==from);
+  let at=0;
+  if(sectionId){
+   const anchor=next.findIndex(t=>t.kind==='divider'&&t.id===sectionId);
+   if(anchor<0)return;
+   at=anchor+1;
+  }
+  next.splice(at,0,token);
+  closeTransfer();focusTagId=tag.id;
+  applySequence(next);
+  warn('Тег перемещён в раздел, назначения сохранены.');
+ }
+ function transferTag(tag,target,remove,targetSectionId=null){
   if(readOnly()||target===mode)return;
   const dest=modeCatalog.modes[target],exists=dest.tags.some(t=>norm(t.text)===norm(tag.text));
   if(exists){warn('Этот тег уже есть в выбранном режиме. Дубликат не создан.');return;}
@@ -390,7 +406,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(remove&&mode==='base'&&appearanceFormat==='prose'){warn('В текстовом режиме переноси теги через текстовое поле.');return;}
   if(remove&&!confirm('Перенос удалит тег и его назначения в исходном режиме. Продолжить?'))return;
   record();
-  dest.tags.push({id:remove&&!dest.tags.some(t=>t.id===tag.id)?tag.id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:tag.text});
+  const movedId=remove&&!dest.tags.some(t=>t.id===tag.id)?tag.id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const moved={id:movedId,text:tag.text};
+  const targetSection=dest.sections.find(x=>x.id===targetSectionId);
+  const at=targetSection?targetSection.before:dest.tags.length;
+  const index=targetSection?Math.max(0,Math.min(dest.tags.length,at)):dest.tags.length;
+  dest.tags.splice(index,0,moved);
+  dest.sections=dest.sections.map(x=>({...x,before:x.id===targetSectionId?x.before:x.before>=index?x.before+1:x.before}));
   if(remove){
    const old=items(),at=old.findIndex(t=>t.id===tag.id);
    modeCatalog.modes[mode].tags=old.filter(t=>t.id!==tag.id);
@@ -404,7 +426,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     }
    }else if(mode==='nsfw')writeNsfwState(cleanNsfwTags(readNsfwState(),tag.text));
   }
-  transferTagId='';focusTagId='';mode=target;layout=layouts[mode];preset=target==='base'?'face':target==='skin'?'upper_front':'nsfwChest';checked.clear();
+  transferTagId='';focusTagId=movedId;mode=target;layout=layouts[mode];preset=target==='base'?'face':target==='skin'?'upper_front':'nsfwChest';checked.clear();toolMode='move';
    warn((remove?'Перенесено':'Скопировано')+' в «'+(target==='base'?'Ракурсы':target==='skin'?'Под одеждой':'NSFW')+'». Назначь тег нужной области.');after();
  }
  function cleanNsfwTags(state,changed,rename=''){
@@ -546,33 +568,39 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   return true;
  }
  const popup=el('div',undefined,frame,'ness-tagboard-context-menu');popup.hidden=true;
- let transferOperation='copy',drag=null;
+ let drag=null;
  function closeTransfer(){transferTagId='';popup.hidden=true;clear(popup);}
  function showTransfer(tag,anchor){
-  if(readOnly())return;
-  transferTagId=tag.id;transferOperation='copy';drawTransfer(anchor);
+  if(readOnly()||toolMode!=='move')return;
+  transferTagId=tag.id;focusTagId=tag.id;updateToolBar();
+  drawTransfer(anchor);
  }
  function drawTransfer(anchor){
   const tag=items().find(t=>t.id===transferTagId);
   if(!tag){closeTransfer();return;}
   clear(popup);popup.hidden=false;
-  const head=el('div',undefined,popup,'ness-transfer-head');el('strong','⠿ '+tag.text,head);
+  const head=el('div',undefined,popup,'ness-transfer-head');
+  el('strong','✥ Переместить в раздел',head);
   button('×',head,closeTransfer,'quiet').setAttribute('aria-label','Закрыть меню');
-  el('p','Что сделать?',popup,'ness-note');
-  const switches=el('div',undefined,popup,'ness-transfer-options');
-  for(const [action,title] of [['copy','⧉ Копировать'],['move','↗ Перенести']]){
-   const b=button(title,switches,()=>{transferOperation=action;drawTransfer(anchor);},'quiet');
-   b.setAttribute('aria-pressed',String(action===transferOperation));
+  el('p',tag.text,popup,'ness-note ness-transfer-active-tag');
+  const targets=el('div',undefined,popup,'ness-transfer-targets');
+  const names={base:'Ракурсы',skin:'Под одеждой',nsfw:'NSFW'};
+  for(const target of ['base','skin','nsfw']){
+   const title=el('p',names[target]+(target===mode?' · текущий режим':' · другой режим'),targets,'ness-note ness-transfer-mode-title');
+   const group=el('div',undefined,targets,'ness-transfer-section-buttons');
+   if(target===mode){
+    button('Без раздела',group,()=>moveTagToSection(tag,null),'quiet');
+    for(const section of sectionsForMode())
+     button('↳ '+section.title,group,()=>moveTagToSection(tag,section.id),'quiet');
+   }else{
+    button('↗ '+names[target],group,()=>transferTag(tag,target,true),'quiet');
+    for(const section of modeCatalog.modes[target].sections)
+     button('↳ '+section.title,group,()=>transferTag(tag,target,true,section.id),'quiet');
+   }
   }
-  el('p','В какой режим?',popup,'ness-note');
-  const destinations=el('div',undefined,popup,'ness-transfer-targets');
-  for(const [dest,title] of [['base','Ракурсы'],['skin','Под одеждой'],['nsfw','NSFW']]){
-   if(dest!==mode)button(title,destinations,()=>{closeTransfer();transferTag(tag,dest,transferOperation==='move');},'quiet');
-  }
-  el('p',transferOperation==='copy'?'Исходный тег останется на месте. Копию назначь нужным ракурсам.':'Перенос снимает назначения исходного режима после подтверждения.',popup,'ness-note');
   if(anchor?.getBoundingClientRect&&frame.getBoundingClientRect){
    const a=anchor.getBoundingClientRect(),f=frame.getBoundingClientRect();
-   const maxX=Math.max(4,frame.clientWidth-(popup.offsetWidth||300)-4);
+   const maxX=Math.max(4,frame.clientWidth-(popup.offsetWidth||260)-4);
    popup.style.left=Math.max(4,Math.min(maxX,a.left-f.left))+'px';
    const below=a.bottom-f.top+6,above=a.top-f.top-(popup.offsetHeight||240)-6;
    popup.style.top=Math.max(3,a.bottom+(popup.offsetHeight||240)>window.innerHeight&&above>0?above:below)+'px';
