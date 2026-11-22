@@ -3,6 +3,7 @@
  * Existing base strings and appearanceSelections offsets remain authoritative.
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
+import { openExplanation } from './onboarding.js';
 import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { normalizeAppearanceModeCatalog, NSFW_AREAS, repositionModeTag } from './appearance-mode-state.js';
 
@@ -192,6 +193,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   control.title=label;control.setAttribute('aria-label',label);
   toolButtons[id]=control;
  }
+ const toolInfo=button('?',toolModes,()=>openExplanation('Режимы тегов','✎ переименовывает теги. 🗑 удаляет тег нажатием; ↶ вернёт удалённый тег. ✥ выбирает тег для перемещения стрелками ← → ↑ ↓. Удерживание тега открывает список разделов и режимов. Активен только один инструмент. Верхняя панель закреплена при прокрутке.'),'quiet ness-tagboard-help');
+ toolInfo.title='Как работают режимы тегов';toolInfo.setAttribute('aria-label','Помощь по режимам тегов');
  const toolHistory=el('div',undefined,tools,'ness-tagboard-tool-history');
  const toolMove=el('div',undefined,tools,'ness-tagboard-tool-movement');
  toolMove.hidden=true;
@@ -928,6 +931,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    groupInput.hidden=!groupInput.hidden;createGroup.hidden=groupInput.hidden;
    if(!groupInput.hidden)groupInput.focus?.();
   },'quiet');
+  const sectionHelp=button('?',addSection,()=>openExplanation('Добавление тегов','Маленький ＋ рядом с заголовком добавляет тег внутрь этого раздела. В списке без разделов два плюса стоят в начале и в конце. «＋ Новый раздел» создаёт ещё одну группу. Нажми Enter, чтобы сохранить новый тег.'),'quiet ness-tagboard-help');
+  sectionHelp.title='Как добавлять теги и разделы';sectionHelp.setAttribute('aria-label','Помощь по добавлению тегов');
   const groupInput=el('input',undefined,addSection,'ness-input');groupInput.placeholder='Название нового раздела';
   groupInput.setAttribute('data-group-name','');groupInput.hidden=true;
   groupInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGroup();}};

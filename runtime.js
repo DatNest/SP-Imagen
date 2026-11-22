@@ -13,6 +13,7 @@ import { experimentalDirectorPrompt, parseExperimentalDirector } from './experim
 import { pageTextEnabled, verifyTextlessImagePrompt } from './page-text-mode.js';
 import { createSpImagenProgress } from './progress-ui.js';
 import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
+import { rememberPostPrompts } from './post-prompt-state.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { hasSkinSelections, skinAppearanceInstruction, insertSkinAppearance } from './appearance-board.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
@@ -1550,9 +1551,12 @@ includeText=pageTextEnabled(kind,includeText);
   if(SillyTavern.getContext().chat!==chat||SillyTavern.getContext().chatId!==id)throw Error('Чат изменился во время подготовки.');
   v.sp_imagen_rp_source_count=String(recent.length);
   // Store the processed scene before opening the review window; no extra LLM call.
-  if(targetIndex!==null)savePostDraft(st,targetIndex,{
-   kind,includeText,stage:'parsed',parser:parserDraftFromVariables(v)
-  },{replace:true});
+  if(targetIndex!==null){
+   rememberPostPrompts(st,targetIndex,{kind,parsedScene:v.sp_imagen_parsed_scene,directorRaw:'',finalPrompt:''},{reset:true});
+   savePostDraft(st,targetIndex,{
+    kind,includeText,stage:'parsed',parser:parserDraftFromVariables(v)
+   },{replace:true});
+  }
   if(typeof st.saveMetadata==='function')await st.saveMetadata();
   return 'RP-постов подготовлено: '+recent.length;
   }finally{preparationLocks.delete(chat);}
@@ -2181,6 +2185,11 @@ progress.set('Режиссёр · ожидание ответа', 'Один за
 const raw=await requestNessText(kind,directorMessages,imageController.signal);
 requireOrigin();
 v.sp_imagen_last_director_raw=raw;
+const directorPostIndex=activePostIndex(st);
+if(directorPostIndex>=0){
+ rememberPostPrompts(st,directorPostIndex,{kind,directorRaw:raw});
+ savePostDraft(st,directorPostIndex,{kind,stage:'director',directorRaw:raw});
+}
 let parsedTransport;
 try{
  parsedTransport=experimental
@@ -2232,6 +2241,7 @@ if(targetIndex<0)throw Error('Imagen: настоящий RP-пост не най
 const target=beforeChat[targetIndex];
 // Save before preview or paid request; an aborted preparation is recoverable
 // without spending a second director call.
+rememberPostPrompts(st,targetIndex,{kind,finalPrompt:config.prompt});
 savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
 getMediaSlots?.()?.refresh?.();
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){

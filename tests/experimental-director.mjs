@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {experimentalProfileFor,experimentalDirectorPrompt,parseExperimentalDirector,normalizeExperimentalSceneLabels,experimentalLegacyIntimacy,EXPERIMENTAL_DIRECTOR_IDS} from '../experimental-director.js';
+import {experimentalProfileFor,experimentalDirectorPrompt,parseExperimentalDirector,normalizeExperimentalDirectorSlots,normalizeExperimentalSceneLabels,experimentalLegacyIntimacy,EXPERIMENTAL_DIRECTOR_IDS} from '../experimental-director.js';
 import {generationFormats,baseKindFor} from '../profiles.js';
 import {pageTextEnabled} from '../page-text-mode.js';
 import {validateImagePromptLayout} from '../image-prompt.js';
@@ -193,4 +193,67 @@ test('Snapshot with empty borders keeps a clean scene and legacy modules remain 
  assert.ok(prompt.includes(data.scene));
  for(const name of ['official-prompts.js','no-text-directors.js','code-prompts.js'])
   assert.ok(read(name).length>500,'Original bundled prompt remains available: '+name);
+});
+
+
+test('Real director misplacement: borders bubble array and missing bubbles are recovered verbatim',()=>{
+ const data={
+  schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
+  opening:'comic page, 4 panels, expressive warm-weather illustration',
+  scene:'Panel 1: sunlit courtyard and laundry; Panel 2: dim stairway; Panel 3: porch; Panel 4: wide yard',
+  borders:[
+   {panel:1,speaker:'Ji',design:'soft cloud-shaped speech balloon with gently wavy cream border, floating upper-right over the laundry lines, thin curved tail pointing down-left toward the doorway',words:'Не знала, что Аватары такие хозяйственные,'},
+   {panel:4,speaker:'Ji',design:'playful tilted oval balloon with a thin double border and sparkle, tail pointing to her smiling mouth',words:'Ну как? Сойдет для свидания?'}
+  ],
+  characters:[
+   {subject:'boy',name:'Aang',appearance:'[[NESS_VIS:character_mw6w536q_4fyywf:full_front]] [[NESS_SKIN:character_mw6w536q_4fyywf:none]]',wardrobe:'air nomad traveler outfit',action:'Panel 1: seated on the step; Panel 4: looks at Ji with a blush'},
+   {subject:'girl',name:'Ji',appearance:'[[NESS_VIS:ji:full_front]] [[NESS_SKIN:ji:upper_front,arms]]',wardrobe:'fantasy nomad outfit',action:'Panel 2: brushing her hair; Panel 4: playful mid-twirl'}
+  ],
+  lettering:[]
+ };
+ const raw=JSON.stringify(data);
+ const fence=String.fromCharCode(96,96,96);
+ const result=parseExperimentalDirector(fence+'json\n'+JSON.stringify(data,null,2)+'\n'+fence,{kind:'custom_test_comic',includeText:true,maxLines:3,maxWords:10});
+ assert.equal(result.repaired,true);
+ const prompt=result.config.prompt;
+ assert.match(prompt,/Speech bubble 1: within panel 1/);
+ assert.match(prompt,/Speech bubble 2: within panel 4/);
+ assert.ok(prompt.includes(data.borders[0].design));
+ assert.ok(prompt.includes(data.borders[1].design));
+ assert.ok(prompt.endsWith('Text: Не знала, что Аватары такие хозяйственные,\n\nНу как? Сойдет для свидания?'));
+ assert.ok(prompt.includes(data.characters[0].appearance));
+ assert.ok(prompt.includes(data.characters[1].appearance));
+ assert.equal(data.borders.length,2,'original JSON must not be mutated');
+ assert.equal(JSON.stringify(data),raw);
+ assert.equal(normalizeExperimentalDirectorSlots(data).data.borders,'');
+ assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
+});
+
+test('Compatible alternative slot shapes are repaired without invented dialogue or double rendering',()=>{
+ const data=sample();
+ data.border_design='thin warm sepia frames';
+ data.borders=[{panel:2,speaker:'Clark Kent',design:data.bubbles[0].design,words:data.bubbles[0].words}];
+ const recovered=parseExperimentalDirector(JSON.stringify(data),{kind:'comic'});
+ assert.equal(recovered.repaired,true);
+ assert.ok(recovered.config.prompt.includes('panel borders: thin warm sepia frames'));
+ assert.equal(recovered.config.prompt.split('Speech bubble 1:').length-1,1);
+ assert.equal(recovered.config.prompt.split('Speech bubble 2:').length-1,0);
+ let alt=sample();
+ alt.borders=[{panel:1,design:'torn paper outline'},{panel:2,design:'thin sepia line'}];
+ delete alt.bubbles;delete alt.lettering;
+ const compiled=parseExperimentalDirector(JSON.stringify(alt),{kind:'comic'});
+ assert.equal(compiled.repaired,true);
+ assert.match(compiled.config.prompt,/panel borders: panel 1: torn paper outline; panel 2: thin sepia line/);
+ assert.doesNotMatch(compiled.config.prompt,/Speech bubble 1:/);
+ assert.doesNotMatch(compiled.config.prompt,/\n\nText:/);
+});
+
+test('Ambiguous mixed slot objects and non-text mode still fail safely',()=>{
+ let data=sample();
+ data.borders=[{panel:1,speaker:'Ji',design:'balloon',words:'Да'},{panel:2,design:'frame only'}];
+ assert.throws(()=>parseExperimentalDirector(JSON.stringify(data)),/смешивает рамки и реплики/);
+ data=sample();data.borders=data.bubbles;delete data.bubbles;
+ assert.throws(()=>parseExperimentalDirector(JSON.stringify(data),{kind:'comic',includeText:false}),/режиме без текста/);
+ data=sample();data.borders=null;
+ assert.throws(()=>parseExperimentalDirector(JSON.stringify(data)),/borders/);
 });

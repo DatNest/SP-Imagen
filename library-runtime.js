@@ -701,6 +701,7 @@ async function openLibraryEditor(){
    else emblem.textContent='✦';
   }
   drawEmblem();
+  ui.help(identityCard,'Иконка персонажа',emblem);
   const identity=el('div',undefined,identityCard,'ness-editor-identity-fields');
   const nameRow=el('div',undefined,identity,'ness-editor-name-row');
   fields.name=input(entry.name);fields.name.className+=' ness-editor-name-input';fields.name.setAttribute('aria-label','Имя персонажа');fields.name.placeholder='Имя персонажа';nameRow.appendChild(fields.name);
@@ -921,6 +922,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.26',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.27',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }

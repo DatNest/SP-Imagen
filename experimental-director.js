@@ -92,10 +92,62 @@ function parseJSON(raw){
  try{return JSON.parse(s);}catch(cause){throw new Error('Тестовый режиссёр вернул повреждённый JSON. NovelAI не запускался; исходный ответ сохранён.',{cause});}
 }
 const boundary=s=>String(s).trim().replace(/[;\s]+$/u,'');
+
+/**
+ * Deterministic recovery for unambiguous slot-schema mistakes.
+ * Never invent dialogue, border artwork, appearance or model text.
+ */
+export function normalizeExperimentalDirectorSlots(source){
+ check(source&&typeof source==='object'&&!Array.isArray(source),'Ожидается объект JSON');
+ const data={...source};
+ let repaired=false;
+ const note=()=>{repaired=true;};
+ const bubbleShape=item=>item&&typeof item==='object'&&!Array.isArray(item)
+  &&typeof item.words==='string'&&typeof item.speaker==='string'&&typeof item.design==='string'
+  &&item.panel!==undefined;
+ const frameShape=item=>typeof item==='string'||item&&typeof item==='object'
+  &&!Array.isArray(item)&&typeof item.design==='string'
+  &&item.words===undefined&&item.speaker===undefined;
+ const frameText=items=>items.map(item=>typeof item==='string'?item.trim():
+  (item.panel!==undefined?'panel '+item.panel+': ':'')+item.design.trim()).filter(Boolean).join('; ');
+ if(Array.isArray(data.borders)){
+  if(data.borders.length===0){data.borders='';note();}
+  else if(data.borders.every(bubbleShape)){
+   check(data.bubbles===undefined||Array.isArray(data.bubbles),'В поле bubbles некорректный тип');
+   const existing=data.bubbles||[];
+   const keys=new Set(existing.map(item=>JSON.stringify([item?.panel,item?.speaker,item?.design,item?.words])));
+   data.bubbles=[...existing];
+   for(const item of data.borders){
+    const key=JSON.stringify([item.panel,item.speaker,item.design,item.words]);
+    if(!keys.has(key)){data.bubbles.push(item);keys.add(key);}
+   }
+   data.borders=typeof data.panel_borders==='string'?data.panel_borders:
+    typeof data.border_design==='string'?data.border_design:'';
+   note();
+  }else if(data.borders.every(frameShape)){data.borders=frameText(data.borders);note();}
+  else fail('Массив borders смешивает рамки и реплики. Укажи однозначные поля');
+ }
+ if(data.borders===undefined){
+  data.borders=typeof data.panel_borders==='string'?data.panel_borders:
+   typeof data.border_design==='string'?data.border_design:'';
+  note();
+ }
+ if(data.bubbles===undefined){
+  data.bubbles=Array.isArray(data.speech_bubbles)?data.speech_bubbles:[];
+  note();
+ }
+ if(data.lettering===undefined){
+  data.lettering=Array.isArray(data.signs)?data.signs:[];
+  note();
+ }
+ return {data,repaired};
+}
+
 export function parseExperimentalDirector(raw,{kind='comic',includeText=true,maxLines=null,maxWords=null}={}){
  const base=EXPERIMENTAL_DIRECTOR_IDS[kind]||kind;
  check(['snapshot','comic','story_page'].includes(base),'Неизвестный тестовый профиль');
- const data=parseJSON(raw);
+ const normalized=normalizeExperimentalDirectorSlots(parseJSON(raw));
+ const {data}=normalized;
  check(data&&typeof data==='object'&&!Array.isArray(data)&&data.schema==='sp-imagen-slots-v1','Требуется JSON со schema sp-imagen-slots-v1');
  check(RATIOS.has(data.aspect_ratio),'Неверный aspect_ratio');
  const opening=stringField(data,'opening'),scene=normalizeExperimentalSceneLabels(stringField(data,'scene')),borders=stringField(data,'borders',{empty:true});
@@ -150,5 +202,5 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
   .sort((a,b)=>a.panel-b.panel||a.sourceOrder-b.sourceOrder).map(x=>x.words);
  const prompt=[baseText,...sections].filter(Boolean).join(' ')+(printed.length?'\n\nText: '+printed.join('\n\n'):'');
  check(prompt.length<=45000,'Собранный промпт длиннее 45 000 символов');
- return {config:{prompt,aspect_ratio:data.aspect_ratio,image_size:'1K'},repaired:false,experimental:true};
+ return {config:{prompt,aspect_ratio:data.aspect_ratio,image_size:'1K'},repaired:normalized.repaired,experimental:true};
 }
