@@ -120,12 +120,13 @@ test('Test mode is controlled in the star menu and leaves the legacy output pars
 test('Speech balloons are physically enclosed and anchored to their actual panel, not subtitles',()=>{
  const data=sample();data.bubbles=[{panel:3,speaker:'Ness',design:'at upper right, tail to Ness',words:'Ну как? Сойдёт?'}];
  const result=parseExperimentalDirector(JSON.stringify(data),{kind:'story_page'}),prompt=result.config.prompt;
- assert.match(prompt,/Speech bubble 1: within panel 3, fully enclosed comic speech balloon/);
- assert.match(prompt,/unbroken outline surrounding the printed dialogue, text INSIDE the balloon/);
- assert.match(prompt,/tail ending at Ness's mouth/);
+ assert.match(prompt,/Speech bubble 1: In panel 3, a visible, outlined comic speech bubble beside Ness's face containing "Ну как\? Сойдёт\?"/);
+ assert.match(prompt,/at upper right, tail to Ness/);
+ assert.match(prompt,/the attached tail points to Ness's mouth/);
  assert.match(prompt,/at upper right, tail to Ness/);
  assert.match(prompt,/Text: Hi\n\nНу как\? Сойдёт\?$/);
  assert.equal(validateImagePromptLayout(prompt,'story_page'),prompt);
+ assert.equal(prompt.split('Ну как? Сойдёт?').length-1,2,'Dialogue appears once in the visual balloon description and once in terminal Text:');
 });
 
 test('Art director asks for expressive natural panel prose without numbered-list syntax',()=>{
@@ -228,8 +229,8 @@ test('Real director misplacement: borders bubble array and missing bubbles are r
  const result=parseExperimentalDirector(fence+'json\n'+JSON.stringify(data,null,2)+'\n'+fence,{kind:'custom_test_comic',includeText:true,maxLines:3,maxWords:10});
  assert.equal(result.repaired,true);
  const prompt=result.config.prompt;
- assert.match(prompt,/Speech bubble 1: within panel 1/);
- assert.match(prompt,/Speech bubble 2: within panel 4/);
+ assert.match(prompt,/Speech bubble 1: In panel 1/);
+ assert.match(prompt,/Speech bubble 2: In panel 4/);
  assert.ok(prompt.includes(data.borders[0].design));
  assert.ok(prompt.includes(data.borders[1].design));
  assert.ok(prompt.endsWith('Text: Не знала, что Аватары такие хозяйственные,\n\nНу как? Сойдет для свидания?'));
