@@ -170,7 +170,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let preset=initialPreset||(mode==='skin'?'upper_front':mode==='nsfw'?'nsfwChest':'face');
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const frame=el('section',undefined,parent,'ness-tagboard');
- frame.setAttribute('aria-label','Конструктор тегов внешности');
+ frame.setAttribute('aria-label','Редактор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
  el('strong','Внешность',header);
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
@@ -468,7 +468,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     const textArea=el('textarea',undefined,content,'ness-input');textArea.value=preview();textArea.readOnly=true;
    }
   }else{
-   const act=el('div',undefined,content,'ness-tagboard-history');
+   const act=el('div',undefined,bar,'ness-tagboard-history');
    const reorderToggle=button('✎',act,()=>{frame.dataset.moveMode=frame.dataset.moveMode==='true'?'false':'true';render();},'quiet ness-edit-toggle');
    reorderToggle.title='Редактировать названия, разделы и порядок тегов';
    reorderToggle.setAttribute('aria-label','Редактировать названия, разделы и порядок тегов');
