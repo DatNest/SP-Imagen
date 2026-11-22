@@ -78,11 +78,22 @@ test('Library visibility injection remains compatible with test character sectio
  assert.ok(result.endsWith('Text: Hi\n\nТы слышишь меня?'));
 });
 
-test('Textless test profiles reject lettering and bubbles before NovelAI',()=>{
- assert.throws(()=>parseExperimentalDirector(JSON.stringify(sample()),{kind:'custom_test_comic',includeText:false}),/без текста/);
- const slots=sample();slots.bubbles=[];slots.lettering=[];
- const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'custom_test_comic',includeText:false});
- assert.ok(!result.config.prompt.includes('Text:'));
+test('Textless Comic and Story Page request empty printed fields and omit unexpected text',()=>{
+ for(const kind of ['comic','story_page']){
+  const prompt=experimentalDirectorPrompt(kind,{includeText:false,maxLines:2,maxWords:10});
+  assert.match(prompt,/"bubbles":\[\]/);
+  assert.match(prompt,/"lettering":\[\]/);
+  assert.doesNotMatch(prompt,/Select up to|speaker name|balloon shape, position|bubble tail direction/);
+  assert.match(prompt,/TEXT DISABLED/);
+  const slots=sample(),raw=JSON.stringify(slots);
+  const result=parseExperimentalDirector(raw,{kind,includeText:false,maxLines:0,maxWords:0});
+  assert.ok(!result.config.prompt.includes('Speech bubble '));
+  assert.ok(!result.config.prompt.includes('Lettering '));
+  assert.ok(!result.config.prompt.includes('Text:'));
+  assert.ok(result.config.prompt.includes(slots.scene));
+  assert.deepEqual(slots,sample(),'Unexpected model text must be excluded without mutating its response');
+  assert.equal(validateImagePromptLayout(result.config.prompt,kind),result.config.prompt);
+ }
 });
 
 test('Corrupted, invalid or incomplete model slot JSON is rejected without fabrication',()=>{
@@ -98,7 +109,21 @@ test('Corrupted, invalid or incomplete model slot JSON is rejected without fabri
  slots=sample();slots.characters.push({...slots.characters[0]});
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots)),/продублирован/);
  slots=sample();
- assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots),{kind:'snapshot'}),/Snapshot/);
+ const snapshot=parseExperimentalDirector(JSON.stringify(slots),{kind:'snapshot'});
+ assert.ok(!snapshot.config.prompt.includes('Speech bubble 1:'));
+ assert.ok(snapshot.config.prompt.endsWith('Text: Hi'));
+});
+
+test('Snapshot schema never requests speech and ignores a model-supplied balloon',()=>{
+ const rules=experimentalDirectorPrompt('snapshot',{includeText:true,postCount:3});
+ assert.match(rules,/"bubbles":\[\]/);
+ assert.doesNotMatch(rules,/Select up to|speaker name|bubble tail direction|bubbles: give each spoken line/);
+ const data=sample();data.bubbles=[{panel:1,speaker:'Ness',design:'oval',words:'Не нужно показывать'}];
+ const result=parseExperimentalDirector(JSON.stringify(data),{kind:'custom_test_snapshot',includeText:true,maxLines:0,maxWords:0});
+ assert.ok(!result.config.prompt.includes('Не нужно показывать'));
+ assert.ok(!result.config.prompt.includes('Speech bubble'));
+ assert.ok(result.config.prompt.endsWith('Text: Hi'),'A genuine written note remains allowed in Snapshot');
+ assert.equal(validateImagePromptLayout(result.config.prompt,'snapshot'),result.config.prompt);
 });
 
 test('Test mode is controlled in the star menu and leaves the legacy output parser untouched',()=>{
@@ -266,7 +291,9 @@ test('Ambiguous mixed slot objects and non-text mode still fail safely',()=>{
  data.borders=[{panel:1,speaker:'Ji',design:'balloon',words:'Да'},{panel:2,design:'frame only'}];
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(data)),/смешивает рамки и реплики/);
  data=sample();data.borders=data.bubbles;delete data.bubbles;
- assert.throws(()=>parseExperimentalDirector(JSON.stringify(data),{kind:'comic',includeText:false}),/режиме без текста/);
+ const withoutText=parseExperimentalDirector(JSON.stringify(data),{kind:'comic',includeText:false});
+ assert.doesNotMatch(withoutText.config.prompt,/Speech bubble|Text:/);
+ assert.equal(withoutText.repaired,true);
  data=sample();data.borders=null;
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(data)),/borders/);
 });
