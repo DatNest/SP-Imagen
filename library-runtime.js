@@ -601,7 +601,7 @@ async function openLibraryEditor(){
  }
  function tryFlush(){try{flushEditor();return true;}catch(e){status(e.message);return false;}}
  let rulesDialog=null;
- button('Правила ракурсов',view.addTag.parentNode,()=>{
+ const rulesButton=button('◈',view.addTag.parentNode,()=>{
   if(busy||done||rulesDialog||!tryFlush())return;
   closeTagPicker();
   const dialog=createNessChildDialog(document,panel,{title:'Правила ракурсов',marker:'data-appearance-rules',onClose:()=>{rulesDialog=null;}});
@@ -623,7 +623,8 @@ async function openLibraryEditor(){
    }
    dialog.finish();
   },'primary');
- },'quiet');
+ },'icon quiet ness-appearance-rules-trigger');
+ rulesButton.title='Правила ракурсов';rulesButton.setAttribute('aria-label','Правила ракурсов');
  function renderTags(){
   const stripScroll=view.tagStrip.scrollLeft;
   view.tagStrip.hidden=!view.tagEditor.hidden;
