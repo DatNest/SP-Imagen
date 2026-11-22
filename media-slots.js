@@ -735,7 +735,7 @@ export async function installSpImagenMediaSlots(options) {
     const testRow=element('div','experimental-row');
     const testHelp=element('button','menu-help','?');
     testHelp.setAttribute('aria-label','Справка: тестовые профили');
-    testHelp.addEventListener('click',event=>{event.stopPropagation();openExplanation('Тестовый режим','OFF оставляет обычные встроенные и собственные профили. ON добавляет 🧪 Snapshot, 🧪 Comic и 🧪 Story Page. Тестовый режиссёр заполняет отдельные поля JSON за один запрос: начало, подробно поставленную сцену с действиями и персонажами, рамки, пузыри, персонажей и надписи. Код собирает их для NovelAI; предыдущие профили и картинки не меняются.');});
+    testHelp.addEventListener('click',event=>{event.stopPropagation();openExplanation('Тестовый режим','OFF оставляет обычные встроенные и собственные профили. ON добавляет 🧪 Snapshot, 🧪 Comic и 🧪 Story Page. Тестовый режиссёр заполняет отдельные поля JSON за один запрос: начало, сцену с композицией и ключевыми действиями, рамки, пузыри, персонажей и надписи. Код собирает их для NovelAI; предыдущие профили и картинки не меняются.');});
     testToggle.append(toggleText,testInput);testRow.append(testToggle,testHelp);root.append(testRow);
     const available=getExtension?.()?.getVisibleGenerationProfiles?.()||KINDS.map(id=>({id,name:LABEL[id]}));
     let testHeaderAdded=false;
@@ -1500,7 +1500,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 27,
-    bundleVersion: '2.9.29',
+    bundleVersion: '2.9.30',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},

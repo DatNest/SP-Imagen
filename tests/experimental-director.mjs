@@ -136,8 +136,8 @@ test('Art director asks for expressive natural panel prose without numbered-list
  const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
  assert.match(result.config.prompt,/first panel: Large establishing panel/);
  assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
- assert.match(experimentalDirectorPrompt('comic'),/fully stage every panel/);
- assert.match(experimentalDirectorPrompt('story_page'),/who is where, what each person is doing and feeling/);
+ assert.match(experimentalDirectorPrompt('comic'),/roughly two purposeful sentences to each panel/);
+ assert.match(experimentalDirectorPrompt('story_page'),/the essential visible action and interaction/);
 });
 
 test('All original explicit intimacy guidelines are included verbatim in test modes only',()=>{
@@ -157,24 +157,25 @@ test('All original explicit intimacy guidelines are included verbatim in test mo
 });
 
 
-test('All test formats fully stage characters, interactions and camera details inside scene again',()=>{
- const detailedScene='Panel 1: Wide low-angle shot across the sunny courtyard, Ji stands at the porch railing mid-twirl with her orange sash flaring into the breeze, right hand resting on her hip, bright blue eyes fixed on Aang. Aang sits on the step below and looks up with a startled blush, fingers caught halfway through turning a clothespin; his wooden staff rests against the railing. Panel 2: Intimate over-the-shoulder inset from behind Ji, her forearm crosses the foreground as she reaches down to him, Aang lifts one hand to meet hers, laundry fluttering in the sunlight beyond.';
+test('All test formats balance compact scene staging with detailed cast actions',()=>{
+ const stagedScene='Top wide panel: a sunny courtyard with laundry and a wooden porch, Ji stands by the railing above Aang, seen from a low angle. She makes a playful twirl toward him while he looks up, caught off guard by her smile. Bottom inset: a close view of their hands as Aang reaches to take her hand.';
  for(const kind of ['snapshot','comic','story_page']){
   const instructions=experimentalDirectorPrompt(kind,{postCount:4});
-  assert.match(instructions,/scene: fully direct the image with vivid and precise visual storytelling/);
-  assert.match(instructions,/exact positions and movement of all visible characters/);
-  assert.match(instructions,/their poses, expressions, eye-lines, hand gestures, physical contact/);
-  assert.match(instructions,/camera perspective, framing, spatial depth, lighting|camera angle, who is where, what each person is doing and feeling/);
+  assert.match(instructions,/scene: describe the full composition with clear visual staging/);
+  assert.match(instructions,/write about two focused sentences/);
+  assert.match(instructions,/central action or interaction with one defining pose or expression/);
   assert.match(instructions,/action provides each character’s own panel-specific position/);
-  assert.doesNotMatch(instructions,/one short phrase per panel|scene: concise overall scene|visible background briefly in scene/);
+  if(kind==='snapshot')assert.match(instructions,/a few focused sentences for setting, camera, lighting/);
+  else assert.match(instructions,/roughly two purposeful sentences to each panel/);
+  assert.doesNotMatch(instructions,/scene: fully direct the image|one short phrase per panel|fully stage every panel|visible background briefly in scene/);
   const data=sample();
-  data.scene=detailedScene;
+  data.scene=stagedScene;
   if(kind==='snapshot')data.bubbles=[];
-  data.characters[0].action='Panel 1: Aang blushes with one hand on his staff, gaze locked on Ji';
+  data.characters[0].action='Panel 1: Aang blushes, his fingers gripping his staff while his gaze stays on Ji';
   const result=parseExperimentalDirector(JSON.stringify(data),{kind});
   const prompt=result.config.prompt;
-  assert.equal(prompt.split(detailedScene).length-1,1,kind+' full visual scene retained');
-  assert.ok(prompt.indexOf(detailedScene)<prompt.indexOf('| boy, Clark Kent'),kind);
+  assert.equal(prompt.split(stagedScene).length-1,1,kind+' scene retained verbatim');
+  assert.ok(prompt.indexOf(stagedScene)<prompt.indexOf('| boy, Clark Kent'),kind);
   assert.equal(prompt.split(data.characters[0].action).length-1,1,kind+' precise character action retained');
   assert.ok(prompt.indexOf(data.characters[0].action)>prompt.indexOf('| boy, Clark Kent'),kind);
   assert.ok(prompt.includes('panel borders: '+data.borders),kind);
