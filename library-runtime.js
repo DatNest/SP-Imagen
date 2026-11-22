@@ -543,7 +543,11 @@ function restoreLibraryBodyFields(input){
   const names=[saved.name,...saved.aliases].map(norm),current=[entry.name,...(entry.aliases||[])].map(norm);
   if(!current.some(n=>n&&names.includes(n)))continue;
   matched=true;
+  const skin=normalizeSkinTags(entry.appearanceSkin);
   for(const key of ['nudeUpper','nudeLower']){
+   const part=key==='nudeUpper'?'upper_front':'lower_front';
+   // Never reintroduce old hardcoded recovery data after that area was migrated.
+   if((skin.selections[part]||[]).length||(skin.selections.always||[]).length)continue;
    const value=saved.fields[key];
    if(typeof value==='string'&&value.trim()&&(entry[key]===undefined||typeof entry[key]==='string'&&!entry[key].trim())){entry[key]=value;count++;}
   }
@@ -557,7 +561,7 @@ let guideOpenFirstRecord = () => false;
 async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
- let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
+ let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=Boolean(baseline&&JSON.stringify(draft)!==(typeof baseline==='string'?baseline:JSON.stringify(baseline))),busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
  const restored=restoreLibraryBodyFields(draft);
  if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;}
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
