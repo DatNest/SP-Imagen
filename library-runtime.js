@@ -787,6 +787,9 @@ async function openLibraryEditor(){
     }
   });
   // Move, rather than duplicate, the format selector and the original prose input.
+  // One sticky tag toolbar across every appearance mode. Reuse the existing
+  // history buttons, rather than mounting a second Undo/Redo pair.
+  inlineBoard.historyHost.append(historyUndo,historyRedo);
   const headingBar=inlineBoard.element.querySelector('.ness-tagboard-header');
   const editorBody=inlineBoard.element.querySelector('.ness-tagboard-body');
   headingBar.appendChild(formatStrip);
@@ -802,7 +805,7 @@ async function openLibraryEditor(){
     },
     get format(){return appearanceFormat.value;},
     get base(){return appearanceState.base;},
-    syncHistory:()=>{historyUndo.disabled=busy||!inlineBoard.canUndo();historyRedo.disabled=busy||!inlineBoard.canRedo();},
+    syncHistory:()=>{historyUndo.disabled=busy||!inlineBoard.canUndo();historyRedo.disabled=busy||!inlineBoard.canRedo();inlineBoard.syncTools();},
     get value(){return {
       ranges:appearanceState.ranges,selections:appearanceState.selections,
       skin:inlineBoard.getSkin(),sections:inlineBoard.getSections(),
