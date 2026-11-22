@@ -32,6 +32,7 @@ export async function installSpImagenMediaSlots(options) {
   const subscriptions = [];
   let openMenu = null;
   let promptPopup = null;
+  let imageViewer = null;
   let guideDemo = null;
   let wand = null;
 
@@ -236,6 +237,39 @@ export async function installSpImagenMediaSlots(options) {
     .guide-saved { border: 1px dashed var(--ms-line); border-radius: 7px; font-size: 16px; }
     .guide-result { margin-block: 8px; }
     .guide-result p { white-space: normal; margin: 6px 4px; }
+    :host([data-ms="image-viewer"]) {
+      position: fixed !important; inset: 0 !important;
+      inline-size: 100vw !important; block-size: 100dvh !important;
+      z-index: 2147482600 !important; background: transparent !important;
+      overflow: hidden !important;
+    }
+    .image-viewer-backdrop {
+      display: grid; place-items: center; position: absolute; inset: 0;
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+        max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      background: rgba(12, 9, 13, .88);
+      cursor: zoom-out;
+    }
+    .image-viewer-stage {
+      position: relative; display: grid; place-items: center;
+      inline-size: fit-content; max-inline-size: 100%; max-block-size: 100%;
+      min-inline-size: 0; min-block-size: 0;
+      cursor: default;
+    }
+    .image-viewer-stage .image-viewer-image {
+      display: block; inline-size: auto; block-size: auto;
+      max-inline-size: min(96vw, 1400px); max-block-size: calc(100dvh - 48px);
+      object-fit: contain; border-radius: 6px;
+      box-shadow: 0 12px 45px rgba(0,0,0,.35);
+    }
+    .image-viewer-close {
+      position: absolute; top: 7px; right: 7px; z-index: 1;
+      display: grid; place-items: center; inline-size: 42px; block-size: 42px;
+      border-radius: 12px; border: 1px solid rgba(255,255,255,.6);
+      background: rgba(18,14,18,.75); color: #fff; font-size: 27px;
+      text-align: center;
+    }
+    .image-viewer-close:hover { background: rgba(18,14,18,.95); }
     *, *::before, *::after { box-sizing: border-box; }
     button {
       appearance: none;
@@ -350,6 +384,33 @@ export async function installSpImagenMediaSlots(options) {
     if (sheet) root.adoptedStyleSheets = [sheet];
     else root.append(element('style', '', uiCss));
     return { node, root };
+  }
+
+  function closeImageViewer() {
+    const previous=imageViewer;
+    imageViewer=null;
+    previous?.node.remove();
+    if(previous?.anchor?.isConnected)previous.anchor.focus({preventScroll:true});
+  }
+  function showImageViewer(anchor,src,label) {
+    if(!safeUrl(src))return;
+    closeToolsMenu();
+    closeImageViewer();
+    const {node,root}=component('image-viewer');
+    node.setAttribute('role','dialog');
+    node.setAttribute('aria-modal','true');
+    node.setAttribute('aria-label','Просмотр изображения · '+label);
+    const backdrop=element('div','image-viewer-backdrop');
+    const stage=element('div','image-viewer-stage');
+    const image=element('img','image-viewer-image');
+    image.src=src;image.alt=label;
+    const close=element('button','image-viewer-close','×');
+    close.title='Закрыть просмотр';close.setAttribute('aria-label','Закрыть просмотр изображения');
+    close.addEventListener('click',closeImageViewer);
+    backdrop.addEventListener('click',event=>{if(event.target===backdrop)closeImageViewer();});
+    stage.append(image,close);backdrop.append(stage);root.append(backdrop);
+    doc.body.append(node);imageViewer={node,anchor};
+    close.focus({preventScroll:true});
   }
 
   function closeToolsMenu(restoreFocus = false) {
@@ -734,7 +795,7 @@ export async function installSpImagenMediaSlots(options) {
       image.src = item.src;
       image.alt = `${displayName} · версия ${selected + 1}`;
       image.loading = 'lazy';
-      frame.addEventListener('click', () => host.open(item.src, '_blank', 'noopener'));
+      frame.addEventListener('click', () => showImageViewer(frame,item.src,image.alt));
       frame.append(image);
     } else {
       // Do not load external URLs or potentially executable protocols automatically.
@@ -1312,6 +1373,7 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   function escapeMenu(event) {
+    if(event.key==='Escape'&&imageViewer){event.preventDefault();event.stopPropagation();closeImageViewer();return;}
     if (event.key === 'Escape' && (openMenu || promptPopup)) {
       event.preventDefault();
       event.stopPropagation();
@@ -1342,7 +1404,7 @@ export async function installSpImagenMediaSlots(options) {
   host.addEventListener('resize', viewportChanged);
   host.visualViewport?.addEventListener('resize', viewportChanged);
   host.visualViewport?.addEventListener('scroll', viewportChanged);
-  const chatChanged = () => { endGuideDemo(); closeToolsMenu(); closePromptPopup(); migrateTail(); installMenuCommands(); paint(); };
+  const chatChanged = () => { endGuideDemo(); closeToolsMenu(); closePromptPopup(); closeImageViewer(); migrateTail(); installMenuCommands(); paint(); };
   const messageChanged = () => paint();
   subscribe('CHAT_CHANGED', chatChanged);
   for (const name of ['CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED']) {
@@ -1353,6 +1415,7 @@ export async function installSpImagenMediaSlots(options) {
     endGuideDemo();
     closeToolsMenu();
     closePromptPopup();
+    closeImageViewer();
     doc.removeEventListener('click', documentClick, true);
     doc.removeEventListener('keydown', escapeMenu, true);
     doc.removeEventListener('scroll', viewportChanged, true);
