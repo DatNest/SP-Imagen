@@ -106,7 +106,7 @@ test('Inline highlight board folds sections, preserves NSFW/source isolation and
  assert.equal(nsfw.nsfwChest,'');
  assert.equal(state.base,earlierBase);
  assert.equal(JSON.stringify(board.getSkin()),earlierSkin);
- const undo=board.element.querySelectorAll('button').find(b=>b.textContent==='↶ Отменить');
+ const undo=board.element.querySelectorAll('button').find(b=>b.textContent==='↶');
  undo.onclick();
  assert.equal(nsfw.nsfwChest,'small areolae');
 });
@@ -162,7 +162,7 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
  button('Под одеждой').onclick();
  const untouched=state.base;
  const beginNsfw=JSON.stringify(nsfw);
- const edit=button('✎ Редактировать порядок и разделители');
+ const edit=button('✎');
  edit.onclick();
  const group=board.element.querySelector('[data-group-name]');
  group.value='Татуировки';
@@ -202,8 +202,12 @@ test('Library import/export validation roundtrips modes, camera marks and origin
  const stored=helpers.validateMasterLibrary(doc);
  const reimported=helpers.validateMasterLibrary(JSON.parse(JSON.stringify(stored)));
  const ji=reimported.characters.ji;
- assert.equal(ji.nudeUpper,'legacy bust, stomach\n');
- assert.equal(ji.nudeLower,'legacy lower anatomy\n');
+ assert.equal(ji.nudeUpper,undefined);
+ assert.equal(ji.nudeLower,undefined);
+ const upper=ji.appearanceSkin.tags.filter(t=>(ji.appearanceSkin.selections.upper_front||[]).includes(t.id)).map(t=>t.text);
+ const lower=ji.appearanceSkin.tags.filter(t=>(ji.appearanceSkin.selections.lower_front||[]).includes(t.id)).map(t=>t.text);
+ assert.deepEqual(upper,['legacy bust','stomach']);
+ assert.deepEqual(lower,['legacy lower anatomy']);
  assert.deepEqual([ji.nsfwChest,ji.nsfwLowerFront,ji.nsfwLowerBack],Object.values(initialNsfw));
  assert.equal(ji.appearanceCatalog.modes.base.sections[0].title,'Лицо');
  assert.equal(ji.appearanceCatalog.modes.skin.sections[0].title,'Шрамы');
