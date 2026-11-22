@@ -136,8 +136,8 @@ test('Art director asks for expressive natural panel prose without numbered-list
  const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
  assert.match(result.config.prompt,/first panel: Large establishing panel/);
  assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
- assert.match(experimentalDirectorPrompt('comic'),/roughly two purposeful sentences to each panel/);
- assert.match(experimentalDirectorPrompt('story_page'),/the essential visible action and interaction/);
+ assert.match(experimentalDirectorPrompt('comic'),/positions of the participants, and central action or interaction/);
+ assert.match(experimentalDirectorPrompt('story_page'),/visually readable and coherent across the page/);
 });
 
 test('All original explicit intimacy guidelines are included verbatim in test modes only',()=>{
@@ -157,27 +157,28 @@ test('All original explicit intimacy guidelines are included verbatim in test mo
 });
 
 
-test('All test formats balance compact scene staging with detailed cast actions',()=>{
+test('All test formats keep spatial scene staging and fine character details in their dedicated fields',()=>{
  const stagedScene='Top wide panel: a sunny courtyard with laundry and a wooden porch, Ji stands by the railing above Aang, seen from a low angle. She makes a playful twirl toward him while he looks up, caught off guard by her smile. Bottom inset: a close view of their hands as Aang reaches to take her hand.';
+ const preciseAction='Panel 1: Aang blushes, his fingers gripping his staff while his gaze stays on Ji; the folds of his robe shift as he leans forward.';
  for(const kind of ['snapshot','comic','story_page']){
   const instructions=experimentalDirectorPrompt(kind,{postCount:4});
-  assert.match(instructions,/scene: describe the full composition with clear visual staging/);
-  assert.match(instructions,/write about two focused sentences/);
-  assert.match(instructions,/central action or interaction with one defining pose or expression/);
-  assert.match(instructions,/action provides each character’s own panel-specific position/);
-  if(kind==='snapshot')assert.match(instructions,/a few focused sentences for setting, camera, lighting/);
-  else assert.match(instructions,/roughly two purposeful sentences to each panel/);
-  assert.doesNotMatch(instructions,/scene: fully direct the image|one short phrase per panel|fully stage every panel|visible background briefly in scene/);
+  assert.match(instructions,/scene: stage the complete visual composition/);
+  assert.match(instructions,/where the participants are in relation to one another/);
+  assert.match(instructions,/central action or interaction connecting them/);
+  assert.match(instructions,/action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/);
+  assert.doesNotMatch(instructions,/two focused sentences|roughly two purposeful sentences|a few focused sentences|Keep one short phrase per panel/);
+  if(kind==='snapshot')assert.match(instructions,/relative positions of the participants, and the central action or interaction/);
+  else assert.match(instructions,/positions of the participants, and central action or interaction/);
   const data=sample();
   data.scene=stagedScene;
   if(kind==='snapshot')data.bubbles=[];
-  data.characters[0].action='Panel 1: Aang blushes, his fingers gripping his staff while his gaze stays on Ji';
+  data.characters[0].action=preciseAction;
   const result=parseExperimentalDirector(JSON.stringify(data),{kind});
   const prompt=result.config.prompt;
-  assert.equal(prompt.split(stagedScene).length-1,1,kind+' scene retained verbatim');
+  assert.equal(prompt.split(stagedScene).length-1,1,kind+' scene preserved exactly');
+  assert.equal(prompt.split(preciseAction).length-1,1,kind+' fine detail preserved exactly');
   assert.ok(prompt.indexOf(stagedScene)<prompt.indexOf('| boy, Clark Kent'),kind);
-  assert.equal(prompt.split(data.characters[0].action).length-1,1,kind+' precise character action retained');
-  assert.ok(prompt.indexOf(data.characters[0].action)>prompt.indexOf('| boy, Clark Kent'),kind);
+  assert.ok(prompt.indexOf(preciseAction)>prompt.indexOf('| boy, Clark Kent'),kind);
   assert.ok(prompt.includes('panel borders: '+data.borders),kind);
   assert.equal(validateImagePromptLayout(prompt,kind),prompt,kind);
  }
