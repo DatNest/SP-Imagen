@@ -100,3 +100,24 @@ test('Guide navigates real three-mode library and targets the actual floating sw
  assert.match(gallery,/root\?\.querySelector\('\.text-mode-toggle'\)/);
  assert.doesNotMatch(index,/'library-body': 'Отметины и тело'/);
 });
+
+test('Style selection and activation update existing list nodes rather than recreating the list',()=>{
+ const index=read('index.js');
+ const start=index.indexOf('function openStyleLibrary(');
+ const end=index.indexOf('async function openLibrary()',start);
+ assert.ok(start>=0&&end>start);
+ const body=index.slice(start,end);
+ assert.match(body,/const syncListState = \(\) =>/);
+ assert.match(body,/summary\.onclick = \(\) => \{ selectedId = style\.id; syncListState\(\); syncEditor\(\); \}/);
+ assert.match(body,/selectedId = style\.id; persist\(\); syncListState\(\); syncEditor\(\)/);
+ assert.match(body,/library\.scrollTop = scrollTop/);
+});
+test('Cast picker avoids resetting the list when an asynchronous save succeeds',()=>{
+ const runtime=read('runtime.js');
+ const start=runtime.indexOf('function createChatCastPicker(');
+ const end=runtime.indexOf('function confirmKeepingDraft(',start);
+ const body=runtime.slice(start,end);
+ assert.ok(start>=0&&end>start);
+ assert.match(body,/if\(failed\)render\(\)/);
+ assert.match(body,/list\.refresh\(\)/);
+});
