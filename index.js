@@ -1,4 +1,5 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
+import { resolveImageStyle } from './image-style-selection.js';
 import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
@@ -18,7 +19,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.16';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.17';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -1103,11 +1104,27 @@ async function showGuideSection(view) {
             const api = await getLibraryRuntime();
             api.openFirstVisibleRecordForGuide();
         }
-        const tabNames = { 'library-appearance': 'Внешность', 'library-aliases': 'Другие имена', 'library-prompt': 'Данные для промпта', 'library-body': 'Отметины и тело' };
+        const tabNames = {
+            'library-appearance':'Внешность',
+            'library-skin':'Внешность',
+            'library-nsfw':'Внешность',
+            'library-aliases':'Другие имена',
+            'library-prompt':'Данные для промпта',
+        };
         const tab = tabNames[view];
         if (tab) {
             const element = [...libraryOverlay.querySelectorAll('[role="tab"]')].find(node => node.textContent.trim() === tab);
             element?.click();
+        }
+        // The tour changes only which mode is visible. It never saves or
+        // mutates the user's selected appearance tags.
+        const modeLabel = view==='library-appearance'?'Ракурсы'
+            :view==='library-skin'?'Под одеждой'
+            :view==='library-nsfw'?'NSFW':null;
+        if(modeLabel){
+            const button=[...libraryOverlay.querySelectorAll('.ness-tagboard-modes button')]
+              .find(node=>node.textContent.trim()===modeLabel);
+            button?.click();
         }
         return;
     }
@@ -1270,18 +1287,23 @@ function snapshotGenerationConfig(config, kind='snapshot') {
     };
 }
 
-async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
+async function generateImage(config, { reuseSnapshot = false, useActiveStyle = false, signal } = {}) {
     const saved = settings().novelai;
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
     const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
-    const style = snapshot?.style || activeStyle(saved) || { id: '', name: 'Без стиля', value: '' };
     const profile = profileById(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
+    const style = resolveImageStyle({
+        activeStyle:activeStyle(saved),
+        snapshotStyle:snapshot?.style,
+        useActiveStyle,
+        allowArtStyle:profile?.parser?.options?.useArtStyle!==false,
+    });
     const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
     if (!snapshot && profile?.parser?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
-        style: snapshot?.style ? style.value : (profile?.parser?.options?.useArtStyle === false ? '' : style.value),
+        style: style.value,
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
     });
@@ -1297,7 +1319,7 @@ async function generateImage(config, { reuseSnapshot = false, signal } = {}) {
         src: result.src,
         config: {
             ...config,
-            spImagenDirect: { version: 1, provider: 'novelai', style: snapshot?.style ? clone(style) : (profile?.parser?.options?.useArtStyle === false ? {id:'',name:'Без стиля',value:''} : clone(style)), settings: publicSettings, generatedSeed: result.seed },
+            spImagenDirect: { version: 1, provider: 'novelai', style: clone(style), settings: publicSettings, generatedSeed: result.seed },
         },
     };
 }

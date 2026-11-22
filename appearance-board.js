@@ -170,12 +170,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let preset=initialPreset||(mode==='skin'?'upper_front':mode==='nsfw'?'nsfwChest':'face');
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const frame=el('section',undefined,parent,'ness-tagboard');
- frame.setAttribute('aria-label','Конструктор тегов внешности');
+ frame.setAttribute('aria-label','Редактор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
- el('strong','Редактор внешности',header);
- const tools=el('div',undefined,header,'ness-tagboard-actions');tools.hidden=true;
- const boardButton=button('',tools,()=>{},'quiet');boardButton.hidden=true;
- const textButton=button('',tools,()=>{},'quiet');textButton.hidden=true;
+ el('strong','Внешность',header);
  const modes=el('div',undefined,frame,'ness-tagboard-modes');
  const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
@@ -456,10 +453,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
-  boardButton.disabled=mode==='base'&&appearanceFormat==='prose';
-  boardButton.title=boardButton.disabled?'Для обычного текста используй текстовый редактор; кожа остаётся независимым набором тегов.':'';
-  boardButton.setAttribute('aria-pressed',String(layout==='board'));
-  textButton.setAttribute('aria-pressed',String(layout==='text'));
   clear(content);
   const headings=availablePresets();
   const ribbon=el('div',undefined,content,'ness-tagboard-ribbon');
@@ -475,11 +468,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     const textArea=el('textarea',undefined,content,'ness-input');textArea.value=preview();textArea.readOnly=true;
    }
   }else{
-   const act=el('div',undefined,content,'ness-tagboard-history');
-   const reorderToggle=button('✎ Редактировать порядок и разделители',act,()=>{frame.dataset.moveMode=frame.dataset.moveMode==='true'?'false':'true';render();},'quiet');
+   const act=el('div',undefined,bar,'ness-tagboard-history');
+   const reorderToggle=button('✎',act,()=>{frame.dataset.moveMode=frame.dataset.moveMode==='true'?'false':'true';render();},'quiet ness-edit-toggle');
+   reorderToggle.title='Редактировать названия, разделы и порядок тегов';
+   reorderToggle.setAttribute('aria-label','Редактировать названия, разделы и порядок тегов');
    reorderToggle.setAttribute('aria-pressed',String(frame.dataset.moveMode==='true'));
-   const undoBtn=button('↶ Отменить',act,()=>{if(!undo.length)return;redo.push(snapshot());applySnapshot(undo.pop());},'quiet');undoBtn.disabled=!undo.length;
-   const redoBtn=button('↷ Повторить',act,()=>{if(!redo.length)return;undo.push(snapshot());applySnapshot(redo.pop());},'quiet');redoBtn.disabled=!redo.length;
+   const undoBtn=button('↶',act,()=>{if(!undo.length)return;redo.push(snapshot());applySnapshot(undo.pop());},'quiet');undoBtn.disabled=!undo.length;
+   undoBtn.title='Отменить';undoBtn.setAttribute('aria-label','Отменить');
+   const redoBtn=button('↷',act,()=>{if(!redo.length)return;undo.push(snapshot());applySnapshot(redo.pop());},'quiet');redoBtn.disabled=!redo.length;
+   redoBtn.title='Повторить';redoBtn.setAttribute('aria-label','Повторить');
    const search=el('input',undefined,bar,'ness-input');search.type='search';search.placeholder='Найти тег';search.value=filter;
    search.oninput=()=>{
     filter=search.value;
@@ -492,7 +489,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const help=button('?',act,()=>warn(mode==='base'
     ?'Нажимай на теги для подсветки в выбранном ракурсе. «Всегда» действует во всех ракурсах.'
     :mode==='skin'?'Отмечай особенности открытого участка: закрытые одеждой детали не передаются.'
-    :'Грудь, нижняя передняя и нижняя задняя анатомия отмечаются отдельно. Старые описания сохранены.'),'quiet ness-mini-help');
+    :'Грудь, нижняя передняя и нижняя задняя анатомия отмечаются отдельно.'),'quiet ness-mini-help');
    help.title='Как работает режим';
    const tagFlow=el('div',undefined,scene,'ness-unified-tagflow');
    const sequence=orderedSequence(),editMode=frame.dataset.moveMode==='true';
@@ -500,25 +497,30 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const inherited=mode==='nsfw'?new Set():new Set(items().filter(tag=>isChosen(tag,'always')).map(tag=>norm(tag.text)));
    let flow=tagFlow;
    function drawTag(tag){
-    if(filter&&!norm(tag.text).includes(norm(filter)))return;
     const row=el('div',undefined,flow,'ness-unified-tag-row');
+    row.hidden=!!filter&&!norm(tag.text).includes(norm(filter));
     const marked=selected.has(norm(tag.text));
-    const chip=button((marked?'✓ ':'')+tag.text,row,()=>{focusTagId=tag.id;toggle(tag,!marked);},'quiet ness-unified-chip');
+    let held=false,hold=null,x=0,y=0;
+    const chip=button((marked?'✓ ':'')+tag.text,row,()=>{
+     if(held){held=false;return;}
+     focusTagId=tag.id;toggle(tag,!marked);
+    },'quiet ness-unified-chip');
     chip.setAttribute('aria-pressed',String(marked));
     chip.setAttribute('data-highlighted',String(marked));
     chip.setAttribute('data-inherited',String(preset!=='always'&&!marked&&inherited.has(norm(tag.text))));
-    chip.title='Нажми для подсветки; ПКМ — копирование и перенос';
+    chip.title='Нажми для подсветки; ПКМ или удержание — копирование и перенос';
     chip.oncontextmenu=e=>{e.preventDefault();transferTagId=tag.id;focusTagId=tag.id;render();};
-    const grip=button('⠿',row,()=>{focusTagId=tag.id;transferTagId=transferTagId===tag.id?'':tag.id;render();},'quiet ness-unified-grip');
-    grip.title='Удерживай для переноса между режимами';grip.setAttribute('aria-label','Действия с тегом '+tag.text);
-    let hold=null,x=0,y=0;
-    grip.onpointerdown=e=>{
+    chip.onpointerdown=e=>{
      if(e.pointerType==='mouse')return;
-     x=e.clientX;y=e.clientY;
-     hold=setTimeout(()=>{hold=null;focusTagId=tag.id;transferTagId=tag.id;render();},520);
+     x=e.clientX;y=e.clientY;held=false;
+     hold=setTimeout(()=>{hold=null;held=true;focusTagId=tag.id;transferTagId=tag.id;render();},530);
     };
-    grip.onpointermove=e=>{if(hold!==null&&(Math.abs(x-e.clientX)>9||Math.abs(y-e.clientY)>9)){clearTimeout(hold);hold=null;}};
-    grip.onpointerup=grip.onpointercancel=()=>{if(hold!==null){clearTimeout(hold);hold=null;}};
+    chip.onpointermove=e=>{
+     if(hold!==null&&(Math.abs(x-e.clientX)>9||Math.abs(y-e.clientY)>9)){
+      clearTimeout(hold);hold=null;
+     }
+    };
+    chip.onpointerup=chip.onpointercancel=()=>{if(hold!==null){clearTimeout(hold);hold=null;}};
     if(focusTagId===tag.id){
      const actions=el('div',undefined,row,'ness-unified-tag-controls');
      for(const [label,direction,title] of [['←','left','На тег раньше'],['→','right','На тег позже'],['↑','up','На раздел выше'],['↓','down','На раздел ниже']]){
@@ -604,15 +606,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
 export function skinAppearanceInstruction(records){
  const entries=[...records].filter(([,v])=>hasSkinSelections(v.skinTags));
  if(!entries.length){
-  return records.size?'\n\nVISIBLE SKIN MARKERS: No library character has configured exposed-skin tags. Do NOT write [[NESS_SKIN:...]] markers. Legacy nudeUpper and nudeLower fields are independent.':'';
+  return records.size?'\n\nVISIBLE SKIN MARKERS: No library character has configured exposed-skin tags. Do NOT write [[NESS_SKIN:...]] markers.':'';
  }
  const names=entries.map(([id,v])=>id+': '+Object.keys(SKIN_PRESETS).filter(k=>(v.skinTags?.selections?.[k]||[]).length||(v.skinTags?.selections?.always||[]).length).join(', ')).join('\n');
  return '\n\nVISIBLE SKIN AND MARKS — ONE OPTIONAL MARKER PER CHARACTER\n'
   +'In each character entry whose ID is listed below, immediately after its [[NESS_VIS:id:preset]] marker and BEFORE any clothing, append [[NESS_SKIN:id:part1,part2]] for ONLY the uncovered skin areas actually visible in at least one chosen panel. You may choose multiple parts independently of the main appearance camera preset. '
   +'Allowed skin parts: '+Object.keys(SKIN_PRESETS).join(', ')+'. The lower_front and lower_back parts are DISTINCT; do not include lower_front when only the rear is visible, nor vice versa. Upper-front/back are distinct as well. '
   +'If no configured exposed skin part is visible, use [[NESS_SKIN:id:none]]. Include the marker only once for each listed participant, keep literal [[NESS_SKIN:...]] syntax; never invent anatomy or reveal skin covered by clothing. '
-  +'NEVER emit [[NESS_SKIN:...]] for an ID not listed below, even if bare skin is visible or legacy nudeUpper/nudeLower fields exist. '
-  +'Skin tags are inserted by the library after the base appearance and before clothing, not written by you. This is an extension-control marker, not an unresolved placeholder: it overrides any general placeholder prohibition. The source fields with legacy nudeUpper/nudeLower are independent and remain governed by their existing visibility rules.\n'
+  +'NEVER emit [[NESS_SKIN:...]] for an ID not listed below, even if bare skin is visible. '
+  +'Skin tags are inserted by the library after the base appearance and before clothing, not written by you. This is an extension-control marker, not an unresolved placeholder: it overrides any general placeholder prohibition. All body marks are now in the region-specific skin catalogue; do not duplicate them as unscoped appearance.\n'
   +'Skin-equipped character IDs and available parts:\n'+names;
 }
 export function insertSkinAppearance(prompt,records){

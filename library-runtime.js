@@ -4,6 +4,7 @@ import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
+import { migrateLegacyBodyFields, LEGACY_BODY_FIELDS } from './legacy-body-migration.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -464,6 +465,9 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(!entry||typeof entry!=='object'||Array.isArray(entry)||typeof entry.name!=='string'||!entry.name.trim()||typeof entry.base!=='string'||!entry.base.trim())throw Error('Заполни имя и постоянную внешность: '+id);
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
   if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
+  const migrated=migrateLegacyBodyFields(entry);
+  // Make the new highlighted catalogue explicit even for pre-2.9.12 cards.
+  if(migrated.changed&&!Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog={};
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
@@ -541,7 +545,11 @@ function restoreLibraryBodyFields(input){
   const names=[saved.name,...saved.aliases].map(norm),current=[entry.name,...(entry.aliases||[])].map(norm);
   if(!current.some(n=>n&&names.includes(n)))continue;
   matched=true;
+  const skin=normalizeSkinTags(entry.appearanceSkin);
   for(const key of ['nudeUpper','nudeLower']){
+   const part=key==='nudeUpper'?'upper_front':'lower_front';
+   // Never reintroduce old hardcoded recovery data after that area was migrated.
+   if((skin.selections[part]||[]).length||(skin.selections.always||[]).length)continue;
    const value=saved.fields[key];
    if(typeof value==='string'&&value.trim()&&(entry[key]===undefined||typeof entry[key]==='string'&&!entry[key].trim())){entry[key]=value;count++;}
   }
@@ -555,13 +563,13 @@ let guideOpenFirstRecord = () => false;
 async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
- let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
+ let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=Boolean(baseline&&JSON.stringify(draft)!==(typeof baseline==='string'?baseline:JSON.stringify(baseline))),busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
  const restored=restoreLibraryBodyFields(draft);
- if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;}
+ if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;dirty=false;}
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  const view=createLibraryView(document);
  const {overlay,panel,el,clear,input,area,field,button,choice,section,search,bulkActions,list,form,message,save,close}=view;
- const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта',thighMarks:'Отметины на бёдрах',kneeMarks:'Отметины на коленях',shinMarks:'Отметины на голенях',shoulderMarks:'Отметины на плечах',forearmMarks:'Отметины на предплечьях',nudeUpper:'Особенности открытого верха тела',nudeLower:'Особенности открытого низа тела'};
+ const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта'};
  const norm=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
  const status=text=>{if(message.textContent!==text)message.textContent=text;};
  let revision=0,indexedRevision=-1,searchIndex=[],currentVisibleRecords=[];
@@ -678,7 +686,7 @@ async function openLibraryEditor(){
   const identity=el('div',undefined,appearance,'ness-grid');fields.name=field(identity,labels.name,input(entry.name));
   const kind=field(identity,'Тип записи',choice([['personas','Персона'],['characters','Персонаж']],group));kind.onchange=()=>{changed(true);};
   const formatStrip=el('div',undefined,appearance,'ness-format-strip');
-  el('span','Формат описания',formatStrip,'ness-label');
+  el('span','Формат',formatStrip,'ness-label');
   const formatSwitcher=el('div',undefined,formatStrip,'ness-format-switch');
   const appearanceFormat=choice([['tags','Теги'],['prose','Текст']],entry.appearanceFormat||'tags');
   appearanceFormat.className+=' ness-format-native';
@@ -726,13 +734,22 @@ async function openLibraryEditor(){
     },
     readNsfwState:()=>nsfwState,
     writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');changed();},
-    changed,readOnly:()=>busy||done
+    changed,readOnly:()=>busy||done,
+    onLayoutChange:(layout,mode)=>{
+      formatStrip.hidden=mode!=='base';
+      fields.base.parentElement.hidden=mode!=='base'||appearanceFormat.value!=='prose';
+    }
   });
+  // Move, rather than duplicate, the format selector and the original prose input.
+  const headingBar=inlineBoard.element.querySelector('.ness-tagboard-header');
+  const editorBody=inlineBoard.element.querySelector('.ness-tagboard-body');
+  headingBar.appendChild(formatStrip);
+  inlineBoard.element.insertBefore(fields.base.parentElement,editorBody);
   const visibility={
     setFormat(next){
       const format=next==='prose'?'prose':'tags';
-      fields.base.parentElement.hidden=format!=='prose';
       inlineBoard.setAvailableFormat(format);
+      fields.base.parentElement.hidden=inlineBoard.getMode()!=='base'||format!=='prose';
       return true;
     },
     get format(){return appearanceFormat.value;},
@@ -781,27 +798,10 @@ async function openLibraryEditor(){
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
-  const body=tabs.add('Старые поля отметин');
-  el('p','Старые поля сохранены для совместимости. Для новых отметин используй режим «Под одеждой» во вкладке «Внешность».',body,'ness-note');
-  const marks=el('section',undefined,body,'ness-body-section');marks.setAttribute('data-library-body-marks','');
-  el('h4','Отметины на коже',marks);
-  el('p','Шрамы, татуировки, родинки и другие постоянные отметины. Выбери часть тела и впиши короткие английские теги через запятую. Укажи сторону, если это важно.',marks,'ness-note');
-  el('p','Например: small scar on left thigh, flower tattoo on right forearm.',marks,'ness-body-example');
-  const marksGrid=el('div',undefined,marks,'ness-grid');
-  for(const key of ['thighMarks','kneeMarks','shinMarks','shoulderMarks','forearmMarks'])fields[key]=field(marksGrid,labels[key],area(entry[key]||''));
-  const details=el('section',undefined,body,'ness-body-section');details.setAttribute('data-library-body-details','');
-  el('h4','Особенности открытого тела',details);
-  el('p','«Верх» — грудь, живот и торс. «Низ» — бёдра, таз и интимная анатомия. Записывай особенности короткими английскими тегами. Обе графы можно оставить пустыми.',details,'ness-note');
-  const bodyGrid=el('div',undefined,details,'ness-grid');
-  for(const key of ['nudeUpper','nudeLower'])fields[key]=field(bodyGrid,labels[key],area(entry[key]||''));
-  const important=el('aside',undefined,body,'ness-body-important');important.setAttribute('data-library-body-important','');important.setAttribute('role','note');
-  el('strong','ВАЖНО!',important);
-  el('p','Эти детали нужны только тогда, когда соответствующая часть тела открыта, видна в кадре и не закрыта одеждой. Если описать скрытую анатомию слишком подробно, NovelAI может попытаться показать её, оголив персонажа вопреки сцене. Для повседневной внешности используй вкладку «Внешность», а одежду описывай в ролевой или её отдельном источнике.',important);
-
-  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
+  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry)};
-  let asked=false;const remove=button('Удалить персонажа',body,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
+  let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }
  guideOpenFirstRecord = () => {
@@ -865,6 +865,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.16',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.17',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }

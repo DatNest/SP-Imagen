@@ -76,7 +76,13 @@ export function normalizeAppearanceModeCatalog(raw,base,skin,nsfw={},legacySecti
     const known=new Set([...baseTags,...skinData.tags,
       ...parseBaseTags(nsfw.nudeUpper||''),...parseBaseTags(nsfw.nudeLower||'')
     ].map(t=>key(t.text)));
-    const extras=data.tags.filter(t=>t?.text&&!known.has(key(t.text)));
+    const isAlreadyAssigned = value => {
+      const parts=String(value||'').split(/[;\r\n]+/g).map(key).filter(Boolean);
+      return !!parts.length&&parts.every(part=>known.has(part));
+    };
+    // Some older catalogues joined multiple legacy lines inside one chip.
+    // Do not re-add those already-migrated skin fragments to the base mode.
+    const extras=data.tags.filter(t=>t?.text&&!isAlreadyAssigned(t.text));
     const oldNames=new Set(modes.base.tags.map(t=>key(t.text)));
     for(const t of extras)if(!oldNames.has(key(t.text))){
       let id=String(t.id||'');if(!properId(id)||modes.base.tags.some(x=>x.id===id))id='bextra'+(modes.base.tags.length+1);
