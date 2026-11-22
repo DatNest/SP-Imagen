@@ -537,6 +537,24 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   changeMany([tag],true,false);
   after();return true;
  }
+ function addCompactPlus(parent,indexFor,sectionId=null){
+  const slot=el('span',undefined,parent,'ness-tagboard-add-slot');
+  const plus=button('＋',slot,()=>{
+   if(readOnly())return;
+   let field=slot.querySelector('.ness-tagboard-inline-add-input');
+   if(field){field.focus?.();return;}
+   field=el('input',undefined,slot,'ness-input ness-tagboard-inline-add-input');
+   field.type='text';field.placeholder='Новый тег';field.setAttribute('aria-label','Добавить тег в раздел');
+   field.onkeydown=e=>{
+    if(e.key==='Escape'){e.preventDefault?.();field.remove();plus.hidden=false;plus.focus?.();return;}
+    if(e.key==='Enter'){e.preventDefault?.();if(addTag(field.value,indexFor(),sectionId)){field.remove();}}
+   };
+   field.onblur=()=>{if(!field.value.trim()){field.remove();plus.hidden=false;}};
+   plus.hidden=true;field.focus?.();
+  },'quiet ness-tagboard-add-plus');
+  plus.title='Добавить тег здесь';plus.setAttribute('aria-label','Добавить тег здесь');
+  return slot;
+ }
  function removeTag(tag,ask=true){
   if(readOnly())return;
   if(ask&&!confirm('Удалить тег из выбранного режима и снять его назначения?'))return;
@@ -866,6 +884,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    }
   };
   let flow=el('div',undefined,tagFlow,'ness-unified-section-tags ness-unified-ungrouped');
+  if(!sectionsForMode().length)addCompactPlus(flow,()=>0);
   const sequence=orderedSequence();
   const chosen=items().filter(tag=>isChosen(tag,preset));
   const inherited=mode==='nsfw'||preset==='always'?[]:items().filter(tag=>isChosen(tag,'always')&&!isChosen(tag,preset));
@@ -919,6 +938,11 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     if(collapsed.has(key))collapsed.delete(key);else collapsed.add(key);render();
    },'quiet ness-unified-section-toggle');
    title.setAttribute('aria-expanded',String(!folded));
+   addCompactPlus(bar,()=>{
+    const tokens=orderedSequence(),start=tokens.findIndex(t=>t.kind==='divider'&&t.id===token.id);
+    const next=tokens.findIndex((t,i)=>i>start&&t.kind==='divider');
+    return tokens.slice(0,next<0?tokens.length:next).filter(t=>t.kind==='tag').length;
+   },token.id);
    const actions=el('div',undefined,bar,'ness-section-actions');
    const editSection=button('✎',actions,()=>{
     if(readOnly())return;
@@ -944,11 +968,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    bar.oncontextmenu=e=>{if(e.pointerType==='mouse')return;e.preventDefault();cancelHold();held=true;bar.dataset.actionsOpen='true';};
    flow=el('div',undefined,section,'ness-unified-section-tags');flow.hidden=folded;
   }
-  if(!items().length)el('p','Пока нет тегов. Добавь первый ниже.',tagFlow,'ness-note');
-  const add=el('div',undefined,left,'ness-unified-add');
-  const tagInput=el('input',undefined,add,'ness-input');tagInput.placeholder='Новый тег → Enter';
-  tagInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addTag(tagInput.value);}};
-  button('＋ Добавить',add,()=>addTag(tagInput.value),'quiet');
+  if(!sectionsForMode().length)addCompactPlus(flow,()=>items().length);
+  if(!items().length)el('p','Пока нет тегов — нажми +, чтобы добавить.',tagFlow,'ness-note');
   const addSection=el('div',undefined,left,'ness-tagboard-section-add');
   const groupToggle=button('＋ Новый раздел',addSection,()=>{
    groupInput.hidden=!groupInput.hidden;createGroup.hidden=groupInput.hidden;
@@ -971,6 +992,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const details=el('details',undefined,content,'ness-tagboard-preview');
   el('summary','Предпросмотр строки',details);el('p',preview(),details,'ness-tagboard-preview-text');
   restore();
+  if(toolMode==='move'&&focusTagId){
+   const active=[...content.querySelectorAll('.ness-unified-tag-row')].find(row=>row.dataset.tagId===focusTagId);
+   active?.scrollIntoView?.({block:'nearest',inline:'nearest'});
+  }
  }
 
  frame.tabIndex=-1;
