@@ -175,9 +175,11 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
  assert.equal(saved.modes.skin.sections.at(-1).title,'Татуировки');
  assert.equal(saved.modes.base.sections.length,0);
  assert.equal(saved.modes.nsfw.sections.length,0);
- const create=board.element.querySelectorAll('input').find(i=>i.placeholder==='Новый тег → Enter');
+ const plus=board.element.querySelector('.ness-tagboard-add-plus');
+ plus.onclick();
+ const create=board.element.querySelector('.ness-tagboard-inline-add-input');
  create.value='flower tattoo on right arm';
- button('＋ Добавить').onclick();
+ create.onkeydown({key:'Enter',preventDefault(){}});
  assert.ok(board.getSkin().tags.some(t=>t.text==='flower tattoo on right arm'));
  assert.equal(state.base,untouched);
  assert.equal(JSON.stringify(nsfw),beginNsfw);
@@ -278,73 +280,58 @@ test('Text editing of skin/NSFW keeps assignments and cannot change base prose f
  assert.equal(board.element.querySelectorAll('.ness-unified-chip').length,3,'Base is still in Tags mode');
 });
 
-test('Dragging a tag by its grip moves its real source order and preserves camera selection',()=>{
- const ui=makeUI();
- const preset=parseBaseTags(base);
+test('Move-mode arrows reorder actual base tags and preserve camera selections without a grip',()=>{
+ const ui=makeUI(),preset=parseBaseTags(base);
  let state={base,ranges:[],selections:{face:[preset[0]],head:[preset[0]]}};
  const catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
  catalog.modes.base.sections=[{id:'g1',title:'Лицо',before:0},{id:'g2',title:'Остальное',before:2}];
- const board=createAppearanceBoard({
-  ui,parent:ui.parent,initialSkin:skin,initialCatalog:catalog,
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skin,initialCatalog:catalog,
   readBaseState:()=>state,writeBaseState:next=>{state=next;},
-  changed:()=>{},readOnly:()=>false
- });
- const grips=board.element.querySelectorAll('.ness-tagboard-grip');
- const rows=board.element.querySelectorAll('.ness-unified-tag-row');
- assert.equal(grips.length,3);
- const priorDocument=globalThis.document;
- try{
-  globalThis.document={elementFromPoint:()=>rows[2]};
-  grips[0].onpointerdown({button:0,pointerId:3,clientX:0,clientY:0});
-  grips[0].onpointermove({pointerId:3,clientX:70,clientY:18,preventDefault(){}});
-  grips[0].onpointerup({pointerId:3});
- }finally{
-  if(priorDocument===undefined)delete globalThis.document;
-  else globalThis.document=priorDocument;
- }
- assert.deepEqual(parseBaseTags(state.base).map(t=>t.text),['long blonde hair','blue eyes','freckles']);
- assert.ok(state.selections.face.some(t=>t.text==='freckles'));
- assert.ok(state.selections.head.some(t=>t.text==='freckles'));
+  changed:()=>{},readOnly:()=>false});
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-grip').length,0);
+ const move=board.element.querySelectorAll('.ness-tagboard-tool').find(b=>b.textContent==='✥');
+ move.onclick();assert.equal(move.attributes['aria-pressed'],'true');
+ board.element.querySelectorAll('.ness-unified-chip')[0].onclick();
+ const arrows=board.element.querySelectorAll('.ness-tagboard-move-arrow');
+ const right=arrows.find(b=>b.textContent==='→');
+ right.onclick();
+ right.onclick();
+ assert.deepEqual(parseBaseTags(state.base).map(x=>x.text),['long blonde hair','blue eyes','freckles']);
+ assert.ok(state.selections.face.some(x=>x.text==='freckles'));
+ assert.ok(state.selections.head.some(x=>x.text==='freckles'));
+ assert.equal(board.element.querySelectorAll('.ness-unified-tag-row').find(row=>row.dataset.moveSelected==='true').dataset.tagId,
+  board.getCatalog().modes.base.tags.find(x=>x.text==='freckles').id);
+ board.undo();
+ assert.deepEqual(parseBaseTags(state.base).map(x=>x.text),['long blonde hair','freckles','blue eyes']);
 });
 
-test('Context menu copies independently and moves across modes without duplicate tags',()=>{
- const ui=makeUI();
- let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
- const board=createAppearanceBoard({
-  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+test('Long-press move menu transfers across modes, follows highlighted tag, and Undo reverses the transfer',()=>{
+ const ui=makeUI();let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
   readBaseState:()=>state,writeBaseState:next=>{state=next;},
-  changed:()=>{},readOnly:()=>false
- });
+  changed:()=>{},readOnly:()=>false});
  const id=board.getCatalog().modes.base.tags.find(t=>t.text==='freckles').id;
  const originalWindow=globalThis.window,originalConfirm=globalThis.confirm;
- globalThis.window={innerHeight:900};
- globalThis.confirm=()=>true;
+ globalThis.window={innerHeight:900};globalThis.confirm=()=>true;
  try{
-  const rightClick=name=>{
-   const chip=board.element.querySelectorAll('.ness-unified-chip').find(b=>b.textContent.includes(name));
-   const row=chip.parentElement;
-   row.oncontextmenu({target:{closest:()=>null},preventDefault(){}});
-   return board.element.querySelector('.ness-tagboard-context-menu');
-  };
-  let menu=rightClick('freckles');
-  menu.querySelectorAll('button').find(b=>b.textContent==='Под одеждой').onclick();
+  const move=board.element.querySelectorAll('.ness-tagboard-tool').find(b=>b.textContent==='✥');
+  move.onclick();
+  const chip=board.element.querySelectorAll('.ness-unified-chip').find(b=>b.textContent.includes('freckles'));
+  chip.parentElement.oncontextmenu({target:{closest:()=>null},preventDefault(){}});
+  const menu=board.element.querySelector('.ness-tagboard-context-menu');
+  assert.ok(menu.querySelectorAll('button').some(b=>b.textContent==='↗ Под одеждой'));
+  menu.querySelectorAll('button').find(b=>b.textContent==='↗ Под одеждой').onclick();
   assert.equal(board.getMode(),'skin');
-  const copy=board.getCatalog().modes.skin.tags.find(t=>t.text==='freckles');
-  assert.ok(copy);
-  assert.notEqual(copy.id,id);
-  assert.ok(state.base.includes('freckles'),'Copy does not remove the original');
-  assert.equal(board.getCatalog().modes.skin.tags.filter(t=>t.text==='freckles').length,1);
-  board.element.querySelectorAll('button').find(b=>b.textContent==='Ракурсы').onclick();
-  menu=rightClick('freckles');
-  menu.querySelectorAll('button').find(b=>b.textContent==='↗ Перенести').onclick();
-  menu.querySelectorAll('button').find(b=>b.textContent==='NSFW').onclick();
-  assert.equal(board.getMode(),'nsfw');
-  const moved=board.getCatalog().modes.nsfw.tags.find(t=>t.text==='freckles');
+  const moved=board.getCatalog().modes.skin.tags.find(t=>t.text==='freckles');
   assert.ok(moved);
-  assert.equal(moved.id,id,'Move preserves the tag identifier in its new mode');
+  assert.equal(moved.id,id);
+  assert.equal(board.getToolMode(),'move');
+  assert.equal(board.element.querySelectorAll('.ness-unified-tag-row').find(r=>r.dataset.tagId===id).dataset.moveSelected,'true');
   assert.ok(!parseBaseTags(state.base).some(t=>t.text==='freckles'));
-  assert.ok(!state.selections.face?.some(t=>t.text==='freckles'));
-  assert.ok(board.getCatalog().modes.skin.tags.some(t=>t.id===copy.id),'Independent copy stays');
+  board.undo();
+  assert.equal(board.getMode(),'base');
+  assert.ok(parseBaseTags(state.base).some(t=>t.text==='freckles'));
+  assert.ok(state.selections.face.some(t=>t.text==='freckles'));
  }finally{
   if(originalWindow===undefined)delete globalThis.window;else globalThis.window=originalWindow;
   if(originalConfirm===undefined)delete globalThis.confirm;else globalThis.confirm=originalConfirm;
