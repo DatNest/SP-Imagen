@@ -17,12 +17,12 @@ export function experimentalProfileFor(id){
 const CORE=[
  'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object.',
  'JSON schema:',
- '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"clear English scene staging: panel layout and camera, setting, character placement, key pose and main action or interaction in each panel","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":[{"panel":1,"speaker":"speaker name","design":"balloon shape, position, border and tail","words":"exact spoken line"}],"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"detailed positions, poses, gestures, expressions, gaze and interaction by panel"}],"lettering":[{"panel":1,"design":"visible note, sign or screen location","words":"exact visible inscription"}]}',
+ '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"clear English staging of each panel: composition, camera, visible setting, where each character is positioned, central visible action and interactions between participants","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":[{"panel":1,"speaker":"speaker name","design":"balloon shape, position, border and tail","words":"exact spoken line"}],"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"detailed positions, poses, gestures, expressions, gaze and interaction by panel"}],"lettering":[{"panel":1,"design":"visible note, sign or screen location","words":"exact visible inscription"}]}',
  'Use the supplied schema and standard JSON strings. Include every field and use empty arrays where appropriate.',
  'opening: illustration or page format and panel count. The extension calculates subject counts.',
- 'scene: describe the full composition with clear visual staging. For each panel, write about two focused sentences: first establish panel position, camera, visible setting and character placement; then show the central action or interaction with one defining pose or expression. Keep page geography and movement coherent.',
+ 'scene: stage the complete visual composition. For each panel, describe its placement on the page, camera framing, visible setting, where the participants are in relation to one another, and the central action or interaction connecting them. Keep the scene clear, expressive and spatially coherent.',
  'borders: design the actual visible frames around panels, including the edges, outline weight, ink or decorative pattern, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence.',
- 'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action provides each character’s own panel-specific position, gesture, expression, gaze, contact, clothing motion and prop interactions in equally precise visual detail.',
+ 'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props.',
  'bubbles: exact established spoken words with the speaker, panel number and a clearly outlined balloon placed inside that panel, with its tail pointing to the speaker. lettering: exact visible words on a physical object. Preserve original wording and punctuation.',
  'Follow the RP chronology, current scene and composition wishes. Keep all descriptions in English and printed words in their original language.',
  'The extension assembles the subject counts, separators, speech balloon entries and final Text: from these fields. Output the JSON object.'
@@ -30,13 +30,13 @@ const CORE=[
 const PAGE=[
  'Create a {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts with expressive artwork and coherent page layout.',
  'Comic: 2–5 complementary views of one established instant. Story Page: 2–5 panels showing 2–4 established beats in reading order.',
- 'In scene, devote roughly two purposeful sentences to each panel: layout, camera and placement; then the essential visible action and interaction. Keep the storytelling expressive and spatially coherent.',
+ 'In scene, describe each panel through its layout, camera angle, visible setting, positions of the participants, and central action or interaction. Keep the staging visually readable and coherent across the page.',
  'Give the page distinctive visible panel frames through borders, suited to the mood and composition.',
  'Select up to {{MAX_LINES}} relevant complete spoken lines, each at most {{MAX_WORDS}} words. Place each balloon in the appropriate panel.',
  '{{TEXT_POLICY}}'
 ].join('\n\n');
 const SNAPSHOT=[
- 'Create one cinematic still near the latest established state from the last {{POST_COUNT}} RP posts. In scene, use a few focused sentences for setting, camera, lighting, character placement and the central visible action. Include a defining pose, expression or physical interaction to convey the moment with clear spatial depth. Keep one cohesive instant in the image.',
+ 'Create one cinematic still near the latest established state from the last {{POST_COUNT}} RP posts. In scene, describe the visible setting, camera, lighting, relative positions of the participants, and the central action or interaction between them. Keep the composition expressive, spatially clear and focused on one cohesive instant.',
  'Set borders to an empty string unless the scene explicitly requests an illustrated frame. If an actual note/sign/screen is visually important, put its exact words in lettering.'
 ].join('\n\n');
 /**
