@@ -23,7 +23,7 @@ const CORE=[
  'scene: stage the complete visual composition. For each panel, describe its placement on the page, camera framing, visible setting, where the participants are in relation to one another, and the central action or interaction connecting them. Keep the scene clear, expressive and spatially coherent.',
  'borders: design the actual visible frames around panels, including the edges, outline weight, ink or decorative pattern, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence.',
  'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props.',
- 'bubbles: exact established spoken words with the speaker, panel number and a clearly outlined balloon placed inside that panel, with its tail pointing to the speaker. lettering: exact visible words on a physical object. Preserve original wording and punctuation.',
+ 'bubbles: give each spoken line a visible comic speech balloon in the correct panel, with its shape, ink outline, position beside the speaker, pointed tail and exact quoted words inside. lettering: exact visible words on a physical object. Preserve original wording and punctuation.',
  'Follow the RP chronology, current scene and composition wishes. Keep all descriptions in English and printed words in their original language.',
  'The extension assembles the subject counts, separators, speech balloon entries and final Text: from these fields. Output the JSON object.'
 ].join('\n\n');
@@ -191,7 +191,7 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
   .filter(([,n])=>n).map(([subject,n])=>n+subject).join(', ');
  const baseText=[[count,opening].filter(Boolean).join(', '),borders?'panel borders: '+borders:'',scene,
   ...lettering.map((x,i)=>'Lettering '+(i+1)+': within panel '+x.panel+', on the actual object, '+boundary(x.design)+', saying '+JSON.stringify(x.words)),
-  ...bubbles.map((x,i)=>'Speech bubble '+(i+1)+': within panel '+x.panel+', fully enclosed comic speech balloon with a clearly drawn unbroken outline surrounding the printed dialogue, text INSIDE the balloon, pointed attached tail ending at '+boundary(x.speaker)+'\'s mouth; '+boundary(x.design)+', '+boundary(x.speaker)+' saying '+JSON.stringify(x.words))
+  ...bubbles.map((x,i)=>'Speech bubble '+(i+1)+': In panel '+x.panel+', a visible, outlined comic speech bubble beside '+boundary(x.speaker)+'\'s face containing '+JSON.stringify(x.words)+'; '+boundary(x.design)+'; the attached tail points to '+boundary(x.speaker)+'\'s mouth')
  ].map(boundary).filter(Boolean).join('; ');
  const sections=characters.map(x=>'| '+x.subject+', '+x.name
   +(x.appearance?', '+boundary(x.appearance):'')
