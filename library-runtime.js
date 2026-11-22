@@ -680,7 +680,7 @@ async function openLibraryEditor(){
   const identity=el('div',undefined,appearance,'ness-grid');fields.name=field(identity,labels.name,input(entry.name));
   const kind=field(identity,'Тип записи',choice([['personas','Персона'],['characters','Персонаж']],group));kind.onchange=()=>{changed(true);};
   const formatStrip=el('div',undefined,appearance,'ness-format-strip');
-  el('span','Формат описания',formatStrip,'ness-label');
+  el('span','Формат',formatStrip,'ness-label');
   const formatSwitcher=el('div',undefined,formatStrip,'ness-format-switch');
   const appearanceFormat=choice([['tags','Теги'],['prose','Текст']],entry.appearanceFormat||'tags');
   appearanceFormat.className+=' ness-format-native';
@@ -728,12 +728,20 @@ async function openLibraryEditor(){
     },
     readNsfwState:()=>nsfwState,
     writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');changed();},
-    changed,readOnly:()=>busy||done
+    changed,readOnly:()=>busy||done,
+    onLayoutChange:(layout,mode)=>{
+      formatStrip.hidden=mode!=='base';
+      fields.base.parentElement.hidden=mode!=='base'||appearanceFormat.value!=='prose';
+    }
   });
+  // Move, rather than duplicate, the format selector and the original prose input.
+  const headingBar=inlineBoard.element.querySelector('.ness-tagboard-header');
+  const editorBody=inlineBoard.element.querySelector('.ness-tagboard-body');
+  headingBar.appendChild(formatStrip);
+  inlineBoard.element.insertBefore(fields.base.parentElement,editorBody);
   const visibility={
     setFormat(next){
       const format=next==='prose'?'prose':'tags';
-      fields.base.parentElement.hidden=format!=='prose';
       inlineBoard.setAvailableFormat(format);
       return true;
     },
