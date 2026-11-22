@@ -188,6 +188,23 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
 });
 
 
+test('Selecting an appearance tag retains the same catalogue nodes and scroll position',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const flow=board.element.querySelector('.ness-unified-tagflow');
+ const left=board.element.querySelector('.ness-unified-chip');
+ flow.scrollTop=130;
+ left.onclick();
+ assert.strictEqual(board.element.querySelector('.ness-unified-tagflow'),flow,'Tag click must not replace the catalogue DOM');
+ assert.equal(flow.scrollTop,130,'Scroll remains on the same tags');
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,1);
+});
+
 test('Two-column selection toggles from both the left and right, without losing other camera choices',()=>{
  const ui=makeUI();
  let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]],head:[parseBaseTags(base)[2]]}};
