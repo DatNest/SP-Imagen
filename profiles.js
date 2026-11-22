@@ -1,4 +1,5 @@
 // Independent director profiles + globally active extra director rules.
+import { EXPERIMENTAL_DIRECTOR_IDS, experimentalProfileFor } from './experimental-director.js';
 // Built-in Snapshot / Comic / Story Page remain immutable generation choices.
 export const PROFILE_KINDS=Object.freeze({snapshot:'Snapshot',comic:'Comic',story_page:'Story Page'});
 export const BUILTIN_KINDS=Object.freeze(Object.keys(PROFILE_KINDS));
@@ -62,9 +63,13 @@ export function generationFormats(state,{visibleOnly=false}={}){
   return [
     ...BUILTIN_KINDS.filter(k=>!visibleOnly||builtins[k]).map(k=>({id:k,name:PROFILE_KINDS[k],baseKind:k,builtIn:true,visible:builtins[k]})),
     ...profiles.filter(p=>!visibleOnly||p.visible).map(p=>({id:p.id,name:p.name,baseKind:p.kind,builtIn:false,visible:p.visible})),
+    ...Object.keys(EXPERIMENTAL_DIRECTOR_IDS).filter(id=>!visibleOnly||state?.experimentalModeEnabled===true).map(id=>{
+      const p=experimentalProfileFor(id);
+      return {id,name:p.name,baseKind:p.kind,builtIn:false,experimental:true,visible:state?.experimentalModeEnabled===true};
+    }),
   ];
 }
-export function baseKindFor(state,kind){return BUILTIN_KINDS.includes(kind)?kind:profileById(state,kind)?.kind||null;}
+export function baseKindFor(state,kind){return BUILTIN_KINDS.includes(kind)?kind:EXPERIMENTAL_DIRECTOR_IDS[kind]||profileById(state,kind)?.kind||null;}
 export function filterProfileSources(source,profile){
   if(!profile)return source;
   const options=profile.parser.options;
