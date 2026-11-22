@@ -1,5 +1,5 @@
 /** Ephemeral per-generation Comic / Story Page lettering mode. No persistence or workers. */
-export const isToggleableTextProfile = id => id === 'comic' || id === 'story_page';
+export const isToggleableTextProfile = id => id === 'comic' || id === 'story_page' || id === 'custom_test_comic' || id === 'custom_test_story_page';
 export function pageTextEnabled(id, requested) {
   return !isToggleableTextProfile(id) || requested !== false;
 }

@@ -9,6 +9,7 @@ import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { parseImageHtml } from './image-transport.js';
 import { normalizeImagePrompt, limitComicDialogue, validateImagePromptLayout } from './image-prompt.js';
+import { experimentalDirectorPrompt, parseExperimentalDirector } from './experimental-director.js';
 import { pageTextEnabled, verifyTextlessImagePrompt } from './page-text-mode.js';
 import { createSpImagenProgress } from './progress-ui.js';
 import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
@@ -2160,7 +2161,19 @@ const useDialogueSettings=includeText && profile?.parser?.options?.useDialogueSe
 const ratioOverride=runtimeSettings.aspectRatio?.[baseKind]||'auto';
 const ratioInstruction=ratioOverride==='auto'?'':'\n\nIMAGE RATIO: Set aspect_ratio to '+ratioOverride+' in the required JSON. Keep the original output contract unchanged.';
 const sharedRules=getExtension?.()?.getGlobalDirectorRules?.()||[];
-const systemPrompt=configuredDirectorPrompt(director.prompt,baseKind,directorSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+skinAppearanceInstruction(visibility)+npcLanguage+directorProfileGuidance({extraPrompts:sharedRules},profile)+ratioInstruction;
+const experimental=director.structured===true;
+const maxLines=baseKind==='comic'?runtimeSettings.dialogue.comicLines:runtimeSettings.dialogue.storyLines;
+const maxWords=baseKind==='comic'?runtimeSettings.dialogue.comicWords:runtimeSettings.dialogue.storyWords;
+const experimentalRules=sharedRules.filter(rule=>rule?.enabled!==false&&String(rule?.prompt||'').trim())
+ .map(rule=>String(rule.prompt)).join('\n\n');
+const systemPrompt=experimental
+ ? experimentalDirectorPrompt(baseKind,{includeText,postCount:directorSettings.posts[baseKind],maxLines:useDialogueSettings?maxLines:8,maxWords:useDialogueSettings?maxWords:40})
+   +appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))
+   +skinAppearanceInstruction(visibility)
+   +(npcLanguage?'\n\nNPC DESCRIPTIONS: keep names, bodies, and outfits in descriptive JSON fields in English. Keep in-image words in the source language.':'')
+   +(experimentalRules?'\n\nADDITIONAL ARTISTIC DIRECTIONS: apply these while filling the JSON slots, but never alter JSON field names/schema or append extra output.\n'+experimentalRules:'')
+   +(ratioOverride!=='auto'?'\n\nSet the aspect_ratio JSON property to '+ratioOverride+'.':'')
+ : configuredDirectorPrompt(director.prompt,baseKind,directorSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+skinAppearanceInstruction(visibility)+npcLanguage+directorProfileGuidance({extraPrompts:sharedRules},profile)+ratioInstruction;
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 // A fresh director request already includes the complete required format. Never
 // submit the exact same costly request twice blindly after a format mismatch.
@@ -2170,15 +2183,17 @@ requireOrigin();
 v.sp_imagen_last_director_raw=raw;
 let parsedTransport;
 try{
- parsedTransport=parseImageHtml(raw);
+ parsedTransport=experimental
+  ?parseExperimentalDirector(raw,{kind,includeText,maxLines:useDialogueSettings?maxLines:null,maxWords:useDialogueSettings?maxWords:null})
+  :parseImageHtml(raw);
  delete v.sp_imagen_last_director_error;
 }catch(error){
  v.sp_imagen_last_director_error=String(error?.message||error);
  await saveNessGenerationMetadata(st,'ошибка формата режиссёра');
- const reasoningOnly=/(?:final one.line prompt|deliver HTML|JSON escaping|reasoning|write final prompt)/i.test(raw)
+ const reasoningOnly=!experimental&&/(?:final one.line prompt|deliver HTML|JSON escaping|reasoning|write final prompt)/i.test(raw)
     && !/<(?:naicom|image_lite)\b/i.test(raw);
  if(reasoningOnly)throw new Error('Текстовая модель вернула рассуждения/черновик вместо готового HTML/JSON. NovelAI не запускался. Проверь режим reasoning и профиль подключения модели; исходный ответ сохранён в sp_imagen_last_director_raw.',{cause:error});
- throw new Error('Режиссёр вернул неподходящий формат. NovelAI не запускался. Исходный ответ сохранён в sp_imagen_last_director_raw: '+v.sp_imagen_last_director_error,{cause:error});
+ throw new Error((experimental?'Тестовый режиссёр вернул неверную структуру JSON-слотов.':'Режиссёр вернул неподходящий формат.')+' NovelAI не запускался. Исходный ответ сохранён в sp_imagen_last_director_raw: '+v.sp_imagen_last_director_error,{cause:error});
 }
 progress.set('Проверка промпта', 'Проверяю формат, подставляю внешность и применяю настройки.');
 await saveNessGenerationMetadata(st,'получен ответ режиссёра');
@@ -2190,8 +2205,8 @@ verifyTextlessImagePrompt(config.prompt,baseKind,includeText);
 // Pure structural check: prevent the legacy normalizer from interpreting
 // misplaced character sections as terminal printed Text.
 validateImagePromptLayout(config.prompt,baseKind);
-config.prompt=normalizeImagePrompt(config.prompt,{parseLettering:includeText});
-if(npcLanguage){
+if(!experimental)config.prompt=normalizeImagePrompt(config.prompt,{parseLettering:includeText});
+if(npcLanguage&&!experimental){
  progress.set('Перевод NPC', 'Перевожу только нужные описания из подготовленного NPC-блока.');
  config.prompt=await repairNpcPromptLanguage(kind,config.prompt,imageController.signal);
  requireOrigin();
@@ -2202,7 +2217,7 @@ if(visibility.size && profile?.parser?.options?.includeCharacters!==false){
 }
 // Personal composition rules are already included in the director's instructions.
 // Never prepend their raw text to the NAI5 image prompt.
-if(useDialogueSettings)config.prompt=limitComicDialogue(config.prompt,baseKind,runtimeSettings);
+if(useDialogueSettings&&!experimental)config.prompt=limitComicDialogue(config.prompt,baseKind,runtimeSettings);
 validateImagePromptLayout(config.prompt,baseKind);
 verifyTextlessImagePrompt(config.prompt,baseKind,includeText);
 config.kind=kind;

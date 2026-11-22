@@ -303,6 +303,13 @@ export async function installSpImagenMediaSlots(options) {
     .menu-empty {font-size:12px;line-height:1.45;opacity:.85;padding:8px;}
     .option-row {display:flex;align-items:center;min-inline-size:0;gap:.25em;}
     .option-row>.option {flex:1 1 auto;min-inline-size:0;}
+    .experimental-toggle {display:flex;align-items:center;justify-content:space-between;gap:12px;min-block-size:45px;padding:9px 10px;margin:3px 3px 6px;border:1px solid var(--ms-line);border-radius:9px;cursor:pointer;white-space:normal;}
+    .experimental-toggle-text {display:grid;gap:2px;min-inline-size:0;}
+    .experimental-toggle-text strong {font-size:13px;font-weight:750;}
+    .experimental-toggle-text small {font-size:11px;opacity:.8;white-space:normal;}
+    .experimental-toggle input {inline-size:18px;block-size:18px;flex:none;accent-color:var(--SmartThemeQuoteColor, #b49ccc);}
+    .experimental-heading {padding:9px 9px 3px;font-size:11px;opacity:.85;font-weight:700;letter-spacing:.03em;}
+    .experimental-profile {border-inline-start:3px solid var(--SmartThemeQuoteColor, #b49ccc);padding-inline-start:10px;}
     .text-mode-toggle {display:inline-flex;align-items:center;gap:5px;min-block-size:44px;
       padding:4px 7px;flex:none;white-space:nowrap;font-size:11px;cursor:pointer;
       border-radius:7px;border:1px solid var(--ms-line);user-select:none;}
@@ -694,16 +701,30 @@ export async function installSpImagenMediaSlots(options) {
     }
 
     const { node, root } = component('floating');
+    const testMode=Boolean(getExtension?.()?.experimentalModeEnabled);
+    const testToggle=element('label','experimental-toggle');
+    const toggleText=element('span','experimental-toggle-text');
+    toggleText.append(element('strong','',testMode?'🧪 Тест: ON':'🧪 Тест: OFF'));
+    toggleText.append(element('small','',testMode?'Тестовые профили доступны ниже':'Старые профили не изменены'));
+    const testInput=element('input');testInput.type='checkbox';testInput.checked=testMode;
+    testInput.setAttribute('aria-label','Включить тестовые профили режиссёра');
+    testInput.addEventListener('change',()=>{
+      getExtension?.()?.setExperimentalMode?.(testInput.checked);
+      closeToolsMenu();toggleToolsMenu(view);
+    });
+    testToggle.append(toggleText,testInput);root.append(testToggle);
     const available=getExtension?.()?.getVisibleGenerationProfiles?.()||KINDS.map(id=>({id,name:LABEL[id]}));
+    let testHeaderAdded=false;
     if(!available.length){const note=element('div','menu-empty','Включи хотя бы один профиль в настройках SP Imagen.');root.append(note);}
     for (const item of available) {
       const kind=item.id;
       if(!validKind(kind))continue;
-      // The per-click switch exists only for the two built-in page profiles.
+      if(item.experimental&&!testHeaderAdded){root.append(element('div','experimental-heading','ТЕСТОВЫЕ ПРОФИЛИ · JSON-СЛОТЫ'));testHeaderAdded=true;}
+      // Per-click lettering choice is ephemeral; this switch affects no saved RP text.
       // It has no listeners outside this menu and never writes chat settings.
-      const toggleable = item.builtIn !== false && (kind === 'comic' || kind === 'story_page');
+      const toggleable = (item.builtIn !== false || item.experimental===true) && ['comic','story_page'].includes(item.baseKind||kind);
       const row = toggleable ? element('div','option-row') : root;
-      const option = element('button', 'option', item.name||LABEL[kind]);
+      const option = element('button', item.experimental?'option experimental-profile':'option', item.name||LABEL[kind]);
       let showText = true;
       option.addEventListener('click', () => {
         closeToolsMenu(true);
@@ -1436,7 +1457,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 27,
-    bundleVersion: '2.9.22',
+    bundleVersion: '2.9.23',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},

@@ -12,6 +12,7 @@ import { installSpImagenMediaSlots } from './media-slots.js';
 import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
 import { SP_IMAGEN_NO_TEXT_DIRECTORS } from './no-text-directors.js';
 import { pageTextEnabled } from './page-text-mode.js';
+import { experimentalProfileFor, experimentalDirectorPrompt } from './experimental-director.js';
 import { decidePromptUpdate } from './update-policy.js';
 import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
@@ -19,7 +20,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.22';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.23';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -96,6 +97,7 @@ function settings() {
     value.codePrompts ??= {};
     value.customProfiles ??= [];
     value.activeProfiles ??= {};
+    value.experimentalModeEnabled ??= false;
     const migrated=migrateLegacyProfiles(value);
     if(migrated)context().saveSettingsDebounced?.();
     return value;
@@ -1238,6 +1240,8 @@ function openLastPrompt() {
 }
 
 function getDirector(kind,{includeText=true}={}) {
+    const experiment=experimentalProfileFor(kind);
+    if(experiment)return {name:experiment.name,prompt:experimentalDirectorPrompt(experiment.kind,{includeText}),source:'experimental',baseKind:experiment.kind,structured:true};
     const personal=profileById(settings(),kind);
     if(personal)return {name:personal.name,prompt:personal.directorPrompt,source:'custom',baseKind:personal.kind};
     if(!Object.hasOwn(PROFILE_KINDS,kind))return null;
@@ -1428,7 +1432,14 @@ const extensionApi = {
     listImageStyles,
     saveImageStyle,
     getDirector,
-    getActiveProfile: kind => profileById(settings(),kind),
+    getActiveProfile: kind => experimentalProfileFor(kind)||profileById(settings(),kind),
+    get experimentalModeEnabled(){return settings().experimentalModeEnabled===true;},
+    setExperimentalMode(enabled){
+      settings().experimentalModeEnabled=enabled===true;
+      saveSettings();
+      mediaSlots?.refresh?.();
+      return settings().experimentalModeEnabled;
+    },
     getProfileBaseKind: kind => baseKindFor(settings(),kind),
     getGenerationProfiles: () => generationFormats(settings()),
     getVisibleGenerationProfiles: () => generationFormats(settings(),{visibleOnly:true}),
