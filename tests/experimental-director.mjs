@@ -164,7 +164,7 @@ test('All test formats balance compact scene staging with detailed cast actions'
   assert.match(instructions,/scene: describe the full composition with clear visual staging/);
   assert.match(instructions,/write about two focused sentences/);
   assert.match(instructions,/central action or interaction with one defining pose or expression/);
-  assert.match(instructions,/action develops each character’s panel-specific body language/);
+  assert.match(instructions,/action provides each character’s own panel-specific position/);
   if(kind==='snapshot')assert.match(instructions,/a few focused sentences for setting, camera, lighting/);
   else assert.match(instructions,/roughly two purposeful sentences to each panel/);
   assert.doesNotMatch(instructions,/scene: fully direct the image|one short phrase per panel|fully stage every panel|visible background briefly in scene/);
