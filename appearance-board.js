@@ -3,6 +3,7 @@
  * Existing base strings and appearanceSelections offsets remain authoritative.
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
+import { openExplanation } from './onboarding.js';
 import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { normalizeAppearanceModeCatalog, NSFW_AREAS, repositionModeTag } from './appearance-mode-state.js';
 
@@ -192,6 +193,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   control.title=label;control.setAttribute('aria-label',label);
   toolButtons[id]=control;
  }
+ const toolInfo=button('?',toolModes,()=>openExplanation('Режимы тегов','✎ переименовывает теги. 🗑 удаляет тег нажатием; ↶ вернёт удалённый тег. ✥ выбирает тег для перемещения стрелками ← → ↑ ↓. Удерживание тега открывает список разделов и режимов. Активен только один инструмент. Верхняя панель закреплена при прокрутке.'),'quiet ness-tagboard-help');
+ toolInfo.title='Как работают режимы тегов';toolInfo.setAttribute('aria-label','Помощь по режимам тегов');
  const toolHistory=el('div',undefined,tools,'ness-tagboard-tool-history');
  const toolMove=el('div',undefined,tools,'ness-tagboard-tool-movement');
  toolMove.hidden=true;
