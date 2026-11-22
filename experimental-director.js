@@ -25,8 +25,8 @@ const CORE=[
  'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props.',
  '{{BUBBLE_RULE}}',
  '{{LETTERING_RULE}}',
- 'Follow the RP chronology, current scene and composition wishes. Keep all descriptions in English and printed words in their original language.',
- 'The extension assembles subject counts, separators and applicable printed text from these fields. Output the JSON object.'
+ 'Follow the RP chronology, current scene and composition wishes. Keep all visual descriptions in English. {{PRINTED_WORD_RULE}}',
+ 'The extension assembles subject counts, separators and the final image prompt from these fields. Output the JSON object.'
 ].join('\n\n');
 const PAGE=[
  'Create a {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts with expressive artwork and coherent page layout.',
@@ -82,6 +82,7 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
    ?'bubbles: give each spoken line a visible comic speech balloon in the correct panel, with its shape, ink outline, position beside the speaker, pointed tail and exact quoted words inside.':'')
   .replace('{{LETTERING_RULE}}',includeText
    ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.':'')
+  .replace('{{PRINTED_WORD_RULE}}',includeText?'Keep visible written words in their original language.':'')
   .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
