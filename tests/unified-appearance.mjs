@@ -167,9 +167,10 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
  const beginNsfw=JSON.stringify(nsfw);
  const edit=button('✎');
  edit.onclick();
+ button('＋ Новый раздел').onclick();
  const group=board.element.querySelector('[data-group-name]');
  group.value='Татуировки';
- button('＋ Новый раздел').onclick();
+ button('Создать').onclick();
  let saved=board.getCatalog();
  assert.equal(saved.modes.skin.sections.at(-1).title,'Татуировки');
  assert.equal(saved.modes.base.sections.length,0);
@@ -331,6 +332,21 @@ test('Context menu copies independently and moves across modes without duplicate
   if(originalWindow===undefined)delete globalThis.window;else globalThis.window=originalWindow;
   if(originalConfirm===undefined)delete globalThis.confirm;else globalThis.confirm=originalConfirm;
  }
+});
+
+test('Selecting and unselecting tags does not jump either scrollable column to the top',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ board.element.querySelector('.ness-unified-tagflow').scrollTop=94;
+ board.element.querySelector('.ness-tagboard-chosen-list').scrollTop=23;
+ board.element.querySelectorAll('.ness-unified-chip').find(b=>b.textContent.includes('long blonde hair')).onclick();
+ assert.equal(board.element.querySelector('.ness-unified-tagflow').scrollTop,94);
+ assert.equal(board.element.querySelector('.ness-tagboard-chosen-list').scrollTop,23);
 });
 
 test('Library import/export validation roundtrips modes, camera marks and original NSFW text',()=>{
