@@ -57,7 +57,7 @@ export function experimentalLegacyIntimacy(kind){
 const ORDINALS=['first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth'];
 /** Remove only technical numbered-list prefixes, never artistic scene content. */
 export function normalizeExperimentalSceneLabels(text){
- return String(text).replace(/(^|;\\s*|\\n+)(\\d{1,2})[.)]\\s+(?=\\S)/gu,
+ return String(text).replace(/(^|;\s*|\n+)(\d{1,2})[.)]\s+(?=\S)/gu,
   (full,prefix,index)=>prefix+(ORDINALS[Number(index)-1]||'another')+' panel: ');
 }
 export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,maxLines=2,maxWords=10}={}){
