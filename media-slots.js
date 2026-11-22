@@ -1225,6 +1225,9 @@ export async function installSpImagenMediaSlots(options) {
     const item = slot?.versions?.[slot.selected];
     const config = clone(overrideConfig || item?.config);
     if (!config) throw new Error('У этой версии не сохранён промпт.');
+    // This gallery card's profile is authoritative, even for older saved
+    // images that never stored a kind in their direct-generation snapshot.
+    config.kind = kind;
     const extension = getExtension?.();
     if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') {
       throw new Error('Для повторной генерации включи SP Imagen → NovelAI и укажи API-токен.');
