@@ -890,8 +890,8 @@
  border-right:1px solid var(--ness-library-line);
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-library-tools{
- display:flex;flex-direction:column;gap:7px;
- padding:10px 11px 9px;
+ display:flex;flex-direction:column;gap:6px;
+ padding:9px 10px 8px;
  border-bottom:1px solid var(--ness-library-line);
  max-height:45%;min-height:0;overflow-y:auto;
 }
@@ -909,8 +909,13 @@
  border-radius:11px!important;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools{
- display:flex;flex-wrap:nowrap;align-items:center;gap:5px;
+ display:flex;flex-wrap:nowrap;align-items:center;gap:4px;
  margin:0;min-width:0;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-appearance-rules-trigger{
+ flex:none;min-height:30px!important;width:30px!important;min-width:30px!important;
+ padding:3px!important;border:1px solid var(--ness-library-line)!important;
+ border-radius:9px!important;color:var(--ness-library-gold)!important;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-strip{
  flex:1 1 0;min-width:0;gap:5px;max-height:38px;min-height:31px;
@@ -1145,13 +1150,13 @@
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-columns{
  display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);
- gap:11px;border:0!important;min-width:0;
+ align-items:stretch;gap:11px;border:0!important;min-width:0;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-left,
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-right{
  padding:13px!important;border:1px solid var(--ness-library-line)!important;
  border-radius:12px;background:color-mix(in srgb,var(--ness-bg) 88%,#643c31);
- min-width:0;
+ min-width:0;min-height:0;overflow:hidden;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-pane-head{
  min-height:54px;margin-bottom:8px;
@@ -1228,7 +1233,8 @@
  border-left:1px solid var(--ness-library-line)!important;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-chosen-list{
- height:305px;max-height:43dvh;flex:0 0 auto;
+ flex:1 1 auto;height:0;min-height:0;max-height:none;
+ overscroll-behavior:contain;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-preview{
  border-top-color:var(--ness-library-line);
