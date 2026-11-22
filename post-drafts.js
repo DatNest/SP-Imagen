@@ -57,6 +57,21 @@ export function readPostDraft(ctx, index) {
     const validBrowser = validDraft(browser, message, index) ? browser : null;
     const draft = validBrowser && (!validStored || Number(validBrowser.updatedAt) > Number(validStored.updatedAt))
         ? validBrowser : validStored;
+    // Older releases could leave a "Continue" draft after an image was
+    // successfully published. A newer saved version with the same final
+    // prompt proves that this exact draft has already completed.
+    if (draft?.final?.config?.prompt) {
+        const versions=message.extra?.ness_media_slots_v2?.[draft.kind]?.versions;
+        const completed=Array.isArray(versions)&&versions.some(item=>
+            item?.config?.prompt===draft.final.config.prompt
+            && Number(item.at)>=Number(draft.updatedAt));
+        if(completed){
+            if(message.extra)delete message.extra[DRAFT_FIELD];
+            keepLocal(ctx.chatId,index,message,null);
+            saveChatSoon(ctx);
+            return null;
+        }
+    }
     if (draft && draft !== stored) {
         message.extra ||= {};
         message.extra[DRAFT_FIELD] = draft;
