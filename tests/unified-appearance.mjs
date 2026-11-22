@@ -110,8 +110,7 @@ test('Inline highlight board folds sections, preserves NSFW/source isolation and
  assert.equal(nsfw.nsfwChest,'');
  assert.equal(state.base,earlierBase);
  assert.equal(JSON.stringify(board.getSkin()),earlierSkin);
- const undo=board.element.querySelectorAll('button').find(b=>b.textContent==='↶');
- undo.onclick();
+ board.undo();
  assert.equal(nsfw.nsfwChest,'small areolae');
 });
 test('The primary character editor mounts the inline board without opening a constructor popup',()=>{
@@ -222,7 +221,7 @@ test('Two-column selection toggles from both the left and right, without losing 
  chip('freckles').onclick();
  assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,1);
  assert.ok(state.selections.face.some(t=>t.text==='freckles'));
- const rightRemove=board.element.querySelectorAll('.ness-tagboard-chosen-chip')[0].querySelectorAll('button')[0];
+ const rightRemove=board.element.querySelector('.ness-tagboard-chosen-chip');
  rightRemove.onclick();
  assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,0);
  assert.ok(state.selections.head.some(t=>t.text==='blue eyes'),'Other camera assignments survive');
