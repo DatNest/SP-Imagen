@@ -94,3 +94,26 @@ test('Approved library layout has a single board, no legacy tab or constructor C
  assert.match(board,/chip\.onpointerdown=/);
  assert.doesNotMatch(runtime,/\['thighMarks','Thigh marks/);
 });
+
+
+test('Previously combined old skin text never reappears as a base appearance tag',()=>{
+ const {validateMasterLibrary}=createSpImagenLibraryRuntime({}).utilities;
+ const input={version:1,personas:{},characters:{
+  x:{name:'X',base:'blue eyes, short hair;',
+    nudeUpper:'old scar; round birthmark',
+    appearanceCatalog:{tags:[
+      {id:'a1',text:'blue eyes'},{id:'b1',text:'old scar; round birthmark'}
+    ],sections:[]}
+  }
+ }};
+ const entry=validateMasterLibrary(input).characters.x;
+ assert.deepEqual(entry.appearanceCatalog.modes.base.tags.map(x=>x.text),['blue eyes','short hair']);
+ assert.deepEqual(entry.appearanceCatalog.modes.skin.tags.map(x=>x.text),['old scar','round birthmark']);
+ assert.equal(entry.nudeUpper,undefined);
+});
+
+test('Switching between Tags and Prose updates the visible input immediately',()=>{
+ const library=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
+ assert.match(library,/fields\.base\.parentElement\.hidden=inlineBoard\.getMode\(\)!=='base'\|\|format!=='prose'/);
+ assert.match(library,/fields\.base\.parentElement\.hidden=mode!=='base'\|\|appearanceFormat\.value!=='prose'/);
+});
