@@ -136,8 +136,8 @@ test('Art director asks for expressive natural panel prose without numbered-list
  const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
  assert.match(result.config.prompt,/first panel: Large establishing panel/);
  assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
- assert.match(experimentalDirectorPrompt('comic'),/NEVER use 1\), 2\), 3\)/);
- assert.match(experimentalDirectorPrompt('story_page'),/natural descriptive phrases WITHOUT numbered lists/);
+ assert.match(experimentalDirectorPrompt('comic'),/Keep one short phrase per panel/);
+ assert.match(experimentalDirectorPrompt('story_page'),/visible background briefly in scene/);
 });
 
 test('All original explicit intimacy guidelines are included verbatim in test modes only',()=>{
@@ -153,5 +153,44 @@ test('All original explicit intimacy guidelines are included verbatim in test mo
  const unmodified=read('official-prompts.js');
  assert.equal(unmodified,defaults,'Original prompts remain unchanged');
  const original=experimentalDirectorPrompt('comic');
- assert.match(original,/Apply ONLY when the RP explicitly establishes intimate activity among adults/);
+ assert.match(original,/For established adult intimacy, use these original scene and character guidelines/);
+});
+
+
+test('Scene plans only backgrounds and page composition; character actions carry fine physical direction',()=>{
+ const instructions=experimentalDirectorPrompt('story_page',{postCount:4});
+ assert.match(instructions,/scene: concise overall scene and page architecture/);
+ assert.match(instructions,/one short phrase per panel/);
+ assert.match(instructions,/visible background briefly in scene/);
+ assert.match(instructions,/action gives each character’s panel-specific position, movement, posture, hands, eye-lines, expressions, contact, and props/);
+ const scene='top-left wide panel: sunlit porch and linen lines; bottom full-width panel: road and distant river';
+ const data=sample();data.scene=scene;data.characters[0].action='Panel 1: hand gripping the wooden rail, shoulders tense, eyes toward Ness';
+ const assembled=parseExperimentalDirector(JSON.stringify(data),{kind:'story_page'}).config.prompt;
+ assert.equal(assembled.split(scene).length-1,1);
+ assert.equal(assembled.split(data.characters[0].action).length-1,1);
+ assert.ok(assembled.indexOf(scene)<assembled.indexOf('| boy, Clark Kent'));
+ assert.ok(assembled.indexOf(data.characters[0].action)>assembled.indexOf('| boy, Clark Kent'));
+});
+
+test('Panel border design appears visibly near page opening, before scenery, once only',()=>{
+ const data=sample();data.scene='upper wide panel: rustic porch; lower inset: distant blue mountains';
+ const result=parseExperimentalDirector(JSON.stringify(data),{kind:'comic'});
+ const prompt=result.config.prompt;
+ const borderText='panel borders: '+data.borders;
+ assert.equal(prompt.split(borderText).length-1,1);
+ assert.ok(prompt.indexOf(borderText)>prompt.indexOf('3 panels, expressive comic page'));
+ assert.ok(prompt.indexOf(borderText)<prompt.indexOf(data.scene));
+ assert.ok(prompt.indexOf(data.scene)<prompt.indexOf('Speech bubble 1:'));
+ assert.match(experimentalDirectorPrompt('comic'),/Give the page distinctive visible panel frames through borders/);
+ assert.match(experimentalDirectorPrompt('story_page'),/Give the borders a recognizable visual presence/);
+ assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
+});
+
+test('Snapshot with empty borders keeps a clean scene and legacy modules remain untouched',()=>{
+ const data=sample();data.borders='';data.bubbles=[];
+ const prompt=parseExperimentalDirector(JSON.stringify(data),{kind:'snapshot'}).config.prompt;
+ assert.ok(!prompt.includes('panel borders:'));
+ assert.ok(prompt.includes(data.scene));
+ for(const name of ['official-prompts.js','no-text-directors.js','code-prompts.js'])
+  assert.ok(read(name).length>500,'Original bundled prompt remains available: '+name);
 });
