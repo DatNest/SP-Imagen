@@ -137,3 +137,14 @@ test('Library selection updates preserve existing buttons, viewport, and sidebar
  assert.match(css,/\.ness-tagboard-columns\{\s*display:grid;grid-template-columns:[^\n]+\n align-items:stretch/);
  assert.match(library,/rulesButton\.setAttribute\('aria-label','Правила ракурсов'\)/);
 });
+
+
+test('Library filter scrolls vertically through two rows without a visible horizontal thumb',()=>{
+ const css=read('style.css'),runtime=read('library-runtime.js');
+ assert.match(css,/\.ness-tag-tools>\.ness-tag-strip\{[\s\S]*?height:59px;min-height:59px;max-height:59px!important/);
+ assert.match(css,/overflow-x:hidden!important;overflow-y:auto!important/);
+ assert.match(css,/touch-action:pan-y;-webkit-overflow-scrolling:touch/);
+ assert.match(css,/\.ness-tag-tools>\.ness-tag-strip::-webkit-scrollbar\{[\s\S]*?display:none/);
+ assert.match(runtime,/const stripScroll=view\.tagStrip\.scrollTop;/);
+ assert.match(runtime,/view\.tagStrip\.scrollTop=stripScroll;/);
+});

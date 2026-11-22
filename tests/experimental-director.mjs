@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {experimentalProfileFor,experimentalDirectorPrompt,parseExperimentalDirector,EXPERIMENTAL_DIRECTOR_IDS} from '../experimental-director.js';
+import {experimentalProfileFor,experimentalDirectorPrompt,parseExperimentalDirector,normalizeExperimentalSceneLabels,experimentalLegacyIntimacy,EXPERIMENTAL_DIRECTOR_IDS} from '../experimental-director.js';
 import {generationFormats,baseKindFor} from '../profiles.js';
 import {pageTextEnabled} from '../page-text-mode.js';
 import {validateImagePromptLayout} from '../image-prompt.js';
@@ -114,4 +114,44 @@ test('Test mode is controlled in the star menu and leaves the legacy output pars
  assert.match(runtime,/if\(useDialogueSettings&&!experimental\)/);
  assert.match(runtime,/if\(npcLanguage&&!experimental\)/);
  assert.match(runtime,/:parseImageHtml\(raw\)/);
+});
+
+
+test('Speech balloons are physically enclosed and anchored to their actual panel, not subtitles',()=>{
+ const data=sample();data.bubbles=[{panel:3,speaker:'Ness',design:'at upper right, tail to Ness',words:'Ну как? Сойдёт?'}];
+ const result=parseExperimentalDirector(JSON.stringify(data),{kind:'story_page'}),prompt=result.config.prompt;
+ assert.match(prompt,/Speech bubble 1: within panel 3, fully enclosed comic speech balloon/);
+ assert.match(prompt,/unbroken outline surrounding the printed dialogue, text INSIDE the balloon/);
+ assert.match(prompt,/tail ending at Ness's mouth/);
+ assert.match(prompt,/at upper right, tail to Ness/);
+ assert.match(prompt,/Text: Hi\n\nНу как\? Сойдёт\?$/);
+ assert.equal(validateImagePromptLayout(prompt,'story_page'),prompt);
+});
+
+test('Art director asks for expressive natural panel prose without numbered-list syntax',()=>{
+ const input='1) Large establishing panel: sunlit courtyard; 2) Quiet inset: hand holding staff; \n3) Wide panel: river';
+ const normalized=normalizeExperimentalSceneLabels(input);
+ assert.equal(normalized,'first panel: Large establishing panel: sunlit courtyard; second panel: Quiet inset: hand holding staff; \nthird panel: Wide panel: river');
+ const slots=sample();slots.scene=input;
+ const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
+ assert.match(result.config.prompt,/first panel: Large establishing panel/);
+ assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
+ assert.match(experimentalDirectorPrompt('comic'),/NEVER use 1\), 2\), 3\)/);
+ assert.match(experimentalDirectorPrompt('story_page'),/natural descriptive phrases WITHOUT numbered lists/);
+});
+
+test('All original explicit intimacy guidelines are included verbatim in test modes only',()=>{
+ const defaults=read('official-prompts.js');
+ for(const kind of ['snapshot','comic','story_page']){
+  const exact=experimentalLegacyIntimacy(kind);
+  assert.ok(exact.length>1400,kind);
+  assert.ok(experimentalDirectorPrompt(kind).includes(exact),kind+' exact original block');
+  assert.match(exact,/NSFW \/ INTIMACY CONTINUITY:/);
+  assert.match(defaults,/SP_IMAGEN_PROMPTS/);
+  if(kind!=='snapshot')assert.match(exact,/INTIMATE COMIC COMPOSITION:/);
+ }
+ const unmodified=read('official-prompts.js');
+ assert.equal(unmodified,defaults,'Original prompts remain unchanged');
+ const original=experimentalDirectorPrompt('comic');
+ assert.match(original,/Apply ONLY when the RP explicitly establishes intimate activity among adults/);
 });

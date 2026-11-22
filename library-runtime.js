@@ -626,14 +626,14 @@ async function openLibraryEditor(){
  },'icon quiet ness-appearance-rules-trigger');
  rulesButton.title='Правила ракурсов';rulesButton.setAttribute('aria-label','Правила ракурсов');
  function renderTags(){
-  const stripScroll=view.tagStrip.scrollLeft;
+  const stripScroll=view.tagStrip.scrollTop;
   view.tagStrip.hidden=!view.tagEditor.hidden;
   clear(view.tagStrip);
   const selectedTag=draft.organizer.filterTagId;
   const addFilter=(id,name,color)=>{const chip=el('button',name,view.tagStrip,'ness-tag-filter');chip.type='button';chip.setAttribute('data-tag-filter',id);chip.setAttribute('aria-pressed',String(selectedTag===id));if(color){chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',color);}chip.onclick=()=>{if(busy||draft.organizer.filterTagId===id)return;draft.organizer.filterTagId=id;changed();for(const node of view.tagStrip.querySelectorAll('[data-tag-filter]'))node.setAttribute('aria-pressed',String(node.getAttribute('data-tag-filter')===id));view.editTag.hidden=!draft.organizer.tags.some(t=>t.id===id);searchNow();};};
   addFilter('*','Все');addFilter('','Без тегов');for(const tag of draft.organizer.tags)addFilter(tag.id,tag.name,tag.color);
   view.editTag.hidden=!view.tagEditor.hidden||!draft.organizer.tags.some(t=>t.id===selectedTag);
-  view.tagStrip.scrollLeft=stripScroll;
+  view.tagStrip.scrollTop=stripScroll;
  }
  function renderBulkTags(){
   clear(view.bulkTags);if(!selected.size)return;
@@ -921,6 +921,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.24',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.25',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
