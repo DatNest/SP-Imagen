@@ -165,6 +165,6 @@ test('Library adapts to its own panel width and keeps filter and bulk tag chips 
  assert.match(css,/\.ness-library-bulk>\[data-bulk-tags\]\{\s*display:flex;flex:1 1 100%;width:100%/);
  assert.match(css,/\.ness-library-bulk>\[data-bulk-tags\]::-webkit-scrollbar\{\s*display:none/);
  assert.match(css,/\.ness-library-bulk>\.ness-row\{\s*display:flex;flex-wrap:wrap/);
- assert.match(runtime,/const bulkTags=el\('div',undefined,bulk,'ness-tag-strip'\)/);
+ assert.match(runtime,/bulkTags=el\('div',undefined,bulk,'ness-tag-strip'\)/);
  assert.match(shared,/\.ness-library-editorpane\{display:flex;flex-direction:column/);
 });
