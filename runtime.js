@@ -2174,7 +2174,7 @@ const systemPrompt=experimental
  ? experimentalDirectorPrompt(baseKind,{includeText,postCount:directorSettings.posts[baseKind],maxLines:useDialogueSettings?maxLines:8,maxWords:useDialogueSettings?maxWords:40})
    +appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))
    +skinAppearanceInstruction(visibility)
-   +(npcLanguage?'\n\nNPC DESCRIPTIONS: keep names, bodies, and outfits in descriptive JSON fields in English. Keep in-image words in the source language.':'')
+   +(npcLanguage?'\n\nNPC DESCRIPTIONS: keep names, bodies, and outfits in descriptive JSON fields in English.'+(includeText?' Keep in-image words in the source language.':''):'')
    +(experimentalRules?'\n\nADDITIONAL ARTISTIC DIRECTIONS: apply these while filling the JSON slots, but never alter JSON field names/schema or append extra output.\n'+experimentalRules:'')
    +(ratioOverride!=='auto'?'\n\nSet the aspect_ratio JSON property to '+ratioOverride+'.':'')
  : configuredDirectorPrompt(director.prompt,baseKind,directorSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+skinAppearanceInstruction(visibility)+npcLanguage+directorProfileGuidance({extraPrompts:sharedRules},profile)+ratioInstruction;
