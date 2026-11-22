@@ -152,3 +152,19 @@ test('Library filter scrolls vertically through two rows without a visible horiz
  assert.match(runtime,/const stripScroll=view\.tagStrip\.scrollTop;/);
  assert.match(runtime,/view\.tagStrip\.scrollTop=stripScroll;/);
 });
+
+
+test('Library adapts to its own panel width and keeps filter and bulk tag chips readable',()=>{
+ const css=read('style.css'),shared=read('shared-ui-css.js'),runtime=read('library-runtime.js');
+ assert.match(css,/container-type:inline-size;\s*container-name:spi-library/);
+ assert.match(css,/@container spi-library \(max-width:760px\)/);
+ assert.match(css,/@container spi-library \(max-width:760px\)\{[\s\S]*?\.ness-library-workspace\{\s*display:flex;flex-direction:column/);
+ assert.match(css,/@container spi-library \(max-width:760px\)\{[\s\S]*?\[data-view=editor\] \.ness-library-listpane\{\s*display:none/);
+ assert.match(css,/@container spi-library \(max-width:760px\)\{[\s\S]*?\[data-view=editor\] \.ness-library-editorpane\{\s*display:flex/);
+ assert.match(css,/\.ness-tag-tools>\.ness-tag-strip\{\s*display:flex!important;order:2;flex:1 1 100%;width:100%/);
+ assert.match(css,/\.ness-library-bulk>\[data-bulk-tags\]\{\s*display:flex;flex:1 1 100%;width:100%/);
+ assert.match(css,/\.ness-library-bulk>\[data-bulk-tags\]::-webkit-scrollbar\{\s*display:none/);
+ assert.match(css,/\.ness-library-bulk>\.ness-row\{\s*display:flex;flex-wrap:wrap/);
+ assert.match(runtime,/const bulkTags=el\('div',undefined,bulk,'ness-tag-strip'\)/);
+ assert.match(shared,/\.ness-library-editorpane\{display:flex;flex-direction:column/);
+});
