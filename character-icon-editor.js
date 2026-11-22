@@ -35,6 +35,7 @@ export function openCharacterIconEditor(D, panel, {createDialog, initial='', onS
  function load(url,objectURL=false){
   if(imageObjectURL){URL.revokeObjectURL(imageObjectURL);imageObjectURL='';}
   if(objectURL)imageObjectURL=url;
+  image=null;preview.hidden=true;status('Загружаю изображение…');
   const next=new Image();next.crossOrigin='anonymous';
   next.onload=()=>{
    if(dialog.closed)return;
@@ -100,7 +101,12 @@ export function openCharacterIconEditor(D, panel, {createDialog, initial='', onS
  }
  D.addEventListener('paste',onPaste,true);
  canvas.onpointerdown=e=>{if(!image)return;e.preventDefault();drag={id:e.pointerId,x:e.clientX,y:e.clientY,dx:offsetX,dy:offsetY};canvas.setPointerCapture?.(e.pointerId);};
- canvas.onpointermove=e=>{if(!drag||drag.id!==e.pointerId)return;offsetX=drag.dx+e.clientX-drag.x;offsetY=drag.dy+e.clientY-drag.y;paint();};
+ canvas.onpointermove=e=>{
+  if(!drag||drag.id!==e.pointerId)return;
+  const bounds=canvas.getBoundingClientRect(),factor=bounds.width?canvas.width/bounds.width:1;
+  offsetX=drag.dx+(e.clientX-drag.x)*factor;offsetY=drag.dy+(e.clientY-drag.y)*factor;
+  paint();
+ };
  canvas.onpointerup=canvas.onpointercancel=()=>{drag=null;};
  zoom.oninput=()=>paint();
  button('Удалить иконку',dialog.actions,()=>{onSave('');dialog.finish();},'quiet');
