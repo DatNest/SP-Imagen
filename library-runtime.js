@@ -749,6 +749,7 @@ async function openLibraryEditor(){
     setFormat(next){
       const format=next==='prose'?'prose':'tags';
       inlineBoard.setAvailableFormat(format);
+      fields.base.parentElement.hidden=inlineBoard.getMode()!=='base'||format!=='prose';
       return true;
     },
     get format(){return appearanceFormat.value;},
