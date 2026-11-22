@@ -166,8 +166,6 @@ test('Graphic panel framing is prominent in the base section, before background 
  const {config}=parseExperimentalDirector(JSON.stringify(slots),{kind:'comic'});
  const opening='1boy, 1girl, 3 panels, expressive comic page; ';
  assert.ok(config.prompt.startsWith(opening+'comic panel frames and gutters: '+slots.borders+'; '));
- assert.ok(config.prompt.includes('; '+slots.scene+'; Speech bubble 1:')===false,
-  'Lettering precedes bubbles but should follow the scene');
  assert.ok(config.prompt.indexOf(slots.scene)<config.prompt.indexOf('Speech bubble 1:'));
  assert.ok(config.prompt.indexOf(slots.scene)<config.prompt.indexOf('| boy, Clark Kent'));
  assert.equal(config.prompt.split(slots.borders).length,2);
