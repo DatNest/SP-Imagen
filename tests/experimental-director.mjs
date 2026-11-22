@@ -136,8 +136,8 @@ test('Art director asks for expressive natural panel prose without numbered-list
  const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
  assert.match(result.config.prompt,/first panel: Large establishing panel/);
  assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
- assert.match(experimentalDirectorPrompt('comic'),/Keep one short phrase per panel/);
- assert.match(experimentalDirectorPrompt('story_page'),/visible background briefly in scene/);
+ assert.match(experimentalDirectorPrompt('comic'),/fully stage every panel/);
+ assert.match(experimentalDirectorPrompt('story_page'),/who is where, what each person is doing and feeling/);
 });
 
 test('All original explicit intimacy guidelines are included verbatim in test modes only',()=>{
@@ -157,19 +157,29 @@ test('All original explicit intimacy guidelines are included verbatim in test mo
 });
 
 
-test('Scene plans only backgrounds and page composition; character actions carry fine physical direction',()=>{
- const instructions=experimentalDirectorPrompt('story_page',{postCount:4});
- assert.match(instructions,/scene: concise overall scene and page architecture/);
- assert.match(instructions,/one short phrase per panel/);
- assert.match(instructions,/visible background briefly in scene/);
- assert.match(instructions,/action gives each character’s panel-specific position, movement, posture, hands, eye-lines, expressions, contact, and props/);
- const scene='top-left wide panel: sunlit porch and linen lines; bottom full-width panel: road and distant river';
- const data=sample();data.scene=scene;data.characters[0].action='Panel 1: hand gripping the wooden rail, shoulders tense, eyes toward Ness';
- const assembled=parseExperimentalDirector(JSON.stringify(data),{kind:'story_page'}).config.prompt;
- assert.equal(assembled.split(scene).length-1,1);
- assert.equal(assembled.split(data.characters[0].action).length-1,1);
- assert.ok(assembled.indexOf(scene)<assembled.indexOf('| boy, Clark Kent'));
- assert.ok(assembled.indexOf(data.characters[0].action)>assembled.indexOf('| boy, Clark Kent'));
+test('All test formats fully stage characters, interactions and camera details inside scene again',()=>{
+ const detailedScene='Panel 1: Wide low-angle shot across the sunny courtyard, Ji stands at the porch railing mid-twirl with her orange sash flaring into the breeze, right hand resting on her hip, bright blue eyes fixed on Aang. Aang sits on the step below and looks up with a startled blush, fingers caught halfway through turning a clothespin; his wooden staff rests against the railing. Panel 2: Intimate over-the-shoulder inset from behind Ji, her forearm crosses the foreground as she reaches down to him, Aang lifts one hand to meet hers, laundry fluttering in the sunlight beyond.';
+ for(const kind of ['snapshot','comic','story_page']){
+  const instructions=experimentalDirectorPrompt(kind,{postCount:4});
+  assert.match(instructions,/scene: fully direct the image with vivid and precise visual storytelling/);
+  assert.match(instructions,/exact positions and movement of all visible characters/);
+  assert.match(instructions,/their poses, expressions, eye-lines, hand gestures, physical contact/);
+  assert.match(instructions,/camera perspective, framing, spatial depth, lighting|camera angle, who is where, what each person is doing and feeling/);
+  assert.match(instructions,/action provides each character’s own panel-specific position/);
+  assert.doesNotMatch(instructions,/one short phrase per panel|scene: concise overall scene|visible background briefly in scene/);
+  const data=sample();
+  data.scene=detailedScene;
+  if(kind==='snapshot')data.bubbles=[];
+  data.characters[0].action='Panel 1: Aang blushes with one hand on his staff, gaze locked on Ji';
+  const result=parseExperimentalDirector(JSON.stringify(data),{kind});
+  const prompt=result.config.prompt;
+  assert.equal(prompt.split(detailedScene).length-1,1,kind+' full visual scene retained');
+  assert.ok(prompt.indexOf(detailedScene)<prompt.indexOf('| boy, Clark Kent'),kind);
+  assert.equal(prompt.split(data.characters[0].action).length-1,1,kind+' precise character action retained');
+  assert.ok(prompt.indexOf(data.characters[0].action)>prompt.indexOf('| boy, Clark Kent'),kind);
+  assert.ok(prompt.includes('panel borders: '+data.borders),kind);
+  assert.equal(validateImagePromptLayout(prompt,kind),prompt,kind);
+ }
 });
 
 test('Panel border design appears visibly near page opening, before scenery, once only',()=>{
