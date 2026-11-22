@@ -3,6 +3,8 @@
  * The cropped data URL belongs to the library record; no remote dependencies,
  * prompt injection, additional settings keys or separate storage are needed.
  */
+import { openExplanation } from './onboarding.js';
+
 export function openCharacterIconEditor(D, panel, {createDialog, initial='', onSave}){
  let image=null, imageObjectURL='', offsetX=0, offsetY=0, drag=null;
  const dialog=createDialog(D,panel,{title:'Иконка персонажа',marker:'data-character-icon',onClose:()=>{
@@ -19,6 +21,8 @@ export function openCharacterIconEditor(D, panel, {createDialog, initial='', onS
  const zoomLabel=el('label',undefined,preview,'ness-character-icon-zoom');
  el('span','Масштаб',zoomLabel);
  const zoom=input('1','range');zoom.min='1';zoom.max='4';zoom.step='0.02';zoom.value='1';zoomLabel.appendChild(zoom);
+ const cropHelp=button('?',preview,()=>openExplanation('Масштаб и обрезка','Перемещай картинку внутри квадрата пальцем или мышью, а масштаб регулируй ползунком. Сохраняется выбранный квадратный кадр. Изображение можно загрузить файлом, вставить из буфера или по прямой ссылке; для внешней ссылки нужен доступ CORS.'),'quiet ness-character-icon-help');
+ cropHelp.title='Помощь по обрезке';cropHelp.setAttribute('aria-label','Помощь по обрезке и масштабу');
  const message=el('p','',dialog.body,'ness-note ness-character-icon-status');message.setAttribute('role','status');
  const status=text=>message.textContent=text;
  function paint(canvasTarget=canvas){
