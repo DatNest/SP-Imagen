@@ -4,6 +4,7 @@ import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, parseBaseTags, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
+import { openCharacterIconEditor } from './character-icon-editor.js';
 import { migrateLegacyBodyFields, LEGACY_BODY_FIELDS } from './legacy-body-migration.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
@@ -465,6 +466,7 @@ function validateMasterLibrary(input,{copy=true}={}){
   ids.add(id);
   if(!entry||typeof entry!=='object'||Array.isArray(entry)||typeof entry.name!=='string'||!entry.name.trim()||typeof entry.base!=='string'||!entry.base.trim())throw Error('Заполни имя и постоянную внешность: '+id);
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
+  if(entry.libraryIconData!==undefined&&(typeof entry.libraryIconData!=='string'||entry.libraryIconData.length>120000||!/^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(entry.libraryIconData)))throw Error('Некорректная иконка персонажа: '+id);
   if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
   const migrated=migrateLegacyBodyFields(entry);
   // Make the new highlighted catalogue explicit even for pre-2.9.12 cards.
@@ -510,7 +512,7 @@ function loadMasterLibrary(){
 
 // Module: library_publish
 function librarySnapshot(data){
- return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
+ return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,libraryIconData,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
 }
 async function saveMasterLibrary(input,expectedRaw){
  const st=SillyTavern.getContext();
@@ -652,11 +654,12 @@ async function openLibraryEditor(){
   const box=el('div',undefined,panel,'ness-record-tag-popover');box.setAttribute('role','dialog');box.setAttribute('aria-label','Теги записи');applyNessTheme(box,loadNessTheme());
   const heading=el('div',undefined,box,'ness-row');el('strong','Теги записи',heading);const quit=button('×',heading,()=>closeTagPicker(),'icon quiet');quit.setAttribute('aria-label','Закрыть выбор тегов');
   const choices=el('div',undefined,box,'ness-tag-choices');
-  function paint(){clear(choices);const ids=new Set(draft.organizer.characters[id]?.tagIds||[]);
+  function paint(){const scroll=choices.scrollTop;clear(choices);const ids=new Set(draft.organizer.characters[id]?.tagIds||[]);
    if(!draft.organizer.tags.length)el('p','Сначала создай тег кнопкой «+ Тег» над списком.',choices,'ness-note');
    for(const tag of draft.organizer.tags){const chip=el('button',(ids.has(tag.id)?'✓ ':'+ ')+tag.name,choices,'ness-tag-filter');chip.type='button';chip.setAttribute('data-record-tag',tag.id);chip.setAttribute('aria-pressed',String(ids.has(tag.id)));chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',tag.color);
     chip.onclick=()=>{if(busy)return;if(ids.has(tag.id))ids.delete(tag.id);else ids.add(tag.id);draft.organizer.characters[id]={...draft.organizer.characters[id],tagIds:[...ids]};if(editor?.id===id)editor.tagIds=new Set(ids);changed();renderList();editor?.refreshMetaTags?.();paint();};
    }
+   choices.scrollTop=scroll;
   }
   function outside(e){if(!box.contains(e.target)&&!anchor.contains(e.target))closeTagPicker();}
   function scroll(e){if(!box.contains(e.target))closeTagPicker();}
@@ -683,7 +686,18 @@ async function openLibraryEditor(){
   if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);const entry=draft[group][id],fields={};
   const heading=el('div',undefined,form,'ness-editor-heading');
   const identityCard=el('div',undefined,heading,'ness-editor-identity');
-  const emblem=el('div','✦',identityCard,'ness-editor-emblem');emblem.setAttribute('aria-hidden','true');
+  const emblem=button('✦',identityCard,()=>openCharacterIconEditor(document,panel,{
+   createDialog:createNessChildDialog,initial:entry.libraryIconData||'',
+   onSave:data=>{if(data)entry.libraryIconData=data;else delete entry.libraryIconData;drawEmblem();changed();}
+  }),'ness-editor-emblem');
+  emblem.title='Выбрать или обрезать иконку персонажа';
+  emblem.setAttribute('aria-label','Изменить иконку персонажа');
+  function drawEmblem(){
+   clear(emblem);
+   if(entry.libraryIconData){const img=el('img',undefined,emblem,'ness-editor-portrait');img.src=entry.libraryIconData;img.alt='';}
+   else emblem.textContent='✦';
+  }
+  drawEmblem();
   const identity=el('div',undefined,identityCard,'ness-editor-identity-fields');
   const nameRow=el('div',undefined,identity,'ness-editor-name-row');
   fields.name=input(entry.name);fields.name.className+=' ness-editor-name-input';fields.name.setAttribute('aria-label','Имя персонажа');fields.name.placeholder='Имя персонажа';nameRow.appendChild(fields.name);
@@ -834,7 +848,7 @@ async function openLibraryEditor(){
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
   fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
-  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
+  const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&key!=='libraryIconData'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags};
   let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
