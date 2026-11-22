@@ -698,7 +698,7 @@ async function openLibraryEditor(){
   formatSwitcher.setAttribute('aria-label','Формат описания');
   const formatHelp=button('?',formatStrip,undefined,'icon quiet ness-mini-help');
   formatHelp.setAttribute('aria-label','Как работает формат описания');
-  const formatTip=view.tip(formatHelp,'Теги: единый редактор с подсветкой для ракурсов, открытой кожи и NSFW. Текст: свободное описание постоянной внешности. Переключение формата не удаляет источник.');
+  const formatTip=view.tip(formatHelp,'Теги: выбирай детали для каждого ракурса и открытого участка. Текст: редактируй описание целиком. Переключение не удаляет уже сохранённые назначения.');
   formatHelp.onclick=e=>{e.preventDefault();formatTip.toggle();};
   function updateFormatButtons(){
    formatTags.setAttribute('aria-pressed',String(appearanceFormat.value==='tags'));
@@ -736,8 +736,10 @@ async function openLibraryEditor(){
     writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');changed();},
     changed,readOnly:()=>busy||done,
     onLayoutChange:(layout,mode)=>{
-      formatStrip.hidden=mode!=='base';
-      fields.base.parentElement.hidden=mode!=='base'||appearanceFormat.value!=='prose';
+      formatStrip.hidden=false;
+      formatTags.setAttribute('aria-pressed',String(layout!=='text'));
+      formatText.setAttribute('aria-pressed',String(layout==='text'));
+      fields.base.parentElement.hidden=mode!=='base'||layout!=='text';
     }
   });
   // Move, rather than duplicate, the format selector and the original prose input.
@@ -748,9 +750,10 @@ async function openLibraryEditor(){
   const visibility={
     setFormat(next){
       const format=next==='prose'?'prose':'tags';
-      inlineBoard.setAvailableFormat(format);
-      fields.base.parentElement.hidden=inlineBoard.getMode()!=='base'||format!=='prose';
-      return true;
+      const baseMode=inlineBoard.getMode()==='base';
+      const applied=baseMode?(inlineBoard.setAvailableFormat(format),true):inlineBoard.setModeLayout(format);
+      fields.base.parentElement.hidden=!baseMode||format!=='prose';
+      return applied;
     },
     get format(){return appearanceFormat.value;},
     get value(){return {
@@ -787,7 +790,9 @@ async function openLibraryEditor(){
   };
   visibility.setFormat(appearanceFormat.value);
   function selectAppearanceFormat(next){
-   if(!visibility.setFormat(next)){appearanceFormat.value=visibility.format;updateFormatButtons();return;}
+   const baseMode=inlineBoard.getMode()==='base';
+   if(!visibility.setFormat(next))return;
+   if(!baseMode)return; // Changing the skin or NSFW text view never alters the base format.
    if(appearanceFormat.value===next)return;
    appearanceFormat.value=next;updateFormatButtons();changed();
   }
@@ -865,6 +870,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.17',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.18',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }

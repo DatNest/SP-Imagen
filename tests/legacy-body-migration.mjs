@@ -86,12 +86,15 @@ test('Approved library layout has a single board, no legacy tab or constructor C
  assert.match(library,/headingBar\.appendChild\(formatStrip\)/);
  assert.match(library,/inlineBoard\.element\.insertBefore\(fields\.base\.parentElement,editorBody\)/);
  assert.equal((library.match(/const inlineBoard=createAppearanceBoard/g)||[]).length,1);
- assert.doesNotMatch(styles,/ness-fullboard-area|ness-library-constructor|ness-tagboard-columns/);
+ assert.doesNotMatch(styles,/ness-fullboard-area|ness-library-constructor/);
+ assert.match(styles,/\.ness-tagboard-columns/);
+ assert.match(styles,/\.ness-tagboard-chosen-list/);
+ assert.match(styles,/\.ness-unified-section-tags\{[\s\S]*?flex-wrap:wrap/);
  assert.match(styles,/ness-unified-chip\[data-highlighted=true\]/);
  assert.match(board,/const basic=button\('Ракурсы'/);
  assert.match(board,/const marks=button\('Под одеждой'/);
  assert.match(board,/const nsfw=button\('NSFW'/);
- assert.match(board,/chip\.onpointerdown=/);
+ assert.match(board,/grip\.onpointerdown=e=>gripPointerDown/);
  assert.doesNotMatch(runtime,/\['thighMarks','Thigh marks/);
 });
 
@@ -114,6 +117,6 @@ test('Previously combined old skin text never reappears as a base appearance tag
 
 test('Switching between Tags and Prose updates the visible input immediately',()=>{
  const library=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
- assert.match(library,/fields\.base\.parentElement\.hidden=inlineBoard\.getMode\(\)!=='base'\|\|format!=='prose'/);
- assert.match(library,/fields\.base\.parentElement\.hidden=mode!=='base'\|\|appearanceFormat\.value!=='prose'/);
+ assert.match(library,/fields\.base\.parentElement\.hidden=!baseMode\|\|format!=='prose'/);
+ assert.match(library,/fields\.base\.parentElement\.hidden=mode!=='base'\|\|layout!=='text'/);
 });
