@@ -60,7 +60,7 @@ test('Existing nudeUpper/lower text survives without automatic anatomy guessing'
 
 function makeUI(){
  class E{
-  constructor(type,text='',parent=null,name=''){this.type=type;this.textContent=text||'';this.value='';this.className=name||'';this.parentElement=parent;this.children=[];this.hidden=false;this.disabled=false;this.style={};this.dataset={};this.attributes={};this.eventListeners={};}
+  constructor(type,text='',parent=null,name=''){this.type=type;this.textContent=text||'';this.value='';this.className=name||'';this.parentElement=parent;this.children=[];this.hidden=false;this.disabled=false;this.style={};this.dataset={};this.attributes={};this.eventListeners={};this.classList={add:(...names)=>{this.className=[...new Set([...this.className.split(' ').filter(Boolean),...names])].join(' ');},remove:(...names)=>{this.className=this.className.split(' ').filter(n=>!names.includes(n)).join(' ');}};}
   appendChild(child){child.parentElement=this;this.children.push(child);return child}
   setAttribute(name,value){this.attributes[name]=String(value)}
   addEventListener(name,fn){this.eventListeners[name]=fn}
@@ -69,7 +69,10 @@ function makeUI(){
   focus(){}
   select(){}
   remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(x=>x!==this)}
-  closest(){return null}
+  contains(target){for(let p=target;p;p=p.parentElement)if(p===this)return true;return false}
+  closest(selector){for(let p=this;p;p=p.parentElement)if(selector.startsWith('.')&&p.className.split(' ').includes(selector.slice(1)))return p;return null}
+  getBoundingClientRect(){return {top:0,bottom:200,left:0,right:300,width:100,height:40}}
+  setPointerCapture(){}
  }
  const parent=new E('div');
  const el=(type,text,p=undefined,name='')=>{const node=new E(type,text,p||null,name);if(p)p.appendChild(node);return node};
