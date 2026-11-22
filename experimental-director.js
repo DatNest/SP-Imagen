@@ -17,22 +17,22 @@ export function experimentalProfileFor(id){
 const CORE=[
  'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object.',
  'JSON schema:',
- '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"clear English staging of each panel: composition, camera, visible setting, where each character is positioned, central visible action and interactions between participants","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":[{"panel":1,"speaker":"speaker name","design":"balloon shape, position, border and tail","words":"exact spoken line"}],"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"detailed positions, poses, gestures, expressions, gaze and interaction by panel"}],"lettering":[{"panel":1,"design":"visible note, sign or screen location","words":"exact visible inscription"}]}',
+ '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"clear English staging of each panel: composition, camera, visible setting, where each character is positioned, central visible action and interactions between participants","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":{{BUBBLES_EXAMPLE}},"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"detailed positions, poses, gestures, expressions, gaze and interaction by panel"}],"lettering":{{LETTERING_EXAMPLE}}}',
  'Use the supplied schema and standard JSON strings. Include every field and use empty arrays where appropriate.',
  'opening: illustration or page format and panel count. The extension calculates subject counts.',
  'scene: stage the complete visual composition. For each panel, describe its placement on the page, camera framing, visible setting, where the participants are in relation to one another, and the central action or interaction connecting them. Keep the scene clear, expressive and spatially coherent.',
  'borders: design the actual visible frames around panels, including the edges, outline weight, ink or decorative pattern, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence.',
  'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props.',
- 'bubbles: give each spoken line a visible comic speech balloon in the correct panel, with its shape, ink outline, position beside the speaker, pointed tail and exact quoted words inside. lettering: exact visible words on a physical object. Preserve original wording and punctuation.',
- 'Follow the RP chronology, current scene and composition wishes. Keep all descriptions in English and printed words in their original language.',
- 'The extension assembles the subject counts, separators, speech balloon entries and final Text: from these fields. Output the JSON object.'
+ '{{BUBBLE_RULE}}',
+ '{{LETTERING_RULE}}',
+ 'Follow the RP chronology, current scene and composition wishes. Keep all visual descriptions in English. {{PRINTED_WORD_RULE}}',
+ 'The extension assembles subject counts, separators and the final image prompt from these fields. Output the JSON object.'
 ].join('\n\n');
 const PAGE=[
  'Create a {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts with expressive artwork and coherent page layout.',
  'Comic: 2–5 complementary views of one established instant. Story Page: 2–5 panels showing 2–4 established beats in reading order.',
  'In scene, describe each panel through its layout, camera angle, visible setting, positions of the participants, and central action or interaction. Keep the staging visually readable and coherent across the page.',
  'Give the page distinctive visible panel frames through borders, suited to the mood and composition.',
- 'Select up to {{MAX_LINES}} relevant complete spoken lines, each at most {{MAX_WORDS}} words. Place each balloon in the appropriate panel.',
  '{{TEXT_POLICY}}'
 ].join('\n\n');
 const SNAPSHOT=[
@@ -63,17 +63,30 @@ export function normalizeExperimentalSceneLabels(text){
 }
 export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,maxLines=2,maxWords=10}={}){
  check(Object.values(EXPERIMENTAL_DIRECTOR_IDS).includes(kind),'Неизвестный тестовый формат');
+ const allowBubbles=kind!=='snapshot'&&includeText;
+ const textPolicy=includeText
+  ?'Select up to {{MAX_LINES}} relevant complete spoken lines, each at most {{MAX_WORDS}} words. Place each balloon in the appropriate panel. Use lettering only if spoken or visibly written in the selected RP beat. Reproduce original speech and lettering verbatim.'
+  :'TEXT DISABLED: bubbles and lettering MUST both be empty arrays; no speech bubbles, readable writing or captions in the scene.';
  let choice=kind==='snapshot'?SNAPSHOT:PAGE
   .replaceAll('{{PAGE_KIND}}',kind==='comic'?'comic page':'sequential story page')
-  .replaceAll('{{MAX_LINES}}',String(includeText?maxLines:0))
-  .replaceAll('{{MAX_WORDS}}',String(maxWords))
-  .replaceAll('{{TEXT_POLICY}}',includeText?
-   'Use lettering only if spoken or visibly written in the selected RP beat. Reproduce original speech and lettering verbatim.' :
-   'TEXT DISABLED: bubbles and lettering MUST both be empty arrays; no speech bubbles, readable writing or captions in the scene.');
+  .replaceAll('{{TEXT_POLICY}}',textPolicy)
+  .replaceAll('{{MAX_LINES}}',String(maxLines))
+  .replaceAll('{{MAX_WORDS}}',String(maxWords));
  choice=choice.replaceAll('{{POST_COUNT}}',String(postCount));
+ const core=CORE
+  .replace('{{BUBBLES_EXAMPLE}}',allowBubbles
+   ?'[{"panel":1,"speaker":"speaker name","design":"balloon shape, position, border and tail","words":"exact spoken line"}]':'[]')
+  .replace('{{LETTERING_EXAMPLE}}',includeText
+   ?'[{"panel":1,"design":"visible note, sign or screen location","words":"exact visible inscription"}]':'[]')
+  .replace('{{BUBBLE_RULE}}',allowBubbles
+   ?'bubbles: give each spoken line a visible comic speech balloon in the correct panel, with its shape, ink outline, position beside the speaker, pointed tail and exact quoted words inside.':'')
+  .replace('{{LETTERING_RULE}}',includeText
+   ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.':'')
+  .replace('{{PRINTED_WORD_RULE}}',includeText?'Keep visible written words in their original language.':'')
+  .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
- return CORE+'\n\n'+choice+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities, bubble tail direction and syntax.';
+ return core+'\n\n'+choice+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities'+(allowBubbles?', bubble tail direction':'')+' and syntax.';
 }
 function stringField(obj,key,{empty=false,max=16000}={}){
  const v=obj?.[key];check(typeof v==='string'&&v.length<=max&&(empty||v.trim()),'Поле '+key+' пусто либо слишком длинное');
@@ -154,11 +167,10 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  for(const [field,value] of [['opening',opening],['scene',scene],['borders',borders]])noSyntax(value,field);
  check(!/\b\d+\s*(?:boys?|girls?|cats?|others?)\b/iu.test(opening),'Не пиши количество участников в opening: его посчитает расширение');
  check(Array.isArray(data.characters)&&data.characters.length<=16,'characters должен быть массивом до 16 участников');
- check(Array.isArray(data.bubbles)&&data.bubbles.length<=8,'bubbles должен быть массивом до 8 записей');
- check(Array.isArray(data.lettering)&&data.lettering.length<=16,'lettering должен быть массивом до 16 записей');
- if(base==='snapshot')check(data.bubbles.length===0,'У Snapshot не бывает Speech bubbles');
- if(!includeText)check(!data.bubbles.length&&!data.lettering.length,'В режиме без текста поля bubbles и lettering должны быть пустыми');
- if(Number.isInteger(maxLines))check(data.bubbles.length<=maxLines,'Превышен лимит количества реплик');
+ const allowBubbles=base!=='snapshot'&&includeText;
+ if(allowBubbles)check(Array.isArray(data.bubbles)&&data.bubbles.length<=8,'bubbles должен быть массивом до 8 записей');
+ if(includeText)check(Array.isArray(data.lettering)&&data.lettering.length<=16,'lettering должен быть массивом до 16 записей');
+ if(allowBubbles&&Number.isInteger(maxLines))check(data.bubbles.length<=maxLines,'Превышен лимит количества реплик');
  const characters=data.characters.map((actor,i)=>{
   check(actor&&typeof actor==='object'&&!Array.isArray(actor),'Некорректный персонаж #'+(i+1));
   check(SUBJECTS.includes(actor.subject),'Неизвестный subject у персонажа #'+(i+1));
@@ -177,12 +189,12 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
   if(field==='bubbles'&&Number.isInteger(maxWords))check((words.match(/\S+/gu)||[]).length<=maxWords,'Реплика длиннее лимита '+maxWords+' слов');
   return words;
  };
- const bubbles=data.bubbles.map((item,i)=>{
+ const bubbles=(allowBubbles?data.bubbles:[]).map((item,i)=>{
   const words=readPrinted(item,i,'bubbles'),speaker=stringField(item,'speaker',{max:140}),design=stringField(item,'design');
   noSyntax(speaker,'speaker');noSyntax(design,'bubble.design');
   return {panel:item.panel,speaker,design,words};
  });
- const lettering=data.lettering.map((item,i)=>{
+ const lettering=(includeText?data.lettering:[]).map((item,i)=>{
   const words=readPrinted(item,i,'lettering'),design=stringField(item,'design');
   noSyntax(design,'lettering.design');
   return {panel:item.panel,design,words};
