@@ -7,7 +7,6 @@
 export function validateImagePromptLayout(value,kind='comic') {
     const text=String(value??'');
     if(!text.trim())throw new Error('Итоговый промпт пуст.');
-    if(kind!=='comic'&&kind!=='story_page')return text;
     const actors=[...text.matchAll(/\|\s*(?:girl|boy|cat|other)\s*,/giu)].map(m=>m.index);
     const firstActor=actors[0]??-1;
     let inQuote=false,escaped=false;
