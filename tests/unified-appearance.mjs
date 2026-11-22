@@ -144,9 +144,9 @@ test('A divider folds without clearing highlighted selections, and shows its tag
  assert.equal(heading.attributes['aria-expanded'],'false');
  assert.equal(JSON.stringify(state.selections),before);
  const folded=board.element.querySelectorAll('.ness-unified-section-tags');
- assert.equal(folded[0].hidden,true);
+ assert.equal(folded[1].hidden,true);
  heading.onclick();
- assert.equal(board.element.querySelectorAll('.ness-unified-section-tags')[0].hidden,false);
+ assert.equal(board.element.querySelectorAll('.ness-unified-section-tags')[1].hidden,false);
 });
 
 test('Long-lived mode state tracks independent dividers and tag assignment',()=>{
@@ -166,14 +166,14 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
  edit.onclick();
  const group=board.element.querySelector('[data-group-name]');
  group.value='Татуировки';
- button('+ Разделитель').onclick();
+ button('＋ Новый раздел').onclick();
  let saved=board.getCatalog();
  assert.equal(saved.modes.skin.sections.at(-1).title,'Татуировки');
  assert.equal(saved.modes.base.sections.length,0);
  assert.equal(saved.modes.nsfw.sections.length,0);
  const create=board.element.querySelectorAll('input').find(i=>i.placeholder==='Новый тег → Enter');
  create.value='flower tattoo on right arm';
- button('+ Тег').onclick();
+ button('＋ Добавить').onclick();
  assert.ok(board.getSkin().tags.some(t=>t.text==='flower tattoo on right arm'));
  assert.equal(state.base,untouched);
  assert.equal(JSON.stringify(nsfw),beginNsfw);
