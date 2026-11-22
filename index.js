@@ -740,7 +740,7 @@ function openTextApiSettings({ back = false } = {}) {
     const temperature = input(draft.temperature, 'number'); temperature.min = '0'; temperature.max = '2'; temperature.step = '0.1'; formField(grid, 'Temperature', temperature);
     const maxTokens = input(draft.maxTokens, 'number'); maxTokens.min = '1000'; maxTokens.max = '100000'; maxTokens.step = '1000'; formField(grid, 'Максимум токенов', maxTokens);
     const streaming=input('','checkbox');streaming.checked=draft.streaming;
-    formField(grid,'Streaming · потоковый ответ',streaming,'Режиссёр получает готовый результат после завершения потока.');
+    formField(grid,'Streaming · только для SP Imagen',streaming,'Управляет потоковым ответом только при запросах SP Imagen. Не меняет Streaming основного RP-чата SillyTavern. Режиссёр получает итоговый текст после завершения потока.');
     const jailbreak=input('','checkbox');jailbreak.checked=draft.jailbreak;
     formField(grid,'Jailbreak · дополнительная system-инструкция',jailbreak,'Необязательная собственная инструкция. Может повлиять на строгий формат HTML.');
     const jailbreakText=document.createElement('textarea');jailbreakText.className='spi-short-area';jailbreakText.value=draft.jailbreakText;
