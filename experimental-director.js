@@ -110,12 +110,17 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  });
  const count=SUBJECTS.map(subject=>[subject,characters.filter(x=>x.subject===subject).length])
   .filter(([,n])=>n).map(([subject,n])=>n+subject).join(', ');
- const baseText=[count,opening,scene,borders,
+ const baseText=[[count,opening].filter(Boolean).join(', '),scene,borders,
   ...lettering.map((x,i)=>'Lettering '+(i+1)+': '+boundary(x.design)+', saying '+JSON.stringify(x.words)),
   ...bubbles.map((x,i)=>'Speech bubble '+(i+1)+': '+boundary(x.design)+', '+boundary(x.speaker)+' saying '+JSON.stringify(x.words))
  ].map(boundary).filter(Boolean).join('; ');
- const sections=characters.map(x=>'| '+[x.subject+', '+x.name,x.appearance,x.wardrobe,x.action].map(boundary).filter(Boolean).join('; '));
- const printed=[...lettering.map(x=>x.words),...bubbles.map(x=>x.words)];
+ const sections=characters.map(x=>'| '+x.subject+', '+x.name
+  +(x.appearance?', '+boundary(x.appearance):'')
+  +(x.wardrobe?'; '+boundary(x.wardrobe):'')
+  +(x.action?'; '+boundary(x.action):''));
+ // Preserve exact words. Only order copied Text: fragments by panel reading order.
+ const printed=[...lettering.map(x=>({...x,sourceOrder:0})),...bubbles.map(x=>({...x,sourceOrder:1}))]
+  .sort((a,b)=>a.panel-b.panel||a.sourceOrder-b.sourceOrder).map(x=>x.words);
  const prompt=[baseText,...sections].filter(Boolean).join(' ')+(printed.length?'\n\nText: '+printed.join('\n\n'):'');
  check(prompt.length<=45000,'Собранный промпт длиннее 45 000 символов');
  return {config:{prompt,aspect_ratio:data.aspect_ratio,image_size:'1K'},repaired:false,experimental:true};
