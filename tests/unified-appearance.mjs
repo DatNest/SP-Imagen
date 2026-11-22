@@ -62,6 +62,7 @@ function makeUI(){
  class E{
   constructor(type,text='',parent=null,name=''){this.type=type;this.textContent=text||'';this.value='';this.className=name||'';this.parentElement=parent;this.children=[];this.hidden=false;this.disabled=false;this.style={};this.dataset={};this.attributes={};this.eventListeners={};this.classList={add:(...names)=>{this.className=[...new Set([...this.className.split(' ').filter(Boolean),...names])].join(' ');},remove:(...names)=>{this.className=this.className.split(' ').filter(n=>!names.includes(n)).join(' ');}};}
   appendChild(child){child.parentElement=this;this.children.push(child);return child}
+  insertBefore(child,before){if(child.parentElement){const at=child.parentElement.children.indexOf(child);if(at>=0)child.parentElement.children.splice(at,1);}const index=this.children.indexOf(before);this.children.splice(index<0?this.children.length:index,0,child);child.parentElement=this;return child}
   setAttribute(name,value){this.attributes[name]=String(value)}
   addEventListener(name,fn){this.eventListeners[name]=fn}
   querySelector(selector){const all=this.querySelectorAll(selector);return all[0]||null}
@@ -109,8 +110,7 @@ test('Inline highlight board folds sections, preserves NSFW/source isolation and
  assert.equal(nsfw.nsfwChest,'');
  assert.equal(state.base,earlierBase);
  assert.equal(JSON.stringify(board.getSkin()),earlierSkin);
- const undo=board.element.querySelectorAll('button').find(b=>b.textContent==='↶');
- undo.onclick();
+ board.undo();
  assert.equal(nsfw.nsfwChest,'small areolae');
 });
 test('The primary character editor mounts the inline board without opening a constructor popup',()=>{
@@ -188,6 +188,23 @@ test('Long-lived mode state tracks independent dividers and tag assignment',()=>
 });
 
 
+test('Selecting an appearance tag retains the same catalogue nodes and scroll position',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const flow=board.element.querySelector('.ness-unified-tagflow');
+ const left=board.element.querySelector('.ness-unified-chip');
+ flow.scrollTop=130;
+ left.onclick();
+ assert.strictEqual(board.element.querySelector('.ness-unified-tagflow'),flow,'Tag click must not replace the catalogue DOM');
+ assert.equal(flow.scrollTop,130,'Scroll remains on the same tags');
+ assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,1);
+});
+
 test('Two-column selection toggles from both the left and right, without losing other camera choices',()=>{
  const ui=makeUI();
  let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]],head:[parseBaseTags(base)[2]]}};
@@ -204,7 +221,7 @@ test('Two-column selection toggles from both the left and right, without losing 
  chip('freckles').onclick();
  assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,1);
  assert.ok(state.selections.face.some(t=>t.text==='freckles'));
- const rightRemove=board.element.querySelectorAll('.ness-tagboard-chosen-chip')[0].querySelectorAll('button')[0];
+ const rightRemove=board.element.querySelector('.ness-tagboard-chosen-chip');
  rightRemove.onclick();
  assert.equal(board.element.querySelectorAll('.ness-tagboard-chosen-chip').length,0);
  assert.ok(state.selections.head.some(t=>t.text==='blue eyes'),'Other camera assignments survive');

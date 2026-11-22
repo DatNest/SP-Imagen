@@ -967,7 +967,23 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
  }
  function update(next,added){
   if(disposed||busy)return pending;syncChecks();const previous=ids.slice(),previousSelected=new Set(selected);ids=valid(next);if(added)selected.add(added);const roster=new Set(ids);selected=new Set([...selected].filter(id=>roster.has(id)));
-  busy=true;error.textContent='';render();pending=(async()=>{try{await persist(ids.slice());}catch(e){ids=previous;selected=previousSelected;if(!disposed)error.textContent='Список не сохранился: '+String(e?.message||e);}finally{busy=false;if(!disposed)render();}})();return pending;
+  busy=true;error.textContent='';render();pending=(async()=>{
+   let failed=false;
+   try{await persist(ids.slice());}
+   catch(e){failed=true;ids=previous;selected=previousSelected;if(!disposed)error.textContent='Список не сохранился: '+String(e?.message||e);}
+   finally{
+    busy=false;
+    if(!disposed){
+     if(failed)render();
+     else{
+      // Successful persistence changes only disabled controls, not the roster DOM.
+      for(const {cb} of checks)cb.disabled=false;
+      for(const item of current.querySelectorAll('button'))item.disabled=false;
+      list.refresh();
+     }
+    }
+   }
+  })();return pending;
  }
  addBox.ontoggle=renderResults;search.oninput=()=>{if(timer!==null)clearTimeout(timer);timer=setTimeout(renderResults,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();renderResults();}};
  update(ids);

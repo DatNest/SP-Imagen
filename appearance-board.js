@@ -199,7 +199,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function record(){undo.push(snapshot());if(undo.length>50)undo.shift();redo.length=0;historyState();}
  function undoAction(){if(readOnly()||!undo.length)return;redo.push(snapshot());applySnapshot(undo.pop());}
  function redoAction(){if(readOnly()||!redo.length)return;undo.push(snapshot());applySnapshot(redo.pop());}
- function after(){changed();render();}
+ function after(rebuild=true){changed();if(rebuild)render();else refreshSelection();}
  const availablePresets=()=>mode==='base'?{always:'✦ Показывать всегда',...Object.fromEntries(Object.entries(NESS_APPEARANCE_PRESETS).map(([id,v])=>[id,v.label]))}:mode==='skin'?{always:'✦ Для всех открытых областей',...SKIN_PRESETS}:NSFW_PRESETS;
  const baseState=()=>readBaseState();
  const baseSelected=id=>visibleAppearanceRanges(baseState().ranges,id,baseState().selections,false);
@@ -264,7 +264,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    }
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
-  after();
+  after(false);
  }
  
  const sectionsForMode=()=>modeCatalog.modes[mode].sections;
@@ -600,7 +600,87 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   };
   grip.onpointercancel=clean;
  }
+ // Assignment clicks update the existing tag nodes instead of rebuilding
+ // the entire catalogue, which preserves scroll, focus, and search state.
+ function refreshSelection(){
+  const columns=content.querySelector('.ness-tagboard-columns');
+  if(!columns){render();return;}
+  const byId=new Map(items().map(tag=>[tag.id,tag]));
+  for(const row of columns.querySelectorAll('.ness-unified-tag-row')){
+   const tag=byId.get(row.dataset.tagId),chip=row.querySelector('.ness-unified-chip');
+   if(!tag||!chip)continue;
+   const marked=isChosen(tag,preset);
+   const inherited=preset!=='always'&&mode!=='nsfw'&&!marked&&isChosen(tag,'always');
+   if(chip.dataset.highlighted!==String(marked)||chip.dataset.inherited!==String(inherited)){
+    chip.textContent=(marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text;
+    chip.setAttribute('aria-pressed',String(marked||inherited));
+    chip.setAttribute('data-highlighted',String(marked));
+    chip.setAttribute('data-inherited',String(inherited));
+   }
+  }
+  const chosen=items().filter(tag=>isChosen(tag,preset));
+  const inherited=mode==='nsfw'||preset==='always'?[]:items().filter(tag=>isChosen(tag,'always')&&!isChosen(tag,preset));
+  const right=columns.querySelector('.ness-tagboard-right');
+  const heading=right?.querySelector('.ness-tagboard-pane-head strong');
+  if(heading)heading.textContent='Выбранные теги · '+(chosen.length+inherited.length);
+  const chosenList=right?.querySelector('.ness-tagboard-chosen-list');
+  if(chosenList){
+   const scroll=chosenList.scrollTop;
+   const focused=chosenList.contains(frame.ownerDocument?.activeElement)?frame.ownerDocument.activeElement:null;
+   // Keep existing buttons mounted: destroying the focused chip on every click
+   // causes browsers to scroll the whole dialog to the beginning.
+   const direct=className=>[...chosenList.children].find(node=>node.className?.split(' ').includes(className));
+   let title=direct('ness-tagboard-overline');
+   if(!title)title=el('p',undefined,chosenList,'ness-tagboard-overline');
+   title.textContent=preset==='always'?'✦ ДЛЯ ВСЕХ РАКУРСОВ':'В ЭТОМ РАКУРСЕ / УЧАСТКЕ';
+   let flow=direct('ness-tagboard-chosen-flow');
+   if(!flow)flow=el('div',undefined,chosenList,'ness-tagboard-chosen-flow');
+   function reconcile(flow,tags,inheritedFlow=false){
+    const previous=new Map([...flow.children].filter(node=>node.dataset?.selectedTagId).map(node=>[node.dataset.selectedTagId,node]));
+    const empty=flow.querySelector('.ness-note');
+    if(tags.length)empty?.remove();
+    for(let i=0;i<tags.length;i++){
+     const tag=tags[i];let chip=previous.get(tag.id);
+     if(!chip){
+      if(inheritedFlow)chip=el('span','✦ '+tag.text,undefined,'ness-tagboard-inherited');
+      else{
+       chip=button('',undefined,()=>toggle(tag,false),'quiet ness-tagboard-chosen-chip');
+       el('span',tag.text,chip);el('span','×',chip,'ness-chosen-remove-mark');
+       chip.title='Нажми, чтобы убрать из текущего ракурса';
+       chip.setAttribute('aria-label','Убрать '+tag.text+' из этого ракурса');
+       chip.setAttribute('aria-pressed','true');
+      }
+      chip.dataset.selectedTagId=tag.id;
+     }
+     if(flow.children[i]!==chip)flow.insertBefore(chip,flow.children[i]||null);
+     previous.delete(tag.id);
+    }
+    for(const chip of previous.values())chip.remove();
+    if(!tags.length&&!flow.querySelector('.ness-note'))el('p','Пока ничего не выбрано.',flow,'ness-note');
+   }
+   reconcile(flow,chosen);
+   let inheritedTitle=chosenList.querySelector('.ness-tagboard-inherited-title');
+   let inheritedContainer=chosenList.querySelector('.ness-tagboard-inherited-flow');
+   if(inherited.length){
+    if(!inheritedTitle)inheritedTitle=el('p','✦ ДОБАВЛЯЕТСЯ ВСЕГДА',chosenList,'ness-tagboard-overline ness-tagboard-inherited-title');
+    if(!inheritedContainer)inheritedContainer=el('div',undefined,chosenList,'ness-tagboard-chosen-flow ness-tagboard-inherited-flow');
+    reconcile(inheritedContainer,inherited,true);
+   }else{inheritedTitle?.remove();inheritedContainer?.remove();}
+   if(focused&&!focused.isConnected){
+    const next=flow.querySelector('.ness-tagboard-chosen-chip');
+    if(next)next.focus({preventScroll:true});
+    else{chosenList.tabIndex=-1;chosenList.focus({preventScroll:true});}
+   }
+   chosenList.scrollTop=scroll;
+  }
+  const previewText=content.querySelector('.ness-tagboard-preview-text');
+  if(previewText)previewText.textContent=preview();
+ }
  function render(){
+  // Structural changes rebuild the board; preserve every parent viewport.
+  const ancestors=[frame.closest?.('.ness-library-editorpane'),frame.closest?.('.ness-tab-viewport'),frame.closest?.('.ness-tab-content'),frame.closest?.('#sp-imagen-review-panel')].filter(Boolean);
+  const positions=ancestors.map(node=>[node,node.scrollTop,node.scrollLeft]);
+  const restore=()=>{for(const [node,top,left] of positions){node.scrollTop=top;node.scrollLeft=left;}};
   const sameMode=renderedMode===mode;
   const tagScroll=sameMode?(content.querySelector('.ness-unified-tagflow')?.scrollTop||0):0;
   const chosenScroll=sameMode&&renderedPreset===preset?(content.querySelector('.ness-tagboard-chosen-list')?.scrollTop||0):0;
@@ -624,7 +704,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     textDraft.setAttribute('aria-label','Текст тегов режима');
     button('Применить к тегам',content,()=>flushModeText(),'quiet').title='Применить текст к тегам режима';
    }
-   return;
+   restore();return;
   }
   const columns=el('div',undefined,content,'ness-tagboard-columns');
   const left=el('section',undefined,columns,'ness-tagboard-left');
@@ -753,30 +833,16 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const chosenHeader=el('div',undefined,right,'ness-tagboard-pane-head');
   const chosenHeading=el('div',undefined,chosenHeader);
   el('span','ТЕКУЩИЙ РАКУРС / УЧАСТОК',chosenHeading,'ness-tagboard-overline');
-  el('strong','Выбранные теги · '+(chosen.length+inherited.length),chosenHeading);
+  el('strong','',chosenHeading);
   el('p',headings[preset]||preset,chosenHeading,'ness-note');
   el('span','✓',chosenHeader,'ness-tagboard-check');
-  const chosenList=el('div',undefined,right,'ness-tagboard-chosen-list');
-  el('p',preset==='always'?'✦ ДЛЯ ВСЕХ РАКУРСОВ':'В ЭТОМ РАКУРСЕ / УЧАСТКЕ',chosenList,'ness-tagboard-overline');
-  const chips=el('div',undefined,chosenList,'ness-tagboard-chosen-flow');
-  if(!chosen.length)el('p','Пока ничего не выбрано.',chips,'ness-note');
-  for(const tag of chosen){
-   const chip=button('',chips,()=>toggle(tag,false),'quiet ness-tagboard-chosen-chip');
-   el('span',tag.text,chip);
-   el('span','×',chip,'ness-chosen-remove-mark');
-   chip.title='Нажми, чтобы убрать из текущего ракурса';
-   chip.setAttribute('aria-label','Убрать '+tag.text+' из этого ракурса');
-   chip.setAttribute('aria-pressed','true');
-  }
-  if(inherited.length){
-   el('p','✦ ДОБАВЛЯЕТСЯ ВСЕГДА',chosenList,'ness-tagboard-overline');
-   const inheritedChips=el('div',undefined,chosenList,'ness-tagboard-chosen-flow');
-   for(const tag of inherited)el('span','✦ '+tag.text,inheritedChips,'ness-tagboard-inherited');
-  }
+  el('div',undefined,right,'ness-tagboard-chosen-list');
+  refreshSelection();
   el('p',preset==='always'?'Эти теги появляются во всех ракурсах данного режима.':'Слева — добавить или убрать. Справа — убрать через ×.',right,'ness-tagboard-right-hint');
-  tagFlow.scrollTop=tagScroll;chosenList.scrollTop=chosenScroll;
+  tagFlow.scrollTop=tagScroll;right.querySelector('.ness-tagboard-chosen-list').scrollTop=chosenScroll;
   const details=el('details',undefined,content,'ness-tagboard-preview');
   el('summary','Предпросмотр строки',details);el('p',preview(),details,'ness-tagboard-preview-text');
+  restore();
  }
 
  frame.tabIndex=-1;

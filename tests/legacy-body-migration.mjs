@@ -84,7 +84,7 @@ test('Approved library layout has a single board, no legacy tab or constructor C
  assert.doesNotMatch(library,/tabs\.add\(['"]Старые поля отметин/);
  assert.doesNotMatch(library,/const body=tabs\.add/);
  assert.match(library,/headingBar\.appendChild\(formatStrip\)/);
- assert.match(library,/inlineBoard\.element\.insertBefore\(fields\.base\.parentElement,editorBody\)/);
+ assert.match(library,/inlineBoard\.element\.insertBefore\(proseWrap,editorBody\)/);
  assert.equal((library.match(/const inlineBoard=createAppearanceBoard/g)||[]).length,1);
  assert.doesNotMatch(styles,/ness-fullboard-area|ness-library-constructor/);
  assert.match(styles,/\.ness-tagboard-columns/);
@@ -117,6 +117,6 @@ test('Previously combined old skin text never reappears as a base appearance tag
 
 test('Switching between Tags and Prose updates the visible input immediately',()=>{
  const library=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
- assert.match(library,/fields\.base\.parentElement\.hidden=!baseMode\|\|format!=='prose'/);
- assert.match(library,/fields\.base\.parentElement\.hidden=mode!=='base'\|\|layout!=='text'/);
+ assert.match(library,/proseWrap\.hidden=!baseMode\|\|format!=='prose'/);
+ assert.match(library,/proseWrap\.hidden=mode!=='base'\|\|layout!=='text'/);
 });
