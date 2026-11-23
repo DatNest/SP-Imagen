@@ -583,6 +583,8 @@ async function openLibraryEditor(){
  const restored=restoreLibraryBodyFields(draft);
  if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;dirty=false;}
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
+ let appearanceHintPinned=false;
+ try{appearanceHintPinned=window.localStorage?.getItem('sp-imagen-figure-pinned')==='1';}catch{}
  const view=createLibraryView(document);
  const {overlay,panel,el,clear,input,area,field,button,choice,section,search,bulkActions,list,form,message,save,close}=view;
  const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта'};
@@ -756,6 +758,15 @@ async function openLibraryEditor(){
   formatHelp.setAttribute('aria-label','Как работает формат описания');
   const formatTip=view.tip(formatHelp,'Теги: выбирай детали для каждого ракурса и открытого участка. Текст: редактируй описание целиком. Переключение не удаляет уже сохранённые назначения.');
   formatHelp.onclick=e=>{e.preventDefault();formatTip.toggle();};
+  const pinHint=button('Подсказка',formatStrip,undefined,'quiet ness-figure-pin');
+  pinHint.title='Закрепить визуальную схему тела рядом с тегами';
+  pinHint.setAttribute('role','switch');
+  pinHint.setAttribute('aria-label','Закреплённая подсказка по участку тела');
+  const bulb=button('♧',formatStrip,undefined,'quiet ness-figure-bulb');
+  bulb.title='Временно показать схему выбранного участка';
+  bulb.setAttribute('aria-label','Открыть подсказку по ракурсу');
+  pinHint.onclick=()=>inlineBoard.setHintPinned(!inlineBoard.getHintPinned());
+  bulb.onclick=()=>inlineBoard.toggleHintPeek();
   function updateFormatButtons(){
    formatTags.setAttribute('aria-pressed',String(appearanceFormat.value==='tags'));
    formatText.setAttribute('aria-pressed',String(appearanceFormat.value==='prose'));
@@ -780,6 +791,14 @@ async function openLibraryEditor(){
     initialSections:entry.appearanceSections,
     initialCatalog:entry.appearanceCatalog,
     initialMode:'base',
+    initialHelpPinned:appearanceHintPinned,
+    onHelpChange:(pinned,peek)=>{
+      appearanceHintPinned=pinned;
+      pinHint.setAttribute('aria-checked',String(pinned));
+      pinHint.setAttribute('aria-pressed',String(pinned));
+      bulb.setAttribute('aria-expanded',String(pinned||peek));
+      try{window.localStorage?.setItem('sp-imagen-figure-pinned',pinned?'1':'0');}catch{}
+    },
     readBaseState:()=>appearanceState,
     writeBaseState:next=>{
       fields.base.value=next.base;
@@ -808,7 +827,7 @@ async function openLibraryEditor(){
   const headingBar=inlineBoard.element.querySelector('.ness-tagboard-header');
   const editorBody=inlineBoard.element.querySelector('.ness-tagboard-body');
   headingBar.appendChild(formatStrip);
-  inlineBoard.element.insertBefore(proseWrap,editorBody);
+  inlineBoard.element.insertBefore(proseWrap,editorBody.parentElement);
   runUndo=()=>inlineBoard.undo();runRedo=()=>inlineBoard.redo();
   const visibility={
     setFormat(next){
