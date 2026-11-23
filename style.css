@@ -1640,17 +1640,16 @@
  stroke-linecap:round;stroke-linejoin:round;
 }
 #sp-imagen-review-panel .ness-figure-svg [data-zone]{
- fill:var(--figure-hot);fill-opacity:.42;
- stroke:var(--figure-hot);stroke-width:4.1;stroke-linejoin:round;
- opacity:0;filter:drop-shadow(0 0 2px var(--figure-hot));
+ fill:var(--figure-hot);fill-opacity:.65;
+ stroke:none;opacity:0;
  transition:opacity .17s ease;
 }
 #sp-imagen-review-panel .ness-figure-svg [data-zone].is-lit{opacity:1}
 #sp-imagen-review-panel .ness-figure-svg[data-mode=base] [data-zone].is-lit{
- fill-opacity:.25;stroke-dasharray:5 3;
+ fill-opacity:.55;
 }
 #sp-imagen-review-panel .ness-figure-svg[data-mode=nsfw] [data-zone].is-lit{
- fill-opacity:.52;stroke-width:4.9;
+ fill-opacity:.76;
 }
 #sp-imagen-review-panel .ness-figure-svg .figure-face{
  fill:color-mix(in srgb,var(--ness-text) 68%,var(--figure-skin));
@@ -1693,7 +1692,7 @@
   gap:6px 10px;align-items:start;padding:10px;
  }
  #sp-imagen-review-panel .ness-figure-head{grid-column:1/-1;grid-row:1}
- #sp-imagen-review-panel .ness-figure-pickers{grid-column:1/-1;grid-row:2}
+ #sp-imagen-review-panel .ness-figure-pickers{grid-column:1/-1;grid-row:8}
  #sp-imagen-review-panel .ness-figure-pickers:empty{display:none}
  #sp-imagen-review-panel .ness-figure-diagram{grid-column:2;grid-row:3/span 3}
  #sp-imagen-review-panel .ness-figure-canvas .ness-figure-svg{
