@@ -63,6 +63,100 @@ function matchBodyScopedTheme(target) {
     }
 }
 
+
+function parseCssRgb(value) {
+    const source = String(value || '').trim();
+    const hex = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hex) {
+        const digits = hex[1].length === 3 ? [...hex[1]].map(c => c+c).join('') : hex[1];
+        return [0,2,4].map(i => parseInt(digits.slice(i,i+2),16));
+    }
+    const rgb = source.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+    if (rgb) return rgb.slice(1,4).map(Number);
+    const srgb = source.match(/^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
+    if (srgb) return srgb.slice(1,4).map(v=>Math.round(Number(v)*255));
+    return null;
+}
+function relativeLuminance(rgb) {
+    const channel = n => {const v=Math.min(255,Math.max(0,n))/255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;};
+    return rgb ? .2126*channel(rgb[0])+.7152*channel(rgb[1])+.0722*channel(rgb[2]) : null;
+}
+function contrastRatio(a,b) {
+    const first=relativeLuminance(a),second=relativeLuminance(b);
+    if(first===null||second===null)return 0;
+    return (Math.max(first,second)+.05)/(Math.min(first,second)+.05);
+}
+// Respect readable theme colors; substitute a contrasting neutral only where needed.
+// This changes rendered tokens without altering the user's saved palette.
+export function readableNessColor(background,preferred='',secondary=false) {
+    const bg=parseCssRgb(background),existing=parseCssRgb(preferred);
+    if (!bg) return preferred || (secondary?'#d4d0d3':'#f8f6f2');
+    if (existing && contrastRatio(bg,existing)>=4.5) return preferred;
+    const dark=secondary?'#55515a':'#212026';
+    const light=secondary?'#d4d0d3':'#f8f6f2';
+    const preferredDark=contrastRatio(bg,parseCssRgb(dark))>=contrastRatio(bg,parseCssRgb(light));
+    const choice=preferredDark?dark:light;
+    if(contrastRatio(bg,parseCssRgb(choice))>=4.5)return choice;
+    return contrastRatio(bg,[0,0,0])>=contrastRatio(bg,[255,255,255])?'#000000':'#ffffff';
+}
+function applyReadableNessColors(target) {
+    const doc=target?.ownerDocument;
+    if (!doc?.body || typeof globalThis.getComputedStyle!=='function') return;
+    // The dialog shell can be themed before mounting. Resolve variables using
+    // an attached probe so themes scoped to the body are represented correctly.
+    const probe=doc.createElement('span');
+    probe.style.cssText='position:fixed;left:-9999px;top:-9999px;pointer-events:none;visibility:hidden;';
+    for(const key of [...SILLYTAVERN_COLOR_PROPERTIES,...Object.keys(NESS_THEME_DEFAULTS).map(k=>'--ness-'+k)]){
+        const value=target.style.getPropertyValue(key);
+        if(value)probe.style.setProperty(key,value);
+    }
+    doc.body.appendChild(probe);
+    try {
+        const resolve=expression=>{
+            probe.style.backgroundColor=expression;
+            return globalThis.getComputedStyle(probe).backgroundColor;
+        };
+        const inputText=()=>{
+            probe.style.color='var(--ness-text)';
+            return globalThis.getComputedStyle(probe).color;
+        };
+        const bg=resolve('var(--ness-bg)'),originalText=inputText();
+        const text=readableNessColor(bg,originalText);
+        if(text!==originalText&&parseCssRgb(bg)){
+            target.style.setProperty('--ness-text',text);
+            probe.style.setProperty('--ness-text',text);
+        }
+        probe.style.color='var(--ness-muted)';
+        const originalMuted=globalThis.getComputedStyle(probe).color;
+        const muted=readableNessColor(bg,originalMuted,true);
+        if(muted!==originalMuted&&parseCssRgb(bg))target.style.setProperty('--ness-muted',muted);
+        const surfaces={
+            bg:'var(--ness-bg)',
+            surface:'var(--ness-surface)',
+            input:'var(--ness-input)',
+            accent:'var(--ness-accent)',
+            'library-card':'color-mix(in srgb,var(--ness-bg) 84%,#754632)',
+            'library-pane':'color-mix(in srgb,var(--ness-bg) 88%,#643c31)',
+            'library-list':'color-mix(in srgb,var(--ness-bg) 89%,#523126)',
+            'library-mode':'color-mix(in srgb,var(--ness-bg) 76%,#754237)',
+            'library-active':'color-mix(in srgb,var(--ness-accent) 52%,#c88478)',
+            'library-format':'color-mix(in srgb,color-mix(in srgb,var(--ness-accent) 52%,#c88478) 34%,var(--ness-bg))',
+            'library-chosen':'color-mix(in srgb,color-mix(in srgb,var(--ness-accent) 52%,#c88478) 20%,var(--ness-bg))',
+            'library-cream':'color-mix(in srgb,var(--ness-text) 86%,#f2d7b3)',
+        };
+        for(const [key,expression]of Object.entries(surfaces)){
+            const color=resolve(expression);
+            if(!parseCssRgb(color))continue;
+            const foreground=readableNessColor(color,originalText);
+            target.style.setProperty('--ness-contrast-'+key,foreground);
+            if(key==='input')target.style.setProperty('--ness-contrast-input-muted',readableNessColor(color,originalMuted,true));
+        }
+        if(parseCssRgb(bg))target.style.setProperty('color-scheme',relativeLuminance(parseCssRgb(bg))>.25?'light':'dark');
+    } finally {
+        probe.remove();
+    }
+}
+
 export function applyNessTheme(panel, theme) {
     const palette = theme ? normalizeNessTheme(theme) : ACTIVE_THEME_TOKENS;
     const targets = [panel];
@@ -76,6 +170,7 @@ export function applyNessTheme(panel, theme) {
             const name = `--ness-${key}`;
             if (target.style.getPropertyValue(name) !== value) target.style.setProperty(name, value);
         }
+        applyReadableNessColors(target);
     }
 }
 
