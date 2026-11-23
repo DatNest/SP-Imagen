@@ -117,6 +117,12 @@ test('The primary character editor mounts the inline board without opening a con
  const src=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
  const editor=src.slice(src.indexOf('function editCharacter(id,group)'),src.indexOf('guideOpenFirstRecord =',src.indexOf('function editCharacter(id,group)')));
  assert.match(editor,/const inlineBoard=createAppearanceBoard/);
+ assert.match(editor,/view\.help\(identityCard,'Иконка персонажа',emblem\)/,
+  'Opening a card must use the help method returned from createLibraryView');
+ assert.doesNotMatch(editor,/\bui\./,
+  'The editor cannot reference a UI-kit variable scoped inside createLibraryView');
+ assert.match(editor,/wheelAlongX:view\.wheelAlongX/,
+  'The tag board must share wheel scrolling with the library UI');
  assert.doesNotMatch(editor,/◫ Открыть конструктор/);
  assert.match(src,/entry\.appearanceCatalog=catalog/);
  assert.match(src,/nsfwChest|Object\.keys\(NSFW_PRESETS\)/);
