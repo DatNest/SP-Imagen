@@ -805,6 +805,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
   clear(content);textDraft=null;
   const headings=availablePresets(),ribbon=el('div',undefined,content,'ness-tagboard-ribbon');
+  ui.wheelAlongX?.(ribbon);
   for(const [id,label] of Object.entries(headings)){
    const btn=button(label,ribbon,()=>{closeTransfer();preset=id;checked.clear();render();},'quiet');
    btn.setAttribute('aria-pressed',String(id===preset));

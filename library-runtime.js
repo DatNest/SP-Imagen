@@ -264,11 +264,24 @@ function createUiKit(D){
  const section=(parent,title,open=false)=>{const e=el('details',undefined,parent,'ness-section');e.open=open;el('summary',title,e);return e;};
  const row=parent=>el('div',undefined,parent,'ness-row');
  const note=(parent,text)=>el('p',text,parent,'ness-note');
- return {el,clear,input,area,field,button,choice,checkbox,section,row,note,help,tip};
+ // Vertical lists already scroll natively; horizontal-only strips also accept wheel input.
+ const wheelAlongX=node=>{
+  node.addEventListener('wheel',event=>{
+   if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.shiftKey)return;
+   if(Math.abs(event.deltaY)<=Math.abs(event.deltaX))return;
+   if(node.scrollWidth<=node.clientWidth+1||node.scrollHeight>node.clientHeight+1)return;
+   const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?node.clientWidth:1);
+   const next=Math.max(0,Math.min(node.scrollWidth-node.clientWidth,node.scrollLeft+delta));
+   if(next===node.scrollLeft)return;
+   node.scrollLeft=next;event.preventDefault();
+  },{passive:false});
+ };
+ return {el,clear,input,area,field,button,choice,checkbox,section,row,note,help,tip,wheelAlongX};
 }
 
 function createNessTabs(ui,parent,label){
  const {el,button}=ui,bar=el('div',undefined,parent,'ness-tab-strip'),tabs=[];
+ ui.wheelAlongX?.(bar);
  bar.setAttribute('role','tablist');bar.setAttribute('aria-label',label);
  const viewport=el('div',undefined,parent,'ness-tab-viewport');
  function select(index,focus=false){
@@ -677,6 +690,7 @@ async function openLibraryEditor(){
   row.onclick=e=>{if(!busy&&e?.target!==cb)editCharacter(id,group);};
   const title=el('span',undefined,open,'ness-record-title');el('span',entry.name,title,'ness-record-name');el('span',group==='personas'?'Персона':'Персонаж',title,'ness-record-type');
   const tags=el('div',undefined,content,'ness-record-tags'),ids=draft.organizer.characters[id]?.tagIds||[];
+  view.wheelAlongX(tags);
   const add=el('button','+',tags,'ness-tag-add');add.type='button';add.disabled=busy;add.setAttribute('aria-label','Назначить теги: '+entry.name);add.setAttribute('data-row-tags',id);add.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,add);};
   for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){const chip=el('button',tag.name,tags,'ness-tag-badge');chip.type='button';chip.style.setProperty('--ness-tag-color',tag.color);chip.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,chip);};}
   return row;
@@ -701,7 +715,7 @@ async function openLibraryEditor(){
    else emblem.textContent='✦';
   }
   drawEmblem();
-  ui.help(identityCard,'Иконка персонажа',emblem);
+  view.help(identityCard,'Иконка персонажа',emblem);
   const identity=el('div',undefined,identityCard,'ness-editor-identity-fields');
   const nameRow=el('div',undefined,identity,'ness-editor-name-row');
   fields.name=input(entry.name);fields.name.className+=' ness-editor-name-input';fields.name.setAttribute('aria-label','Имя персонажа');fields.name.placeholder='Имя персонажа';nameRow.appendChild(fields.name);
@@ -761,7 +775,7 @@ async function openLibraryEditor(){
   };
   const inlineHost=el('div',undefined,appearance,'ness-inline-appearance-editor');
   const inlineBoard=createAppearanceBoard({
-    ui:{el,button,clear,input},parent:inlineHost,
+    ui:{el,button,clear,input,wheelAlongX:view.wheelAlongX},parent:inlineHost,
     initialSkin:entry.appearanceSkin,
     initialSections:entry.appearanceSections,
     initialCatalog:entry.appearanceCatalog,
@@ -922,6 +936,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.36',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.37',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
