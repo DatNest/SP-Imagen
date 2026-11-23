@@ -58,7 +58,7 @@ test('Existing camera and mode controls move to the pinned card and return to th
  assert.match(board,/content\.insertBefore\(ribbon,content\.firstChild/);
  assert.match(board,/getHintPinned:\(\)=>helpPinned,isHintPeek:\(\)=>helpPeek,setHintPinned,toggleHintPeek/);
  assert.match(library,/pinHint=button\('Подсказка',formatStrip/);
- assert.match(library,/bulb=button\('♧',formatStrip/);
+ assert.match(library,/bulb=button\('💡',formatStrip/);
  assert.match(library,/initialHelpPinned:appearanceHintPinned/);
  assert.match(library,/inlineBoard\.element\.insertBefore\(proseWrap,editorBody\.parentElement\)/);
  assert.match(styles,/\.ness-appearance-main\[data-help-open=true\]\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(190px,225px\)/);
