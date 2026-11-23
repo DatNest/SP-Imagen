@@ -481,9 +481,12 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
   if(entry.libraryIconData!==undefined&&(typeof entry.libraryIconData!=='string'||entry.libraryIconData.length>120000||!/^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(entry.libraryIconData)))throw Error('Некорректная иконка персонажа: '+id);
   if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
-  const migrated=migrateLegacyBodyFields(entry);
-  // Make the new highlighted catalogue explicit even for pre-2.9.12 cards.
+  // Current records are already structured. Loading must not rewrite the
+  // user's ordering, divider positions, selections or custom appearance tags.
+  const modern=entry.appearanceCatalog?.modes&&typeof entry.appearanceCatalog.modes==='object';
+  const migrated=modern?{changed:false}:migrateLegacyBodyFields(entry);
   if(migrated.changed&&!Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog={};
+  if(!modern){
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
@@ -495,8 +498,15 @@ function validateMasterLibrary(input,{copy=true}={}){
     nudeUpper:entry.nudeUpper,nudeLower:entry.nudeLower,
     ...Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,entry[k]]))
   },entry.appearanceSections);
+  }
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
+ // In v3 the organizer is already the saved user catalogue. Do not collapse
+ // duplicate labels or regenerate tag IDs when merely loading a library.
+ if(source.version===3&&Array.isArray(source.tags)&&source.characters&&typeof source.characters==='object'&&!Array.isArray(source.characters)){
+  for(const tag of source.tags)if(!tag||!safeLibraryId(tag.id)||typeof tag.name!=='string'||!tag.name.trim())throw Error('Некорректный тег библиотеки.');
+  return data;
+ }
  const normalize=s=>s.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
  const legacy=Array.isArray(source.folders)?source.folders:[];
  for(const tag of [...(Array.isArray(source.tags)?source.tags:[]),...legacy]){
@@ -527,11 +537,14 @@ function loadMasterLibrary(){
 function librarySnapshot(data){
  return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,libraryIconData,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
 }
-async function saveMasterLibrary(input,expectedRaw){
+async function saveMasterLibrary(input,expectedRaw,{preserveUserFields=false}={}){
  const st=SillyTavern.getContext();
  if(!st?.extensionSettings||typeof st.saveSettingsDebounced!=='function')throw Error('Недоступно сохранение общих настроек SillyTavern.');
  if(masterLibraryRaw()!==expectedRaw)throw Error('Библиотека уже изменилась в другом окне. Закрой редактор и открой заново, чтобы не затереть изменения.');
- const data=validateMasterLibrary(input);
+ // For a surgical icon save, validate a clone but write back the exact
+ // original user-defined catalogue and sections, byte for byte.
+ const data=preserveUserFields?cloneLibrary(input):validateMasterLibrary(input);
+ if(preserveUserFields)validateMasterLibrary(data);
  data.savedAt=new Date().toISOString();data.catalogRevision=(Number(data.catalogRevision)||0)+1;
  // The retired attribute-ID catalogue is not consumed by these profiles.
  delete data.attributeCatalog;
@@ -580,8 +593,7 @@ async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
  let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=Boolean(baseline&&JSON.stringify(draft)!==(typeof baseline==='string'?baseline:JSON.stringify(baseline))),busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
- const restored=restoreLibraryBodyFields(draft);
- if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;dirty=false;}
+ // Opening a library after an extension update must never write to storage.
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  let appearanceHintPinned=false;
  try{appearanceHintPinned=window.localStorage?.getItem('sp-imagen-figure-pinned')==='1';}catch{}
@@ -928,7 +940,7 @@ async function openLibraryEditor(){
  upload.onchange=async()=>{if(busy||!upload.files?.[0]||!tryFlush())return;setBusy(true);try{const value=validateMasterLibrary(JSON.parse((await upload.files[0].text()).replace(/^\uFEFF/,'')));editor?.visibility?.closeBoard?.();draft=value;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Импортировано в черновик. Нажми «Сохранить».');}catch(e){status('Импорт не выполнен: '+e.message);}finally{upload.value='';setBusy(false);}};
  view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
  search.oninput=()=>{if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=setTimeout(searchNow,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchNow();}};renderTags();renderList();
- status(restored.count?'Восстановлено полей из исходников: '+restored.count:libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
+ status(libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
  let onChatSwitch=()=>{};
  const previousFocus=document.activeElement,stopViewport=mountDialog(overlay,()=>onChatSwitch());virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
  async function publishDraft(keepEditor=false){
