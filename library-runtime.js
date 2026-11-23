@@ -467,7 +467,7 @@ function createLibraryView(D){
 function libraryEntries(data){
  return [...Object.entries(data.personas).map(([id,entry])=>({id,group:'personas',entry})),...Object.entries(data.characters).map(([id,entry])=>({id,group:'characters',entry}))];
 }
-function validateMasterLibrary(input,{copy=true}={}){
+function validateMasterLibrary(input,{copy=true,preserveCurrent=false}={}){
  if(!input||input.version!==1||!input.personas||!input.characters||Array.isArray(input.personas)||Array.isArray(input.characters)||typeof input.personas!=='object'||typeof input.characters!=='object')throw Error('Неверный формат библиотеки: нужны version: 1, personas и characters.');
  const data=copy?cloneLibrary(input):input,ids=new Set();
  if(Object.hasOwn(data,'appearanceRules')){
@@ -483,7 +483,10 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
   // Current records are already structured. Loading must not rewrite the
   // user's ordering, divider positions, selections or custom appearance tags.
-  const modern=entry.appearanceCatalog?.modes&&typeof entry.appearanceCatalog.modes==='object';
+  const oldBody=Object.keys(LEGACY_BODY_FIELDS).some(k=>Object.hasOwn(entry,k));
+  // Explicit legacy import keeps the established migration. An already saved
+  // user's library is read without silently changing old or modern fields.
+  const modern=entry.appearanceCatalog?.modes&&typeof entry.appearanceCatalog.modes==='object'&&(preserveCurrent||!oldBody);
   const migrated=modern?{changed:false}:migrateLegacyBodyFields(entry);
   if(migrated.changed&&!Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog={};
   if(!modern){
@@ -530,7 +533,7 @@ function masterLibraryRaw(){return SillyTavern.getContext()?.extensionSettings?.
 function loadMasterLibrary(){
  const raw=masterLibraryRaw();
  if(!raw)return validateMasterLibrary({version:1,personas:{},characters:{}});
- try{return typeof raw==='string'?validateMasterLibrary(JSON.parse(raw),{copy:false}):validateMasterLibrary(raw);}catch(e){throw Error('Не удалось прочитать библиотеку: '+String(e?.message||e));}
+ try{return typeof raw==='string'?validateMasterLibrary(JSON.parse(raw),{copy:false,preserveCurrent:true}):validateMasterLibrary(raw,{preserveCurrent:true});}catch(e){throw Error('Не удалось прочитать библиотеку: '+String(e?.message||e));}
 }
 
 // Module: library_publish
@@ -543,8 +546,8 @@ async function saveMasterLibrary(input,expectedRaw,{preserveUserFields=false}={}
  if(masterLibraryRaw()!==expectedRaw)throw Error('Библиотека уже изменилась в другом окне. Закрой редактор и открой заново, чтобы не затереть изменения.');
  // For a surgical icon save, validate a clone but write back the exact
  // original user-defined catalogue and sections, byte for byte.
- const data=preserveUserFields?cloneLibrary(input):validateMasterLibrary(input);
- if(preserveUserFields)validateMasterLibrary(data);
+ const data=preserveUserFields?cloneLibrary(input):validateMasterLibrary(input,{preserveCurrent:true});
+ if(preserveUserFields)validateMasterLibrary(data,{preserveCurrent:true});
  // A no-op Save must not rewrite metadata or generate a new backup.
  if(typeof expectedRaw==='string'&&expectedRaw===JSON.stringify(data))return {data,raw:expectedRaw};
  data.savedAt=new Date().toISOString();data.catalogRevision=(Number(data.catalogRevision)||0)+1;
