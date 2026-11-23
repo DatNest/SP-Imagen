@@ -1435,7 +1435,7 @@
 }
 /* Per-surface readability follows each user's chosen SillyTavern palette. */
 #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading
- :is(.ness-editor-name-input,.ness-editor-type-select,.ness-editor-name-pencil){
+ :is(.ness-editor-name-input,.ness-editor-name-pencil){
  color:var(--ness-contrast-library-card,var(--ness-text))!important;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-right
