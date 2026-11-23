@@ -501,3 +501,41 @@ test('History buttons are docked into a sticky shared appearance toolbar, not du
  assert.ok(board.historyHost);
  assert.equal(board.element.querySelectorAll('.ness-tagboard-grip').length,0);
 });
+
+
+test('One figure pin and peek mode move original selectors without changing selected tag state',()=>{
+ const ui=makeUI(),initial={base,ranges:[],selections:{}};
+ let changes=0,last=null;
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>initial,writeBaseState:()=>{throw Error('Pinning attempted to save character appearance');},
+  readNsfwState:()=>initialNsfw,writeNsfwState:()=>{throw Error('Pinning attempted to save NSFW descriptions');},
+  changed:()=>{changes++;},readOnly:()=>false,
+  onHelpChange:(pinned,peek)=>{last=[pinned,peek];}
+ });
+ const figure=board.element.querySelector('.ness-figure-hint');
+ const modes=board.element.querySelector('.ness-tagboard-modes');
+ const ribbon=board.element.querySelector('.ness-tagboard-ribbon');
+ assert.ok(figure&&modes&&ribbon,'One figure and original mode/preset controls exist');
+ assert.equal(board.getHintPinned(),false);
+ assert.equal(figure.hidden,true);
+ board.setHintPinned(true);
+ assert.equal(board.getHintPinned(),true);
+ assert.deepEqual(last,[true,false]);
+ assert.equal(figure.hidden,false);
+ assert.equal(modes.parentElement.className,'ness-figure-pickers');
+ assert.equal(ribbon.parentElement.className,'ness-figure-pickers');
+ board.toggleHintPeek(); // When pinned, clicking the bulb unpins the same card.
+ assert.equal(board.getHintPinned(),false);
+ assert.equal(modes.parentElement,board.element);
+ assert.equal(ribbon.parentElement.className,'ness-tagboard-body');
+ board.toggleHintPeek();
+ assert.equal(board.isHintPeek(),true);
+ assert.equal(figure.hidden,false);
+ assert.equal(modes.parentElement,board.element,'Temporary hint keeps original controls outside');
+ board.toggleHintPeek();
+ assert.deepEqual(last,[false,false]);
+ assert.equal(figure.hidden,true);
+ assert.equal(changes,0,'Help must not save or change any tag');
+ assert.equal(initial.base,base);
+});

@@ -4,6 +4,7 @@
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
 import { openExplanation } from './onboarding.js';
+import { createAppearanceFigure } from './appearance-figure.js';
 import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { normalizeAppearanceModeCatalog, NSFW_AREAS, repositionModeTag } from './appearance-mode-state.js';
 
@@ -162,7 +163,7 @@ export function reorderBaseTags(state,reordered){
  return {base:text,ranges:mapRanges(oldRanges,false),selections:normalizeAppearanceSelections(text,Object.fromEntries(Object.entries(oldSelections).map(([k,v])=>[k,mapRanges(v,true)])))};
 }
 
-export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfwState=()=>({}),writeNsfwState=()=>{},initialSkin,initialSections,initialCatalog,initialMode='base',initialPreset,changed,readOnly,onLayoutChange=()=>{},onHistoryChange=()=>{}}){
+export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfwState=()=>({}),writeNsfwState=()=>{},initialSkin,initialSections,initialCatalog,initialMode='base',initialPreset,initialHelpPinned=false,changed,readOnly,onLayoutChange=()=>{},onHistoryChange=()=>{},onHelpChange=()=>{}}){
  const {el,button,clear,input}=ui;
  let skin=normalizeSkinTags(initialSkin),catalog=normalizeAppearanceCatalog(initialCatalog,readBaseState().base,skin,readNsfwState(),initialSections);
   let modeCatalog=normalizeAppearanceModeCatalog(initialCatalog,readBaseState().base,skin,readNsfwState(),initialSections);
@@ -172,7 +173,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const layouts={base:'board',skin:'board',nsfw:'board'};
  let textDraft=null,renderedMode='',renderedPreset='';
- let followMovedTag=false;
+ let followMovedTag=false,helpPinned=Boolean(initialHelpPinned),helpPeek=false;
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Редактор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
@@ -225,7 +226,40 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const basic=button('Ракурсы',modes,()=>{if(!flushModeText())return;mode='base';layout=layouts.base;preset='face';checked.clear();closeTransfer();render();},'quiet');
  const marks=button('Под одеждой',modes,()=>{if(!flushModeText())return;mode='skin';layout=layouts.skin;preset='upper_front';checked.clear();closeTransfer();render();},'quiet');
  const nsfw=button('NSFW',modes,()=>{if(!flushModeText())return;mode='nsfw';layout=layouts.nsfw;preset='nsfwChest';checked.clear();closeTransfer();render();},'quiet');
- const content=el('div',undefined,frame,'ness-tagboard-body');
+ const helpLayout=el('div',undefined,frame,'ness-appearance-main');
+ const content=el('div',undefined,helpLayout,'ness-tagboard-body');
+ const figure=createAppearanceFigure(ui,helpLayout,()=>setHintPinned(false));
+ function activeRibbon(){
+  return figure.pickerHost.querySelector?.('.ness-tagboard-ribbon')||content.querySelector?.('.ness-tagboard-ribbon');
+ }
+ function positionAppearancePickers(ribbon=activeRibbon()){
+  if(helpPinned){
+   figure.pickerHost.appendChild(modes);
+   if(ribbon)figure.pickerHost.appendChild(ribbon);
+  }else{
+   frame.insertBefore(modes,header);
+   if(ribbon)content.insertBefore(ribbon,content.firstChild||null);
+  }
+ }
+ function refreshHelp(){
+  const open=helpPinned||helpPeek;
+  figure.element.hidden=!open;
+  helpLayout.setAttribute('data-help-open',String(open));
+  helpLayout.setAttribute('data-help-state',helpPinned?'pinned':helpPeek?'peek':'closed');
+  if(open)figure.update(mode,preset,availablePresets()[preset]||preset);
+  onHelpChange(helpPinned,helpPeek);
+ }
+ function setHintPinned(value){
+  helpPinned=Boolean(value);
+  helpPeek=false;
+  positionAppearancePickers();
+  refreshHelp();
+ }
+ function toggleHintPeek(){
+  if(helpPinned){setHintPinned(false);return;}
+  helpPeek=!helpPeek;
+  refreshHelp();
+ }
   function getCatalog(){
    const legacy=normalizeAppearanceCatalog(catalog,readBaseState().base,skin,readNsfwState(),initialSections);
    return {...legacy,modes:copy(modeCatalog.modes)};
@@ -803,8 +837,11 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
+  figure.pickerHost.querySelector?.('.ness-tagboard-ribbon')?.remove?.();
   clear(content);textDraft=null;
   const headings=availablePresets(),ribbon=el('div',undefined,content,'ness-tagboard-ribbon');
+  positionAppearancePickers(ribbon);
+  refreshHelp();
   ui.wheelAlongX?.(ribbon);
   for(const [id,label] of Object.entries(headings)){
    const btn=button(label,ribbon,()=>{closeTransfer();preset=id;checked.clear();render();},'quiet');
@@ -967,7 +1004,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();redoAction();}
  });
  render();
- return {element:frame,historyHost:toolHistory,getToolMode:()=>toolMode,syncTools:updateToolBar,undo:undoAction,redo:redoAction,canUndo:()=>undo.length>0,canRedo:()=>redo.length>0,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:()=>{modeCatalog=normalizeAppearanceModeCatalog(getCatalog(),readBaseState().base,skin,readNsfwState(),initialSections);render();},getMode:()=>mode,setModeLayout(value){if(!flushModeText())return false;layouts[mode]=value==='prose'?'text':'board';layout=layouts[mode];render();return true;},setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';layouts.base=appearanceFormat==='prose'?'text':'board';if(mode==='base')layout=layouts.base;render();}};
+ return {element:frame,historyHost:toolHistory,getHintPinned:()=>helpPinned,isHintPeek:()=>helpPeek,setHintPinned,toggleHintPeek,getToolMode:()=>toolMode,syncTools:updateToolBar,undo:undoAction,redo:redoAction,canUndo:()=>undo.length>0,canRedo:()=>redo.length>0,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:()=>{modeCatalog=normalizeAppearanceModeCatalog(getCatalog(),readBaseState().base,skin,readNsfwState(),initialSections);render();},getMode:()=>mode,setModeLayout(value){if(!flushModeText())return false;layouts[mode]=value==='prose'?'text':'board';layout=layouts[mode];render();return true;},setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';layouts.base=appearanceFormat==='prose'?'text':'board';if(mode==='base')layout=layouts.base;render();}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){
