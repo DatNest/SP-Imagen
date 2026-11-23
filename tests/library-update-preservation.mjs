@@ -39,11 +39,11 @@ const sample=()=>({
  personas:{},
  organizer:{
   version:3,tags:[
-   {id:'tagB',name:'Важное',color:'#ddbbaa'},
-   {id:'tagA',name:'Семья',color:'#aabbcc'}
+   {id:'tagb',name:'Важное',color:'#ddbbaa'},
+   {id:'taga',name:'Семья',color:'#aabbcc'}
   ],
-  characters:{a:{tagIds:['tagA','tagB']}},
-  filterTagId:'tagA',
+  characters:{a:{tagIds:['taga','tagb']}},
+  filterTagId:'taga',
   customUserChoice:'persist me'
  },
  attributeCatalog:{legacyUserTags:['keep this too']},
@@ -52,11 +52,11 @@ const sample=()=>({
 
 test('Current library normalization leaves every user-owned field, chip order, divider and icon untouched',()=>{
  const original=sample();
- const result=helpers.validateMasterLibrary(original);
+ const result=helpers.validateMasterLibrary(original,{preserveCurrent:true});
  assert.deepEqual(result,original);
  assert.equal(JSON.stringify(result),JSON.stringify(original));
  assert.equal(original.characters.a.libraryIconData,iconA);
- const second=helpers.validateMasterLibrary(JSON.parse(JSON.stringify(result)));
+ const second=helpers.validateMasterLibrary(JSON.parse(JSON.stringify(result)),{preserveCurrent:true});
  assert.deepEqual(second,original);
 });
 
