@@ -658,3 +658,52 @@ test('Tag assignment refresh updates counts without changing the ribbon or exist
  assert.equal(button.dataset.selectedCount,'1');
  assert.equal(button.dataset.filled,'true');
 });
+
+
+test('Imported repeated zero-width/format-control tag variants share one ID without moving dividers or changing source text',()=>{
+ const name='skinToTAIL: long thick muscular tail';
+ const raw={modes:{
+  base:{tags:[{id:'first',text:name},{id:'second',text:'skinTo\u200BTAIL: long thick muscular tail'},{id:'third',text:'blue eyes'}],
+   sections:[{id:'tail',title:'Tail features',before:2},{id:'eyes',title:'Eyes',before:3}]},
+  skin:{tags:[],sections:[]},nsfw:{tags:[],sections:[]}
+ },tags:[{id:'legacy',text:'unassigned archived note'}],sections:[]};
+ const before=JSON.stringify(raw);
+ const normalized=normalizeAppearanceModeCatalog(raw,'blue eyes',{tags:[],sections:[],selections:{}},{},[]);
+ assert.deepEqual(normalized.modes.base.tags,[{id:'first',text:name},{id:'third',text:'blue eyes'}]);
+ assert.deepEqual(normalized.modes.base.sections,[{id:'tail',title:'Tail features',before:1},{id:'eyes',title:'Eyes',before:2}]);
+ assert.equal(JSON.stringify(raw),before,'Normalizing the view never mutates a saved catalogue');
+ const catalogue=normalizeAppearanceCatalog(raw,'blue eyes',{tags:[],sections:[],selections:{}},{},[]);
+ assert.deepEqual(catalogue.tags,raw.tags,'Modern shared legacy pool stays untouched for lossless export');
+ assert.ok(!catalogue.modes.base.tags.some(t=>t.text==='unassigned archived note'),
+  'Retired shared-pool entries must not be silently reimported as new base tags');
+});
+
+test('Hundreds of base tags are indexed once per paint and selection, without re-parsing for every visible chip',()=>{
+ const ui=makeUI(),values=Array.from({length:250},(_,i)=>'feature '+String(i).padStart(3,'0'));
+ const baseText=values.join(', '),parsed=parseBaseTags(baseText);
+ let state={base:baseText,ranges:[],selections:{face:parsed.filter((_,i)=>i%12===0)}};
+ let reads=0;
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:{tags:[],sections:[],selections:{}},initialCatalog:{},
+  readBaseState:()=>{reads++;return state;},writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const rows=board.element.querySelectorAll('.ness-unified-tag-row');
+ assert.equal(rows.length,250);
+ assert.ok(reads<120,'Initial paint must read the source in batches, not once for each chip ('+reads+' reads)');
+ const first=rows.find(row=>row.querySelector('.ness-unified-chip')?.textContent.includes('feature 100'));
+ const flow=board.element.querySelector('.ness-unified-tagflow'),chosen=board.element.querySelector('.ness-tagboard-chosen-list');
+ flow.scrollTop=470;chosen.scrollTop=39;
+ const prior=reads;
+ first.querySelector('.ness-unified-chip').onclick();
+ assert.ok(reads-prior<120,'Toggling one tag must not reparse all 250 tags ('+(reads-prior)+' reads)');
+ assert.strictEqual(board.element.querySelector('.ness-unified-tagflow'),flow);
+ assert.equal(flow.scrollTop,470);
+ assert.equal(chosen.scrollTop,39);
+ assert.ok(state.selections.face.some(x=>x.text==='feature 100'));
+ const search=board.element.querySelector('.ness-tagboard-search');
+ search.value='feature 249';search.oninput();
+ assert.equal(rows.filter(row=>!row.hidden).length,1);
+ assert.equal(rows.find(row=>!row.hidden).dataset.tagId,board.getCatalog().modes.base.tags[249].id);
+ assert.equal(board.getCatalog().modes.base.tags.length,250);
+});
