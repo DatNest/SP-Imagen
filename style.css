@@ -365,7 +365,7 @@
 #sp-imagen-review-panel .ness-tagboard-body{display:flex;flex-direction:column;gap:10px;min-width:0}
 #sp-imagen-review-panel .ness-tagboard-ribbon{
  display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;overflow-y:hidden;
- scrollbar-width:thin;overscroll-behavior-x:contain;padding:2px 0 12px;
+ scrollbar-width:thin;overscroll-behavior-x:contain;overflow-anchor:none;padding:2px 0 12px;
  -webkit-overflow-scrolling:touch;
 }
 #sp-imagen-review-panel .ness-tagboard-ribbon>.ness-button{
@@ -1031,7 +1031,7 @@
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-library-item{
  border-color:transparent;border-radius:12px;
- margin:3px 0;
+ margin:0;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-library-item[data-active=true]{
  border-color:var(--ness-library-gold);
