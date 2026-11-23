@@ -306,6 +306,27 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const isNsfwChosen=(tag,id)=>parseBaseTags(readNsfwState()?.[id]||'').some(t=>norm(t.text)===norm(tag.text));
  const isChosen=(tag,id)=>mode==='base'?isBaseChosen(tag,id):mode==='skin'?isSkinChosen(tag,id):isNsfwChosen(tag,id);
  const items=()=>modeCatalog.modes[mode].tags;
+ // Derive visibility once for a batch of tags. Parsing the entire base text for
+ // every row was the dominant lag on large imported catalogues.
+ function selectedKeys(id){
+  if(mode==='base'){
+   const state=baseState(),ranges=visibleAppearanceRanges(state.ranges,id,state.selections,false),keys=new Set();
+   for(const tag of parseBaseTags(state.base))
+    if(ranges.some(r=>r.start<tag.end&&tag.start<r.end))keys.add(norm(tag.text));
+   return keys;
+  }
+  if(mode==='skin'){
+   const chosen=new Set(skin.selections[id]||[]),seen=new Set(),keys=new Set();
+   for(const tag of skin.tags){
+    const identity=norm(tag.text);
+    if(seen.has(identity))continue;
+    seen.add(identity);
+    if(chosen.has(tag.id))keys.add(identity);
+   }
+   return keys;
+  }
+  return new Set(parseBaseTags(readNsfwState()?.[id]||'').map(tag=>norm(tag.text)));
+ }
  // Count real configured assignments, including shared "Всегда" tags. This
  // reads the same source as the chosen-tag pane; no saved counters or migrations.
  function presetTagCounts(){
@@ -834,11 +855,12 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const columns=content.querySelector('.ness-tagboard-columns');
   if(!columns){render();return;}
   const byId=new Map(items().map(tag=>[tag.id,tag]));
+  const selected=selectedKeys(preset),shared=preset!=='always'&&mode!=='nsfw'?selectedKeys('always'):null;
   for(const row of columns.querySelectorAll('.ness-unified-tag-row')){
    const tag=byId.get(row.dataset.tagId),chip=row.querySelector('.ness-unified-chip');
    if(!tag||!chip)continue;
-   const marked=isChosen(tag,preset);
-   const inherited=preset!=='always'&&mode!=='nsfw'&&!marked&&isChosen(tag,'always');
+   const identity=norm(tag.text),marked=selected.has(identity);
+   const inherited=!!shared&&!marked&&shared.has(identity);
    if(chip.dataset.highlighted!==String(marked)||chip.dataset.inherited!==String(inherited)){
     chip.textContent=(marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text;
     chip.setAttribute('aria-pressed',String(marked||inherited));
@@ -846,8 +868,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     chip.setAttribute('data-inherited',String(inherited));
    }
   }
-  const chosen=items().filter(tag=>isChosen(tag,preset));
-  const inherited=mode==='nsfw'||preset==='always'?[]:items().filter(tag=>isChosen(tag,'always')&&!isChosen(tag,preset));
+  const chosen=items().filter(tag=>selected.has(norm(tag.text)));
+  const inherited=!shared?[]:items().filter(tag=>shared.has(norm(tag.text))&&!selected.has(norm(tag.text)));
   const right=columns.querySelector('.ness-tagboard-right');
   const heading=right?.querySelector('.ness-tagboard-pane-head strong');
   if(heading)heading.textContent='Выбранные теги · '+(chosen.length+inherited.length);
@@ -963,22 +985,21 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   search.type='search';search.placeholder='Найти тег...';search.value=filter;
   const scene=el('div',undefined,left,'ness-unified-highlight-list');
   const tagFlow=el('div',undefined,scene,'ness-unified-tagflow');
+  const searchTexts=new Map(items().map(tag=>[tag.id,norm(tag.text)]));
   search.oninput=()=>{
    filter=search.value;
-   for(const row of tagFlow.querySelectorAll('.ness-unified-tag-row')){
-    const tag=items().find(t=>t.id===row.dataset.tagId);
-    row.hidden=!!filter&&!norm(tag?.text).includes(norm(filter));
-   }
+   const query=norm(filter);
+   for(const row of tagFlow.querySelectorAll('.ness-unified-tag-row'))
+    row.hidden=!!query&&!String(searchTexts.get(row.dataset.tagId)||'').includes(query);
   };
   let flow=el('div',undefined,tagFlow,'ness-unified-section-tags ness-unified-ungrouped');
   if(!sectionsForMode().length)addCompactPlus(flow,()=>0);
   const sequence=orderedSequence();
-  const chosen=items().filter(tag=>isChosen(tag,preset));
-  const inherited=mode==='nsfw'||preset==='always'?[]:items().filter(tag=>isChosen(tag,'always')&&!isChosen(tag,preset));
+  const selected=selectedKeys(preset),shared=preset!=='always'&&mode!=='nsfw'?selectedKeys('always'):null;
   const drawTag=tag=>{
    const row=el('div',undefined,flow,'ness-unified-tag-row');
    row.dataset.tagId=tag.id;row.hidden=!!filter&&!norm(tag.text).includes(norm(filter));
-   const marked=isChosen(tag,preset),shared=preset!=='always'&&mode!=='nsfw'&&!marked&&isChosen(tag,'always');
+   const identity=norm(tag.text),marked=selected.has(identity),inherited=!!shared&&!marked&&shared.has(identity);
    if(renameMode){
     const field=el('input',undefined,row,'ness-input ness-tagboard-rename-input');
     field.value=tag.text;field.setAttribute('aria-label','Изменить '+tag.text);
@@ -988,18 +1009,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     field.onblur=()=>{if(field.value!==tag.text)renameTag(tag,field.value);};
     field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();field.blur?.();}};
    }else{
-    const chip=button((marked?'✓ ':shared?'✦ ':'＋ ')+tag.text,row,()=>{
+    const chip=button((marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text,row,()=>{
      if(toolMode==='delete'){removeTag(tag,false);return;}
      if(toolMode==='move'){
       if(chip.dataset.ignoreClick==='true'){chip.dataset.ignoreClick='false';return;}
       focusTagId=focusTagId===tag.id?'':tag.id;render();return;
      }
-     if(shared){warn('Этот тег берётся из «Всегда». Измени его там.');return;}
+     if(inherited){warn('Этот тег берётся из «Всегда». Измени его там.');return;}
      toggle(tag,!isChosen(tag,preset));
     },'quiet ness-unified-chip');
     chip.setAttribute('aria-pressed',String(marked||shared));
     chip.setAttribute('data-highlighted',String(marked));
-    chip.setAttribute('data-inherited',String(shared));
+    chip.setAttribute('data-inherited',String(inherited));
     chip.title=toolMode==='delete'?'Удалить тег (можно отменить ↶)':toolMode==='move'?'Выбрать для перемещения · удерживать для выбора раздела':'Добавить или снять тег в выбранном ракурсе';
     if(toolMode==='move')chip.onpointerdown=e=>gripPointerDown(e,tag,row,chip);
    }
