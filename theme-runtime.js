@@ -94,7 +94,10 @@ export function readableNessColor(background,preferred='',secondary=false) {
     if (existing && contrastRatio(bg,existing)>=4.5) return preferred;
     const dark=secondary?'#55515a':'#212026';
     const light=secondary?'#d4d0d3':'#f8f6f2';
-    return contrastRatio(bg,parseCssRgb(dark))>=contrastRatio(bg,parseCssRgb(light))?dark:light;
+    const preferredDark=contrastRatio(bg,parseCssRgb(dark))>=contrastRatio(bg,parseCssRgb(light));
+    const choice=preferredDark?dark:light;
+    if(contrastRatio(bg,parseCssRgb(choice))>=4.5)return choice;
+    return contrastRatio(bg,[0,0,0])>=contrastRatio(bg,[255,255,255])?'#000000':'#ffffff';
 }
 function applyReadableNessColors(target) {
     const doc=target?.ownerDocument;
@@ -119,7 +122,10 @@ function applyReadableNessColors(target) {
         };
         const bg=resolve('var(--ness-bg)'),originalText=inputText();
         const text=readableNessColor(bg,originalText);
-        if(text!==originalText&&parseCssRgb(bg))target.style.setProperty('--ness-text',text);
+        if(text!==originalText&&parseCssRgb(bg)){
+            target.style.setProperty('--ness-text',text);
+            probe.style.setProperty('--ness-text',text);
+        }
         probe.style.color='var(--ness-muted)';
         const originalMuted=globalThis.getComputedStyle(probe).color;
         const muted=readableNessColor(bg,originalMuted,true);
