@@ -467,10 +467,10 @@ function createLibraryView(D){
 function libraryEntries(data){
  return [...Object.entries(data.personas).map(([id,entry])=>({id,group:'personas',entry})),...Object.entries(data.characters).map(([id,entry])=>({id,group:'characters',entry}))];
 }
-function validateMasterLibrary(input,{copy=true}={}){
+function validateMasterLibrary(input,{copy=true,preserveCurrent=false}={}){
  if(!input||input.version!==1||!input.personas||!input.characters||Array.isArray(input.personas)||Array.isArray(input.characters)||typeof input.personas!=='object'||typeof input.characters!=='object')throw Error('Неверный формат библиотеки: нужны version: 1, personas и characters.');
  const data=copy?cloneLibrary(input):input,ids=new Set();
- if(Object.hasOwn(data,'appearanceRules')){
+ if(!preserveCurrent&&Object.hasOwn(data,'appearanceRules')){
   const rules=normalizeAppearanceRules(data.appearanceRules);
   if(Object.keys(rules).length)data.appearanceRules=rules;else delete data.appearanceRules;
  }
@@ -481,9 +481,15 @@ function validateMasterLibrary(input,{copy=true}={}){
   if(entry.aliases!==undefined&&(!Array.isArray(entry.aliases)||entry.aliases.some(a=>typeof a!=='string')))throw Error('Неверный список имён персонажа: '+id);
   if(entry.libraryIconData!==undefined&&(typeof entry.libraryIconData!=='string'||entry.libraryIconData.length>120000||!/^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(entry.libraryIconData)))throw Error('Некорректная иконка персонажа: '+id);
   if(entry.appearanceFormat!==undefined&&!['tags','prose'].includes(entry.appearanceFormat))throw Error('Неверный формат внешности для '+id+': нужны tags или prose.');
-  const migrated=migrateLegacyBodyFields(entry);
-  // Make the new highlighted catalogue explicit even for pre-2.9.12 cards.
+  // Current records are already structured. Loading must not rewrite the
+  // user's ordering, divider positions, selections or custom appearance tags.
+  const oldBody=Object.keys(LEGACY_BODY_FIELDS).some(k=>Object.hasOwn(entry,k));
+  // Explicit legacy import keeps the established migration. An already saved
+  // user's library is read without silently changing old or modern fields.
+  const modern=entry.appearanceCatalog?.modes&&typeof entry.appearanceCatalog.modes==='object'&&(preserveCurrent||!oldBody);
+  const migrated=modern?{changed:false}:migrateLegacyBodyFields(entry);
   if(migrated.changed&&!Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog={};
+  if(!modern){
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
@@ -495,8 +501,15 @@ function validateMasterLibrary(input,{copy=true}={}){
     nudeUpper:entry.nudeUpper,nudeLower:entry.nudeLower,
     ...Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,entry[k]]))
   },entry.appearanceSections);
+  }
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
+ // In v3 the organizer is already the saved user catalogue. Do not collapse
+ // duplicate labels or regenerate tag IDs when merely loading a library.
+ if(source.version===3&&Array.isArray(source.tags)&&source.characters&&typeof source.characters==='object'&&!Array.isArray(source.characters)){
+  for(const tag of source.tags)if(!tag||!safeLibraryId(tag.id)||typeof tag.name!=='string'||!tag.name.trim())throw Error('Некорректный тег библиотеки.');
+  return data;
+ }
  const normalize=s=>s.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
  const legacy=Array.isArray(source.folders)?source.folders:[];
  for(const tag of [...(Array.isArray(source.tags)?source.tags:[]),...legacy]){
@@ -520,21 +533,24 @@ function masterLibraryRaw(){return SillyTavern.getContext()?.extensionSettings?.
 function loadMasterLibrary(){
  const raw=masterLibraryRaw();
  if(!raw)return validateMasterLibrary({version:1,personas:{},characters:{}});
- try{return typeof raw==='string'?validateMasterLibrary(JSON.parse(raw),{copy:false}):validateMasterLibrary(raw);}catch(e){throw Error('Не удалось прочитать библиотеку: '+String(e?.message||e));}
+ try{return typeof raw==='string'?validateMasterLibrary(JSON.parse(raw),{copy:false,preserveCurrent:true}):validateMasterLibrary(raw,{preserveCurrent:true});}catch(e){throw Error('Не удалось прочитать библиотеку: '+String(e?.message||e));}
 }
 
 // Module: library_publish
 function librarySnapshot(data){
  return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,libraryIconData,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
 }
-async function saveMasterLibrary(input,expectedRaw){
+async function saveMasterLibrary(input,expectedRaw,{preserveUserFields=false}={}){
  const st=SillyTavern.getContext();
  if(!st?.extensionSettings||typeof st.saveSettingsDebounced!=='function')throw Error('Недоступно сохранение общих настроек SillyTavern.');
  if(masterLibraryRaw()!==expectedRaw)throw Error('Библиотека уже изменилась в другом окне. Закрой редактор и открой заново, чтобы не затереть изменения.');
- const data=validateMasterLibrary(input);
+ // For a surgical icon save, validate a clone but write back the exact
+ // original user-defined catalogue and sections, byte for byte.
+ const data=preserveUserFields?cloneLibrary(input):validateMasterLibrary(input,{preserveCurrent:true});
+ if(preserveUserFields)validateMasterLibrary(data,{preserveCurrent:true});
+ // A no-op Save must not rewrite metadata or generate a new backup.
+ if(typeof expectedRaw==='string'&&expectedRaw===JSON.stringify(data))return {data,raw:expectedRaw};
  data.savedAt=new Date().toISOString();data.catalogRevision=(Number(data.catalogRevision)||0)+1;
- // The retired attribute-ID catalogue is not consumed by these profiles.
- delete data.attributeCatalog;
  st.extensionSettings.variables||={};const global=st.extensionSettings.variables.global||={};
  const keys=[MASTER_LIBRARY_KEY,MASTER_SNAPSHOT_KEY,MASTER_BACKUP_KEY],previous=new Map(keys.map(k=>[k,global[k]]));
  const serialized=JSON.stringify(data);
@@ -579,9 +595,8 @@ let guideOpenFirstRecord = () => false;
 async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
- let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=Boolean(baseline&&JSON.stringify(draft)!==(typeof baseline==='string'?baseline:JSON.stringify(baseline))),busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
- const restored=restoreLibraryBodyFields(draft);
- if(restored.changed){const saved=await saveMasterLibrary(restored.data,baseline);draft=saved.data;baseline=saved.raw;dirty=false;}
+ let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
+ // Opening a library after an extension update must never write to storage.
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  let appearanceHintPinned=false;
  try{appearanceHintPinned=window.localStorage?.getItem('sp-imagen-figure-pinned')==='1';}catch{}
@@ -596,15 +611,20 @@ async function openLibraryEditor(){
  function flushEditor(){
   if(!editor)return;
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
-  entry.appearanceFormat=appearanceFormat.value;
+  if(appearanceFormat.value!==(entry.appearanceFormat||'tags'))entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields)){const value=key==='base'?visibility.base:e.value;if(value!==''||Object.hasOwn(entry,key))entry[key]=value;}
-  const {ranges,selections,skin,sections,catalog,nsfw}=visibility.value;
-  if(nsfw)for(const key of Object.keys(NSFW_PRESETS))if(nsfw[key]||Object.hasOwn(entry,key))entry[key]=String(nsfw[key]||'');
-  if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
-  if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
+  // Rendering the editor is read-only. Only explicit appearance changes may
+  // rewrite the saved tag IDs, section order or per-camera selections.
+  if(editor.appearanceEdited()){
+   const {ranges,selections,skin,sections,catalog,nsfw}=visibility.value;
+   if(nsfw)for(const key of Object.keys(NSFW_PRESETS))if(nsfw[key]||Object.hasOwn(entry,key))entry[key]=String(nsfw[key]||'');
+   if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
+   if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
    entry.appearanceCatalog=catalog;
-  if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
-  if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
+   if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
+   if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
+   editor.clearAppearanceEdited();
+  }
   aliases.commit();const names=aliases.values;
   if(JSON.stringify(names)!==JSON.stringify(entry.aliases||[]))entry.aliases=[...new Set(names)];
   if(!entry.name.trim()||!entry.base.trim())throw Error('У персонажа должны быть имя и постоянная внешность.');
@@ -702,12 +722,53 @@ async function openLibraryEditor(){
  function searchNow(){closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=null;if(!done)renderList(true);}
 
  function editCharacter(id,group){
-  if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);const entry=draft[group][id],fields={};
+  if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);let entry=draft[group][id];const fields={};
   const heading=el('div',undefined,form,'ness-editor-heading');
   const identityCard=el('div',undefined,heading,'ness-editor-identity');
   const emblem=button('✦',identityCard,()=>openCharacterIconEditor(document,panel,{
    createDialog:createNessChildDialog,initial:entry.libraryIconData||'',
-   onSave:data=>{if(data)entry.libraryIconData=data;else delete entry.libraryIconData;drawEmblem();changed();}
+   restoreCandidate:(()=>{
+    if(entry.libraryIconData)return '';
+    const backup=SillyTavern.getContext()?.extensionSettings?.variables?.global?.[MASTER_BACKUP_KEY];
+    try{
+     const previous=typeof backup==='string'?JSON.parse(backup):backup;
+     const candidate=previous?.[group]?.[id]?.libraryIconData||'';
+     return typeof candidate==='string'&&/^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(candidate)?candidate:'';
+    }catch{return '';}
+   })(),
+   onSave:async data=>{
+    const savedRaw=baseline;
+    const original=entry.libraryIconData;
+    const stored=savedRaw?(typeof savedRaw==='string'?JSON.parse(savedRaw):cloneLibrary(savedRaw)):null;
+    if(stored?.[group]?.[id]){
+     // Commit only this icon to the exact stored JSON. No pending tag/text edits
+     // are silently saved and no other character's catalogue is normalized.
+     if(data)stored[group][id].libraryIconData=data;
+     else delete stored[group][id].libraryIconData;
+     const result=await saveMasterLibrary(stored,savedRaw,{preserveUserFields:true});
+     baseline=result.raw;
+     if(data)entry.libraryIconData=data;
+     else delete entry.libraryIconData;
+     if(editor?.id===id){
+      if(data)editor.original.libraryIconData=data;
+      else delete editor.original.libraryIconData;
+     }
+    }else{
+     // A brand-new unsaved record has no stable storage ID yet; persist it
+     // through the existing Save pathway rather than dropping its icon.
+     if(data)entry.libraryIconData=data;
+     else delete entry.libraryIconData;
+     const saved=await publishDraft(true);
+     if(!saved){
+      if(original!==undefined)entry.libraryIconData=original;
+      else delete entry.libraryIconData;
+      throw Error('Не удалось сохранить иконку нового персонажа. Проверь состояние библиотеки.');
+     }
+     entry=draft[editor.group][id];
+    }
+    drawEmblem();
+    status(dirty?'Иконка сохранена. Остальные изменения пока не сохранены.':'Иконка сохранена в библиотеке.');
+   }
   }),'ness-editor-emblem');
   emblem.title='Выбрать или обрезать иконку персонажа';
   emblem.setAttribute('aria-label','Изменить иконку персонажа');
@@ -778,6 +839,8 @@ async function openLibraryEditor(){
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
   // One inline highlight editor. No extra full-screen constructor or duplicated tag UI.
+  let appearanceEdited=false;
+  const markAppearanceEdited=()=>{appearanceEdited=true;changed();};
   const nsfwState=Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,String(entry[k]||'')]));
   let appearanceState={
     base:fields.base.value,
@@ -807,11 +870,11 @@ async function openLibraryEditor(){
         ranges:normalizeAppearanceRanges(next.base,next.ranges),
         selections:normalizeAppearanceSelections(next.base,next.selections)
       };
-      changed();
+      markAppearanceEdited();
     },
     readNsfwState:()=>nsfwState,
-    writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');changed();},
-    changed,readOnly:()=>busy||done,
+    writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');markAppearanceEdited();},
+    changed:markAppearanceEdited,readOnly:()=>busy||done,
     onHistoryChange:(canUndo,canRedo)=>{historyUndo.disabled=busy||!canUndo;historyRedo.disabled=busy||!canRedo;},
     onLayoutChange:(layout,mode)=>{
       formatStrip.hidden=false;
@@ -870,7 +933,7 @@ async function openLibraryEditor(){
       ))
     };
     inlineBoard.refresh();
-    changed();
+    markAppearanceEdited();
   };
   visibility.setFormat(appearanceFormat.value);
   function selectAppearanceFormat(next){
@@ -879,7 +942,7 @@ async function openLibraryEditor(){
    if(!visibility.setFormat(next))return;
    if(!baseMode)return; // Changing the skin or NSFW text view never alters the base format.
    if(appearanceFormat.value===next)return;
-   appearanceFormat.value=next;updateFormatButtons();changed();
+   appearanceFormat.value=next;updateFormatButtons();markAppearanceEdited();
   }
   formatTags.onclick=()=>selectAppearanceFormat('tags');
   formatText.onclick=()=>selectAppearanceFormat('prose');
@@ -890,7 +953,7 @@ async function openLibraryEditor(){
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
   const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&key!=='libraryIconData'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
-  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags};
+  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags,appearanceEdited:()=>appearanceEdited,clearAppearanceEdited:()=>{appearanceEdited=false;}};
   let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }
@@ -925,10 +988,10 @@ async function openLibraryEditor(){
  });
  view.add.onclick=()=>{if(!tryFlush())return;const id=newLibraryId('character',new Set(libraryEntries(draft).map(e=>e.id)));draft.characters[id]={name:'Новый персонаж',aliases:[],base:''};changed(true);editCharacter(id,'characters');};
  const upload=view.upload;
- upload.onchange=async()=>{if(busy||!upload.files?.[0]||!tryFlush())return;setBusy(true);try{const value=validateMasterLibrary(JSON.parse((await upload.files[0].text()).replace(/^\uFEFF/,'')));editor?.visibility?.closeBoard?.();draft=value;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Импортировано в черновик. Нажми «Сохранить».');}catch(e){status('Импорт не выполнен: '+e.message);}finally{upload.value='';setBusy(false);}};
- view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
+ upload.onchange=async()=>{if(busy||!upload.files?.[0]||!tryFlush())return;setBusy(true);try{const value=validateMasterLibrary(JSON.parse((await upload.files[0].text()).replace(/^\uFEFF/,'')),{preserveCurrent:true});editor?.visibility?.closeBoard?.();draft=value;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Импортировано в черновик. Нажми «Сохранить».');}catch(e){status('Импорт не выполнен: '+e.message);}finally{upload.value='';setBusy(false);}};
+ view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft,{preserveCurrent:true}),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
  search.oninput=()=>{if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=setTimeout(searchNow,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchNow();}};renderTags();renderList();
- status(restored.count?'Восстановлено полей из исходников: '+restored.count:libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
+ status(libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
  let onChatSwitch=()=>{};
  const previousFocus=document.activeElement,stopViewport=mountDialog(overlay,()=>onChatSwitch());virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
  async function publishDraft(keepEditor=false){
@@ -955,6 +1018,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.38',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.39',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
