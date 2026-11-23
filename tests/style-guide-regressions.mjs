@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {resolveImageStyle,NO_IMAGE_STYLE} from '../image-style-selection.js';
 import {defaultNovelAISettings,generateNovelAI} from '../novelai.js';
 import {makeGuideSteps} from '../onboarding.js';
+import {readableNessColor} from '../theme-runtime.js';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const oldStyle={id:'old',name:'Старый',value:'old ink drawing'};
@@ -167,4 +168,36 @@ test('Library adapts to its own panel width and keeps filter and bulk tag chips 
  assert.match(css,/\.ness-library-bulk>\.ness-row\{\s*display:flex;flex-wrap:wrap/);
  assert.match(runtime,/bulkTags=el\('div',undefined,bulk,'ness-tag-strip'\)/);
  assert.match(shared,/\.ness-library-editorpane\{display:flex;flex-direction:column/);
+});
+
+
+test('Mobile selected-tag pane follows the catalogue instead of covering tappable chips',()=>{
+ const css=read('style.css');
+ const baseMobile=css.slice(css.indexOf('@media(max-width:670px),(pointer:coarse) and (max-width:930px){'),css.indexOf('/* v2.9.6:',css.indexOf('@media(max-width:670px),(pointer:coarse) and (max-width:930px){')));
+ assert.match(baseMobile,/\.ness-tagboard-columns\{display:flex;flex-direction:column\}/);
+ assert.match(baseMobile,/\.ness-tagboard-right\{\s*position:static;bottom:auto;z-index:auto;flex:none;\s*height:auto;min-height:0;max-height:none/);
+ assert.match(baseMobile,/\.ness-tagboard-chosen-list\{\s*height:auto;min-height:0;max-height:min\(28dvh,230px\);flex:none/);
+ const libMobile=css.slice(css.indexOf('@media(max-width:670px),(pointer:coarse) and (max-width:930px){',css.indexOf('/* SP Imagen library editorial refresh')));
+ assert.match(libMobile,/\.ness-tagboard-right\{\s*position:static;bottom:auto;z-index:auto;\s*flex:none;height:auto;min-height:0;max-height:none;/);
+ assert.match(libMobile,/\.ness-tagboard-chosen-list\{\s*height:auto;min-height:0;max-height:min\(28dvh,230px\);flex:none;overflow-y:auto/);
+ assert.match(libMobile,/\.ness-unified-tagflow\{height:245px;max-height:38dvh\}/);
+});
+
+test('Theme foreground follows each light or dark background, including inputs and selected chips',()=>{
+ assert.equal(readableNessColor('#ffffff','#fdfdfd'),'#212026');
+ assert.equal(readableNessColor('#111111','#161616'),'#f8f6f2');
+ assert.equal(readableNessColor('#fff','#222222'),'#222222');
+ assert.equal(readableNessColor('rgb(20 21 22)','rgb(248 246 242)'),'rgb(248 246 242)');
+ assert.equal(readableNessColor('color(srgb 1 1 1)','#ffffff'),'#212026');
+ assert.equal(readableNessColor('#777777','#777777'),'#000000');
+ const code=read('theme-runtime.js'),shared=read('shared-ui-css.js'),style=read('style.css');
+ assert.match(code,/applyReadableNessColors\(target\)/);
+ for(const token of ['input','surface','accent','library-card','library-pane','library-chosen','library-cream']){
+  assert.ok(code.includes("'"+token+"'")||code.includes(token+":"),'Color surface '+token+' must be computed');
+ }
+ assert.match(shared,/color:var\(--ness-contrast-input,var\(--ness-text\)\)!important/);
+ assert.match(shared,/color:var\(--ness-contrast-surface,var\(--ness-text\)\)!important/);
+ assert.match(shared,/color:var\(--ness-contrast-accent,var\(--ness-input\)\)!important/);
+ assert.match(style,/color:var\(--ness-contrast-library-chosen,var\(--ness-library-cream\)\)!important/);
+ assert.match(style,/color:var\(--ness-contrast-library-pane,var\(--ness-text\)\)!important/);
 });
