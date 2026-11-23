@@ -370,7 +370,7 @@ function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyT
   if(!items.length){ui.el('p',emptyText,rows,'ness-note');return;}
   for(let i=from;i<to;i++)rows.appendChild(renderRow(items[i]));
  }
- function refresh(){if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint(true);});}
+ function refresh(){if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});}
  container.onscroll=()=>{if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});};
  const Observer=window.ResizeObserver;const observer=Observer?new Observer(refresh):null;observer?.observe(container);
  return {setItems(value,{reset=false}={}){items=value;const limit=Math.max(0,items.length*getRowHeight()-(container.clientHeight||400));container.scrollTop=reset?0:Math.min(container.scrollTop||0,limit);paint(true);},refresh,dispose(){disposed=true;if(frame!==null)cancel(frame);observer?.disconnect();container.onscroll=null;},get renderedCount(){return rows.children.length;}};
@@ -1018,6 +1018,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.41',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.42',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
