@@ -517,6 +517,12 @@ test('One figure pin and peek mode move original selectors without changing sele
  const modes=board.element.querySelector('.ness-tagboard-modes');
  const ribbon=board.element.querySelector('.ness-tagboard-ribbon');
  assert.ok(figure&&modes&&ribbon,'One figure and original mode/preset controls exist');
+ const pickers=figure.querySelector('.ness-figure-pickers');
+ const legend=figure.querySelector('.ness-figure-legend');
+ assert.ok(pickers&&legend,'The same pinned guide includes the legend and control docking area');
+ assert.equal(figure.children.at(-1),pickers,'The controls must be located beneath the body description, at the bottom of the guide');
+ assert.ok(figure.children.indexOf(pickers)>figure.children.indexOf(legend));
+
  assert.equal(board.getHintPinned(),false);
  assert.equal(figure.hidden,true);
  board.setHintPinned(true);

@@ -33,9 +33,19 @@ test('One schematic figure covers every actual base, skin and NSFW area, without
  assert.equal(describeAppearanceFigure('nsfw','nsfwLowerFront').bottom,'none');
 });
 
-test('Figure is a single SVG with front-only face, rear-only markers and regions outlined above clothes',()=>{
+test('Figure is a single SVG with front-only face, rear-only markers and exposed-skin-only highlights below clothing',()=>{
  const code=read('appearance-figure.js'),css=read('style.css');
  assert.equal(code.match(/'<svg class=/g)?.length,1);
+ const zones=code.indexOf(" '<g class=\"figure-zones\">',");
+ const clothing=code.indexOf(" '<g data-cloth=\"shirt\"");
+ const body=code.indexOf(" '<g class=\"figure-body\">',");
+ assert.ok(body>=0&&zones>body&&clothing>zones,'All highlighted regions must render over the body but underneath clothing');
+ const figureBody=code.slice(code.indexOf("export function createAppearanceFigure("));
+ assert.ok(figureBody.indexOf("ness-figure-legend")<figureBody.indexOf("const pickerHost=el("),'Pinned mode and camera controls must follow the diagram and description');
+ const figureStyles=css.slice(css.indexOf('/* Appearance figure guide:'));
+ assert.match(figureStyles,/\.ness-figure-svg \[data-zone\]\{[^}]*stroke:none;opacity:0/);
+ assert.doesNotMatch(figureStyles,/stroke-dasharray|filter:drop-shadow/,'Highlight must have no dotted stroke or outer halo');
+ assert.match(figureStyles,/\.ness-figure-pickers\{grid-column:1\/-1;grid-row:8\}/);
  assert.match(code,/data-anatomy="chest"/);
  assert.match(code,/data-anatomy="rear"/);
  assert.match(code,/data-zone="arm-left"/);
