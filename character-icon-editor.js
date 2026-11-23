@@ -5,7 +5,7 @@
  */
 import { openExplanation } from './onboarding.js';
 
-export function openCharacterIconEditor(D, panel, {createDialog, initial='', onSave}){
+export function openCharacterIconEditor(D, panel, {createDialog, initial='', restoreCandidate='', onSave}){
  let image=null, imageObjectURL='', offsetX=0, offsetY=0, drag=null;
  const dialog=createDialog(D,panel,{title:'Иконка персонажа',marker:'data-character-icon',onClose:()=>{
   D.removeEventListener('paste',onPaste,true);
@@ -23,6 +23,10 @@ export function openCharacterIconEditor(D, panel, {createDialog, initial='', onS
  const zoom=input('1','range');zoom.min='1';zoom.max='4';zoom.step='0.02';zoom.value='1';zoomLabel.appendChild(zoom);
  const cropHelp=button('?',preview,()=>openExplanation('Масштаб и обрезка','Перемещай картинку внутри квадрата пальцем или мышью, а масштаб регулируй ползунком. Сохраняется выбранный квадратный кадр. Изображение можно загрузить файлом, вставить из буфера или по прямой ссылке; для внешней ссылки нужен доступ CORS.'),'quiet ness-character-icon-help');
  cropHelp.title='Помощь по обрезке';cropHelp.setAttribute('aria-label','Помощь по обрезке и масштабу');
+ if(restoreCandidate&&!initial){
+  const restore=button('↶ Восстановить иконку из предыдущей копии',dialog.body,()=>load(restoreCandidate),'quiet');
+  restore.title='Восстановление только по нажатию; исходные данные не меняются до сохранения.';
+ }
  const message=el('p','',dialog.body,'ness-note ness-character-icon-status');message.setAttribute('role','status');
  const status=text=>message.textContent=text;
  function paint(canvasTarget=canvas){
@@ -113,8 +117,16 @@ export function openCharacterIconEditor(D, panel, {createDialog, initial='', onS
  };
  canvas.onpointerup=canvas.onpointercancel=()=>{drag=null;};
  zoom.oninput=()=>paint();
- button('Удалить иконку',dialog.actions,()=>{onSave('');dialog.finish();},'quiet');
- button('Сохранить иконку',dialog.actions,()=>{
+ let saving=false;
+ button('Удалить иконку',dialog.actions,async()=>{
+  if(saving)return;
+  saving=true;
+  try{await onSave('');dialog.finish();}
+  catch(e){status('Не удалось сохранить иконку: '+String(e?.message||e));}
+  finally{saving=false;}
+ },'quiet');
+ button('Сохранить иконку',dialog.actions,async()=>{
+  if(saving)return;
   if(!image){status('Сначала загрузи изображение.');return;}
   try{
    let data='';
@@ -123,8 +135,11 @@ export function openCharacterIconEditor(D, panel, {createDialog, initial='', onS
     data=target.toDataURL('image/webp',quality);if(data.length<=120000)break;
    }
    if(data.length>120000)throw Error('Слишком большая иконка.');
-   onSave(data);dialog.finish();
+   saving=true;
+   await onSave(data);
+   dialog.finish();
   }catch(e){status('Не удалось сохранить: '+e.message);}
+  finally{saving=false;}
  },'primary');
  preview.hidden=true;selectTab('file');if(initial)load(initial);
 }
