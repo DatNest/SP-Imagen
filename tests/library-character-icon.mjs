@@ -25,3 +25,19 @@ test('Character icon data is not inserted into the prompt snapshot or generic te
  assert.match(source,/key!=='libraryIconData'/);
  assert.match(source,/openCharacterIconEditor/);
 });
+
+
+test('Saving an icon actually awaits persistence and never closes after a failed save',()=>{
+ const source=readFileSync(new URL('../character-icon-editor.js',import.meta.url),'utf8');
+ assert.match(source,/await onSave\(data\);\s*dialog\.finish\(\)/);
+ assert.match(source,/try\{await onSave\(''\);dialog\.finish\(\);\}/);
+ assert.match(source,/restoreCandidate&&!initial/);
+ assert.match(source,/Не удалось сохранить иконку/);
+ const library=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
+ assert.match(library,/onSave:async data=>/);
+ assert.match(library,/saveMasterLibrary\(stored,savedRaw,\{preserveUserFields:true\}\)/);
+ assert.match(library,/entry=draft\[editor\.group\]\[id\]/);
+ assert.match(library,/MASTER_BACKUP_KEY/);
+ assert.match(library,/if\(data\)entry\.libraryIconData=data/);
+ assert.match(library,/if\(data\)editor\.original\.libraryIconData=data/);
+});
