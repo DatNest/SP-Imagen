@@ -173,11 +173,11 @@ test('Library adapts to its own panel width and keeps filter and bulk tag chips 
 
 test('Mobile selected-tag pane follows the catalogue instead of covering tappable chips',()=>{
  const css=read('style.css');
- const baseMobile=css.slice(css.indexOf('@media(max-width:670px),(pointer:coarse) and (max-width:930px){'),css.indexOf('/* v2.9.6:',css.indexOf('@media(max-width:670px),(pointer:coarse) and (max-width:930px){')));
+ const baseMobile=css.slice(css.indexOf('@media(max-width:670px),(pointer:coarse){'),css.indexOf('/* v2.9.6:',css.indexOf('@media(max-width:670px),(pointer:coarse){')));
  assert.match(baseMobile,/\.ness-tagboard-columns\{display:flex;flex-direction:column\}/);
  assert.match(baseMobile,/\.ness-tagboard-right\{\s*position:static;bottom:auto;z-index:auto;flex:none;\s*height:auto;min-height:0;max-height:none/);
  assert.match(baseMobile,/\.ness-tagboard-chosen-list\{\s*height:auto;min-height:0;max-height:min\(28dvh,230px\);flex:none/);
- const libMobile=css.slice(css.indexOf('@media(max-width:670px),(pointer:coarse) and (max-width:930px){',css.indexOf('/* SP Imagen library editorial refresh')));
+ const libMobile=css.slice(css.indexOf('@media(max-width:670px),(pointer:coarse){',css.indexOf('/* SP Imagen library editorial refresh')));
  assert.match(libMobile,/\.ness-tagboard-right\{\s*position:static;bottom:auto;z-index:auto;\s*flex:none;height:auto;min-height:0;max-height:none;/);
  assert.match(libMobile,/\.ness-tagboard-chosen-list\{\s*height:auto;min-height:0;max-height:min\(28dvh,230px\);flex:none;overflow-y:auto/);
  assert.match(libMobile,/\.ness-unified-tagflow\{height:245px;max-height:38dvh\}/);
@@ -200,4 +200,22 @@ test('Theme foreground follows each light or dark background, including inputs a
  assert.match(shared,/color:var\(--ness-contrast-accent,var\(--ness-input\)\)!important/);
  assert.match(style,/color:var\(--ness-contrast-library-chosen,var\(--ness-library-cream\)\)!important/);
  assert.match(style,/color:var\(--ness-contrast-library-pane,var\(--ness-text\)\)!important/);
+});
+
+
+test('Touch-screen library uses one-panel layout even when phone requests desktop viewport width',()=>{
+ const css=read('style.css');
+ const media='@media(max-width:670px),(pointer:coarse){';
+ assert.equal(css.split(media).length-1,3,'All three tag/library mobile layouts must cover coarse touch without viewport cap');
+ assert.ok(!css.includes('(pointer:coarse) and (max-width:930px)'),'Desktop-site mode on phone must not disable the mobile layout');
+ const mobile=css.slice(css.indexOf(media,css.indexOf('/* SP Imagen library editorial refresh')));
+ assert.match(mobile,/\.ness-library-workspace\{display:flex;flex-direction:column\}/);
+ assert.match(mobile,/\[data-view=editor\] \.ness-library-listpane\{\s*display:none;/);
+ assert.match(mobile,/\[data-view=editor\] \.ness-library-editorpane\{\s*display:flex;/);
+ const fallback=css.slice(css.lastIndexOf(media));
+ assert.match(fallback,/\.ness-library-editorpane\{\s*display:none;/);
+ assert.match(fallback,/\[data-view=editor\] \.ness-library-editorpane\{\s*display:flex;/);
+ const ui=read('library-runtime.js');
+ assert.match(ui,/panel\.setAttribute\('data-view','list'\)/);
+ assert.match(ui,/function showEditor\(\)\{panel\.setAttribute\('data-view','editor'\)/);
 });
