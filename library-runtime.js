@@ -545,9 +545,9 @@ async function saveMasterLibrary(input,expectedRaw,{preserveUserFields=false}={}
  // original user-defined catalogue and sections, byte for byte.
  const data=preserveUserFields?cloneLibrary(input):validateMasterLibrary(input);
  if(preserveUserFields)validateMasterLibrary(data);
+ // A no-op Save must not rewrite metadata or generate a new backup.
+ if(typeof expectedRaw==='string'&&expectedRaw===JSON.stringify(data))return {data,raw:expectedRaw};
  data.savedAt=new Date().toISOString();data.catalogRevision=(Number(data.catalogRevision)||0)+1;
- // The retired attribute-ID catalogue is not consumed by these profiles.
- delete data.attributeCatalog;
  st.extensionSettings.variables||={};const global=st.extensionSettings.variables.global||={};
  const keys=[MASTER_LIBRARY_KEY,MASTER_SNAPSHOT_KEY,MASTER_BACKUP_KEY],previous=new Map(keys.map(k=>[k,global[k]]));
  const serialized=JSON.stringify(data);
@@ -608,15 +608,20 @@ async function openLibraryEditor(){
  function flushEditor(){
   if(!editor)return;
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
-  entry.appearanceFormat=appearanceFormat.value;
+  if(appearanceFormat.value!==(entry.appearanceFormat||'tags'))entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields)){const value=key==='base'?visibility.base:e.value;if(value!==''||Object.hasOwn(entry,key))entry[key]=value;}
-  const {ranges,selections,skin,sections,catalog,nsfw}=visibility.value;
-  if(nsfw)for(const key of Object.keys(NSFW_PRESETS))if(nsfw[key]||Object.hasOwn(entry,key))entry[key]=String(nsfw[key]||'');
-  if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
-  if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
+  // Rendering the editor is read-only. Only explicit appearance changes may
+  // rewrite the saved tag IDs, section order or per-camera selections.
+  if(editor.appearanceEdited()){
+   const {ranges,selections,skin,sections,catalog,nsfw}=visibility.value;
+   if(nsfw)for(const key of Object.keys(NSFW_PRESETS))if(nsfw[key]||Object.hasOwn(entry,key))entry[key]=String(nsfw[key]||'');
+   if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
+   if(sections.length||entry.appearanceSections)entry.appearanceSections=sections;
    entry.appearanceCatalog=catalog;
-  if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
-  if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
+   if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
+   if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
+   editor.clearAppearanceEdited();
+  }
   aliases.commit();const names=aliases.values;
   if(JSON.stringify(names)!==JSON.stringify(entry.aliases||[]))entry.aliases=[...new Set(names)];
   if(!entry.name.trim()||!entry.base.trim())throw Error('У персонажа должны быть имя и постоянная внешность.');
@@ -790,6 +795,8 @@ async function openLibraryEditor(){
   const recordTags=draft.organizer.characters[id]?.tagIds||[];
   const highlightTag=draft.organizer.tags.find(t=>t.id===draft.organizer.filterTagId&&recordTags.includes(t.id))||draft.organizer.tags.find(t=>recordTags.includes(t.id));
   // One inline highlight editor. No extra full-screen constructor or duplicated tag UI.
+  let appearanceEdited=false;
+  const markAppearanceEdited=()=>{appearanceEdited=true;changed();};
   const nsfwState=Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,String(entry[k]||'')]));
   let appearanceState={
     base:fields.base.value,
@@ -819,11 +826,11 @@ async function openLibraryEditor(){
         ranges:normalizeAppearanceRanges(next.base,next.ranges),
         selections:normalizeAppearanceSelections(next.base,next.selections)
       };
-      changed();
+      markAppearanceEdited();
     },
     readNsfwState:()=>nsfwState,
-    writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');changed();},
-    changed,readOnly:()=>busy||done,
+    writeNsfwState:state=>{for(const k of Object.keys(NSFW_PRESETS))if(Object.hasOwn(state,k))nsfwState[k]=String(state[k]||'');markAppearanceEdited();},
+    changed:markAppearanceEdited,readOnly:()=>busy||done,
     onHistoryChange:(canUndo,canRedo)=>{historyUndo.disabled=busy||!canUndo;historyRedo.disabled=busy||!canRedo;},
     onLayoutChange:(layout,mode)=>{
       formatStrip.hidden=false;
@@ -882,7 +889,7 @@ async function openLibraryEditor(){
       ))
     };
     inlineBoard.refresh();
-    changed();
+    markAppearanceEdited();
   };
   visibility.setFormat(appearanceFormat.value);
   function selectAppearanceFormat(next){
@@ -891,7 +898,7 @@ async function openLibraryEditor(){
    if(!visibility.setFormat(next))return;
    if(!baseMode)return; // Changing the skin or NSFW text view never alters the base format.
    if(appearanceFormat.value===next)return;
-   appearanceFormat.value=next;updateFormatButtons();changed();
+   appearanceFormat.value=next;updateFormatButtons();markAppearanceEdited();
   }
   formatTags.onclick=()=>selectAppearanceFormat('tags');
   formatText.onclick=()=>selectAppearanceFormat('prose');
@@ -902,7 +909,7 @@ async function openLibraryEditor(){
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
   const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&key!=='libraryIconData'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
-  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags};
+  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags,appearanceEdited:()=>appearanceEdited,clearAppearanceEdited:()=>{appearanceEdited=false;}};
   let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }
