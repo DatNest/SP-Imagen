@@ -173,6 +173,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const layouts={base:'board',skin:'board',nsfw:'board'};
  let textDraft=null,renderedMode='',renderedPreset='';
+ // Scrolling is UI state, not character data. Keep each mode's ribbon and
+ // catalogue position across editor rebuilds, with per-preset chosen offsets.
+ const viewportByMode={base:{ribbon:0,tags:0},skin:{ribbon:0,tags:0},nsfw:{ribbon:0,tags:0}};
+ const chosenScrollByPreset=new Map();
  let followMovedTag=false,helpPinned=Boolean(initialHelpPinned),helpPeek=false;
  const frame=el('section',undefined,parent,'ness-tagboard');
  frame.setAttribute('aria-label','Редактор тегов внешности');
@@ -233,6 +237,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   return figure.pickerHost.querySelector?.('.ness-tagboard-ribbon')||content.querySelector?.('.ness-tagboard-ribbon');
  }
  function positionAppearancePickers(ribbon=activeRibbon()){
+  // Moving the real ribbon between the normal toolbar and the help card can
+  // also reset its scroll in browsers. Keep its scroll position during reparent.
+  const ribbonLeft=ribbon?.scrollLeft??0;
   if(helpPinned){
    figure.pickerHost.appendChild(modes);
    if(ribbon)figure.pickerHost.appendChild(ribbon);
@@ -240,6 +247,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    frame.insertBefore(modes,header);
    if(ribbon)content.insertBefore(ribbon,content.firstChild||null);
   }
+  if(ribbon)ribbon.scrollLeft=ribbonLeft;
  }
  function refreshHelp(){
   const open=helpPinned||helpPeek;
@@ -291,6 +299,69 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const isNsfwChosen=(tag,id)=>parseBaseTags(readNsfwState()?.[id]||'').some(t=>norm(t.text)===norm(tag.text));
  const isChosen=(tag,id)=>mode==='base'?isBaseChosen(tag,id):mode==='skin'?isSkinChosen(tag,id):isNsfwChosen(tag,id);
  const items=()=>modeCatalog.modes[mode].tags;
+ // Count real configured assignments, including shared "Всегда" tags. This
+ // reads the same source as the chosen-tag pane; no saved counters or migrations.
+ function presetTagCounts(){
+  const counts=new Map(),headings=availablePresets(),tags=items();
+  if(mode==='base'){
+   const state=baseState(),byText=new Map(parseBaseTags(state.base).map(t=>[norm(t.text),t]));
+   for(const id of Object.keys(headings)){
+    const ranges=visibleAppearanceRanges(state.ranges,id,state.selections,id!=='always');
+    counts.set(id,tags.filter(tag=>{
+     const match=byText.get(norm(tag.text));
+     return match&&ranges.some(r=>r.start<match.end&&match.start<r.end);
+    }).length);
+   }
+  }else if(mode==='skin'){
+   const byText=new Map(skin.tags.map(t=>[norm(t.text),t.id]));
+   for(const id of Object.keys(headings)){
+    const selected=new Set([...(skin.selections[id]||[]),...(id==='always'?[]:skin.selections.always||[])]);
+    counts.set(id,tags.filter(tag=>selected.has(byText.get(norm(tag.text)))).length);
+   }
+  }else{
+   const state=readNsfwState();
+   for(const id of Object.keys(headings))counts.set(id,parseBaseTags(state[id]||'').length);
+  }
+  return counts;
+ }
+ function syncPresetRibbon(){
+  const ribbon=activeRibbon();
+  if(!ribbon)return;
+  const counts=presetTagCounts(),headings=availablePresets();
+  for(const btn of ribbon.querySelectorAll('.ness-button')){
+   const id=btn.dataset.presetId;
+   if(!id)continue;
+   const count=counts.get(id)||0,label=headings[id]||id;
+   btn.setAttribute('aria-pressed',String(id===preset));
+   btn.dataset.filled=String(count>0);
+   btn.dataset.selectedCount=String(count);
+   btn.setAttribute('aria-label',count?label+', выбрано тегов: '+count:label+', пока без тегов');
+   btn.title=count?label+' · '+count+' тегов':'Пока нет выбранных тегов';
+  }
+ }
+ function selectPreset(id){
+  if(id===preset)return;
+  if(!flushModeText())return;
+  const chosen=content.querySelector('.ness-tagboard-chosen-list');
+  if(chosen)chosenScrollByPreset.set(mode+':'+preset,chosen.scrollTop);
+  closeTransfer();preset=id;checked.clear();
+  // The preset changes selections, not the list structure. Never rebuild the
+  // clicked ribbon (and lose its scroll/focus) for this ordinary interaction.
+  if(layout==='board')refreshSelection();
+  else syncPresetRibbon();
+  const nextChosen=content.querySelector('.ness-tagboard-chosen-list');
+  if(nextChosen)nextChosen.scrollTop=chosenScrollByPreset.get(mode+':'+preset)||0;
+  if(helpPinned||helpPeek)figure.update(mode,preset,availablePresets()[preset]||preset);
+ }
+ function rememberViewport(){
+  if(!renderedMode)return;
+  const state=viewportByMode[renderedMode];
+  const ribbon=activeRibbon(),tagFlow=content.querySelector('.ness-unified-tagflow');
+  const chosen=content.querySelector('.ness-tagboard-chosen-list');
+  if(ribbon)state.ribbon=ribbon.scrollLeft;
+  if(tagFlow)state.tags=tagFlow.scrollTop;
+  if(chosen)chosenScrollByPreset.set(renderedMode+':'+renderedPreset,chosen.scrollTop);
+ }
  function setSkinSelection(id,list){
   skin.selections[id]=[...new Set(list)];
   if(id===SKIN_ALWAYS){
@@ -819,17 +890,24 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    }
    chosenList.scrollTop=scroll;
   }
+  const subtitle=right?.querySelector('.ness-tagboard-pane-head .ness-note');
+  if(subtitle)subtitle.textContent=availablePresets()[preset]||preset;
+  const hint=right?.querySelector('.ness-tagboard-right-hint');
+  if(hint)hint.textContent=preset==='always'?'Эти теги появляются во всех ракурсах данного режима.':'Слева — добавить или убрать. Справа — убрать через ×.';
   const previewText=content.querySelector('.ness-tagboard-preview-text');
   if(previewText)previewText.textContent=preview();
+  syncPresetRibbon();
  }
  function render(){
-  // Structural changes rebuild the board; preserve every parent viewport.
+  // Structural changes rebuild the board; preserve every parent viewport
+  // and the scroll of all replaced ribbons, even when switching modes.
   const ancestors=[frame.closest?.('.ness-library-editorpane'),frame.closest?.('.ness-tab-viewport'),frame.closest?.('.ness-tab-content'),frame.closest?.('#sp-imagen-review-panel')].filter(Boolean);
   const positions=ancestors.map(node=>[node,node.scrollTop,node.scrollLeft]);
   const restore=()=>{for(const [node,top,left] of positions){node.scrollTop=top;node.scrollLeft=left;}};
-  const sameMode=renderedMode===mode;
-  const tagScroll=sameMode?(content.querySelector('.ness-unified-tagflow')?.scrollTop||0):0;
-  const chosenScroll=sameMode&&renderedPreset===preset?(content.querySelector('.ness-tagboard-chosen-list')?.scrollTop||0):0;
+  rememberViewport();
+  const tagScroll=viewportByMode[mode].tags;
+  const chosenScroll=chosenScrollByPreset.get(mode+':'+preset)||0;
+  const ribbonScroll=viewportByMode[mode].ribbon;
   renderedMode=mode;renderedPreset=preset;
   historyState();
   updateToolBar();
@@ -844,9 +922,11 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   refreshHelp();
   ui.wheelAlongX?.(ribbon);
   for(const [id,label] of Object.entries(headings)){
-   const btn=button(label,ribbon,()=>{closeTransfer();preset=id;checked.clear();render();},'quiet');
-   btn.setAttribute('aria-pressed',String(id===preset));
+   const btn=button(label,ribbon,()=>selectPreset(id),'quiet');
+   btn.dataset.presetId=id;
   }
+  ribbon.scrollLeft=ribbonScroll;
+  syncPresetRibbon();
   if(layout==='text'){
    el('p',mode==='base'?'Текст внешности редактируется в поле выше.':'Выбранные особенности этого участка:',content,'ness-note');
    if(mode!=='base'){

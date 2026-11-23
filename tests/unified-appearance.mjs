@@ -545,3 +545,116 @@ test('One figure pin and peek mode move original selectors without changing sele
  assert.equal(changes,0,'Help must not save or change any tag');
  assert.equal(initial.base,base);
 });
+
+
+test('Switching camera presets reuses the same ribbon and keeps horizontal, catalogue and per-preset chosen scroll',()=>{
+ const ui=makeUI(),tags=parseBaseTags(base);
+ let state={base,ranges:[],selections:{always:[tags[0]],face:[tags[1]],head:[tags[2]]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const ribbon=board.element.querySelector('.ness-tagboard-ribbon');
+ const buttons=()=>ribbon.querySelectorAll('.ness-button');
+ const preset=id=>buttons().find(x=>x.dataset.presetId===id);
+ const flow=board.element.querySelector('.ness-unified-tagflow');
+ const chosen=board.element.querySelector('.ness-tagboard-chosen-list');
+ assert.equal(preset('face').dataset.selectedCount,'2','Face receives its own and Always tags');
+ assert.equal(preset('head').dataset.selectedCount,'2','Head receives its own and Always tags');
+ assert.equal(preset('full_front').dataset.selectedCount,'1','Shared Always counts toward other presets');
+ assert.equal(preset('face').dataset.filled,'true');
+ assert.equal(preset('face').attributes['aria-pressed'],'true');
+ ribbon.scrollLeft=235;flow.scrollTop=147;chosen.scrollTop=31;
+ preset('head').onclick();
+ assert.strictEqual(board.element.querySelector('.ness-tagboard-ribbon'),ribbon,'Click must not rebuild the camera ribbon');
+ assert.strictEqual(board.element.querySelector('.ness-unified-tagflow'),flow,'Click must not rebuild the tag catalogue');
+ assert.equal(ribbon.scrollLeft,235,'Keep the scrolled-to camera in view');
+ assert.equal(flow.scrollTop,147,'Keep tag catalogue at its previous location');
+ assert.equal(chosen.scrollTop,0,'Unvisited chosen preset starts at the top');
+ assert.equal(preset('head').attributes['aria-pressed'],'true');
+ assert.equal(preset('face').attributes['aria-pressed'],'false');
+ chosen.scrollTop=9;
+ preset('face').onclick();
+ assert.equal(chosen.scrollTop,31,'Returning to a preset restores its chosen tag scroll');
+ assert.equal(ribbon.scrollLeft,235);
+ assert.equal(preset('face').attributes['aria-pressed'],'true');
+ preset('always').onclick();
+ assert.match(board.element.querySelector('.ness-tagboard-right-hint').textContent,/во всех ракурсах/);
+ preset('face').onclick();
+ assert.match(board.element.querySelector('.ness-tagboard-right-hint').textContent,/Слева — добавить/);
+ preset('face').onclick();
+ assert.equal(ribbon.scrollLeft,235,'Clicking already active preset is a no-op');
+ board.setHintPinned(true);
+ assert.strictEqual(board.element.querySelector('.ness-tagboard-ribbon'),ribbon);
+ assert.equal(ribbon.scrollLeft,235,'Pinning the hint preserves the camera position');
+ board.setHintPinned(false);
+ assert.equal(ribbon.scrollLeft,235,'Unpinning keeps the same ribbon position');
+});
+
+test('Ribbon keeps independent scroll positions through mode switches, rebuilds, and restores current fill counts',()=>{
+ const ui=makeUI(),tags=parseBaseTags(base);
+ let state={base,ranges:[],selections:{face:[tags[0]]}};
+ let nsfw={...initialNsfw};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  readNsfwState:()=>nsfw,writeNsfwState:next=>{nsfw=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const modes=board.element.querySelector('.ness-tagboard-modes');
+ const chooseMode=label=>modes.querySelectorAll('.ness-button').find(x=>x.textContent===label).onclick();
+ const ribbon=()=>board.element.querySelector('.ness-tagboard-ribbon');
+ const count=id=>ribbon().querySelectorAll('.ness-button').find(b=>b.dataset.presetId===id)?.dataset.selectedCount;
+ ribbon().scrollLeft=192;
+ board.element.querySelector('.ness-unified-tagflow').scrollTop=97;
+ chooseMode('Под одеждой');
+ assert.equal(count('arms'),'1');
+ assert.equal(count('always'),'0');
+ ribbon().scrollLeft=73;
+ board.element.querySelector('.ness-unified-tagflow').scrollTop=63;
+ chooseMode('NSFW');
+ assert.equal(count('nsfwChest'),'1');
+ assert.equal(count('nsfwLowerFront'),'1');
+ assert.equal(count('nsfwLowerBack'),'1');
+ const current=ribbon();
+ current.scrollLeft=64;
+ const chest=board.element.querySelectorAll('.ness-unified-chip').find(x=>x.textContent.includes('small areolae'));
+ chest.onclick();
+ assert.strictEqual(ribbon(),current,'Selecting/removing NSFW tags does not rebuild the ribbon');
+ assert.equal(current.scrollLeft,64);
+ assert.equal(count('nsfwChest'),'0','Removing the last NSFW tag clears its count');
+ assert.equal(current.querySelectorAll('.ness-button').find(b=>b.dataset.presetId==='nsfwChest').dataset.filled,'false');
+ board.undo();
+ assert.equal(count('nsfwChest'),'1','Undo updates count from actual restored fields');
+ assert.equal(ribbon().scrollLeft,64,'Undo does not reset the ribbon');
+ chooseMode('Под одеждой');
+ assert.equal(ribbon().scrollLeft,73,'Skin ribbon returns to its previous horizontal position');
+ assert.equal(board.element.querySelector('.ness-unified-tagflow').scrollTop,63);
+ chooseMode('Ракурсы');
+ assert.equal(ribbon().scrollLeft,192,'Base ribbon returns to its previous horizontal position');
+ assert.equal(board.element.querySelector('.ness-unified-tagflow').scrollTop,97);
+ assert.equal(count('face'),'1');
+});
+
+test('Tag assignment refresh updates counts without changing the ribbon or existing tag rows',()=>{
+ const ui=makeUI();
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
+ const board=createAppearanceBoard({
+  ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
+  readBaseState:()=>state,writeBaseState:next=>{state=next;},
+  changed:()=>{},readOnly:()=>false
+ });
+ const ribbon=board.element.querySelector('.ness-tagboard-ribbon');
+ const button=ribbon.querySelectorAll('.ness-button').find(b=>b.dataset.presetId==='face');
+ const tag=board.element.querySelectorAll('.ness-unified-chip').find(x=>x.textContent.includes('long blonde hair'));
+ assert.equal(button.dataset.selectedCount,'1');
+ ribbon.scrollLeft=115;
+ tag.onclick();
+ assert.equal(button.dataset.selectedCount,'2');
+ assert.equal(ribbon.scrollLeft,115);
+ assert.strictEqual(board.element.querySelector('.ness-tagboard-ribbon'),ribbon);
+ tag.onclick();
+ assert.equal(button.dataset.selectedCount,'1');
+ assert.equal(button.dataset.filled,'true');
+});

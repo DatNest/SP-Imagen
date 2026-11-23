@@ -377,6 +377,15 @@
  color:var(--ness-text)!important;border-color:var(--ness-accent)!important;
  background:color-mix(in srgb,var(--ness-accent) 16%,transparent)!important;
 }
+#sp-imagen-review-panel .ness-tagboard-ribbon>.ness-button[data-filled=true]::after{
+ content:'✓ ' attr(data-selected-count);
+ display:inline-flex;align-items:center;justify-content:center;
+ flex:none;min-width:23px;min-height:20px;padding:1px 6px;margin-inline-start:5px;
+ border-radius:999px;border:1px solid var(--ness-border);
+ background:color-mix(in srgb,var(--ness-accent) 25%,var(--ness-surface));
+ color:var(--ness-contrast-surface,var(--ness-text));
+ font:700 10px/1.1 system-ui,sans-serif;
+}
 #sp-imagen-review-panel .ness-tagboard-columns{
  display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);
  min-width:0;border-top:1px solid var(--ness-border);
