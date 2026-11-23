@@ -71,6 +71,6 @@ test('Help cannot change image prompts or saved character catalogue',()=>{
  const board=read('appearance-board.js');
  const figure=read('appearance-figure.js');
  assert.doesNotMatch(figure,/SillyTavern\.getContext|extensionSettings|localStorage|writeBaseState|writeNsfwState|changed\(\)/);
- assert.doesNotMatch(board.slice(board.indexOf('function setHelpPinned'),board.indexOf('function getCatalog')),/writeBaseState|writeNsfwState|changed\(\)|record\(\)/);
+ assert.doesNotMatch(board.slice(board.indexOf('function setHintPinned'),board.indexOf('function getCatalog')),/writeBaseState|writeNsfwState|changed\(\)|record\(\)/);
  assert.ok(read('library-runtime.js').includes("window.localStorage?.setItem('sp-imagen-figure-pinned'"));
 });
