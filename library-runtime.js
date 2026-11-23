@@ -470,7 +470,7 @@ function libraryEntries(data){
 function validateMasterLibrary(input,{copy=true,preserveCurrent=false}={}){
  if(!input||input.version!==1||!input.personas||!input.characters||Array.isArray(input.personas)||Array.isArray(input.characters)||typeof input.personas!=='object'||typeof input.characters!=='object')throw Error('Неверный формат библиотеки: нужны version: 1, personas и characters.');
  const data=copy?cloneLibrary(input):input,ids=new Set();
- if(Object.hasOwn(data,'appearanceRules')){
+ if(!preserveCurrent&&Object.hasOwn(data,'appearanceRules')){
   const rules=normalizeAppearanceRules(data.appearanceRules);
   if(Object.keys(rules).length)data.appearanceRules=rules;else delete data.appearanceRules;
  }
@@ -988,8 +988,8 @@ async function openLibraryEditor(){
  });
  view.add.onclick=()=>{if(!tryFlush())return;const id=newLibraryId('character',new Set(libraryEntries(draft).map(e=>e.id)));draft.characters[id]={name:'Новый персонаж',aliases:[],base:''};changed(true);editCharacter(id,'characters');};
  const upload=view.upload;
- upload.onchange=async()=>{if(busy||!upload.files?.[0]||!tryFlush())return;setBusy(true);try{const value=validateMasterLibrary(JSON.parse((await upload.files[0].text()).replace(/^\uFEFF/,'')));editor?.visibility?.closeBoard?.();draft=value;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Импортировано в черновик. Нажми «Сохранить».');}catch(e){status('Импорт не выполнен: '+e.message);}finally{upload.value='';setBusy(false);}};
- view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
+ upload.onchange=async()=>{if(busy||!upload.files?.[0]||!tryFlush())return;setBusy(true);try{const value=validateMasterLibrary(JSON.parse((await upload.files[0].text()).replace(/^\uFEFF/,'')),{preserveCurrent:true});editor?.visibility?.closeBoard?.();draft=value;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Импортировано в черновик. Нажми «Сохранить».');}catch(e){status('Импорт не выполнен: '+e.message);}finally{upload.value='';setBusy(false);}};
+ view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft,{preserveCurrent:true}),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
  search.oninput=()=>{if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=setTimeout(searchNow,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchNow();}};renderTags();renderList();
  status(libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
  let onChatSwitch=()=>{};
