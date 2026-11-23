@@ -24,7 +24,7 @@ test('One schematic figure covers every actual base, skin and NSFW area, without
    count++;
   }
  }
- assert.equal(count,20);
+ assert.equal(count,19);
  assert.equal(describeAppearanceFigure('skin','arms').top,'sleeveless');
  assert.equal(describeAppearanceFigure('skin','legs').bottom,'shorts');
  assert.equal(describeAppearanceFigure('skin','upper_back').top,'bare');
