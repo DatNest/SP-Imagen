@@ -47,6 +47,7 @@ const sample=()=>({
   customUserChoice:'persist me'
  },
  attributeCatalog:{legacyUserTags:['keep this too']},
+ appearanceRules:{face:'Лицо только крупным планом, не менять'},
  customExtensionField:{user:true}
 });
 
@@ -117,4 +118,14 @@ test('Saving only the avatar preserves every other field and keeps the exact pri
   // A former icon can still be recovered by explicitly choosing the previous copy.
   assert.equal(JSON.parse(storage[MASTER_BACKUP_KEY]).characters.a.libraryIconData,iconA);
  }finally{globalThis.SillyTavern=previous;}
+});
+
+
+test('Import and export use the preserving validator instead of rearranging previously saved records',()=>{
+ const source=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
+ assert.match(source,/const value=validateMasterLibrary\(JSON\.parse\(\(await upload\.files\[0\]\.text\(\)\)/);
+ assert.match(source,/\{preserveCurrent:true\}\);editor\?\.visibility\?\.closeBoard/);
+ assert.match(source,/JSON\.stringify\(validateMasterLibrary\(draft,\{preserveCurrent:true\}\),null,2\)/);
+ const old=sample();
+ assert.equal(JSON.stringify(helpers.validateMasterLibrary(old,{preserveCurrent:true})),JSON.stringify(old));
 });
