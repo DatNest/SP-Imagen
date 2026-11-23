@@ -762,7 +762,7 @@ async function openLibraryEditor(){
   pinHint.title='Закрепить визуальную схему тела рядом с тегами';
   pinHint.setAttribute('role','switch');
   pinHint.setAttribute('aria-label','Закреплённая подсказка по участку тела');
-  const bulb=button('♧',formatStrip,undefined,'quiet ness-figure-bulb');
+  const bulb=button('💡',formatStrip,undefined,'quiet ness-figure-bulb');
   bulb.title='Временно показать схему выбранного участка';
   bulb.setAttribute('aria-label','Открыть подсказку по ракурсу');
   pinHint.onclick=()=>inlineBoard.setHintPinned(!inlineBoard.getHintPinned());
