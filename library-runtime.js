@@ -595,7 +595,7 @@ let guideOpenFirstRecord = () => false;
 async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
- let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=Boolean(baseline&&JSON.stringify(draft)!==(typeof baseline==='string'?baseline:JSON.stringify(baseline))),busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
+ let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
  // Opening a library after an extension update must never write to storage.
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  let appearanceHintPinned=false;
