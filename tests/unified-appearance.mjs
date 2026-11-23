@@ -579,6 +579,10 @@ test('Switching camera presets reuses the same ribbon and keeps horizontal, cata
  assert.equal(chosen.scrollTop,31,'Returning to a preset restores its chosen tag scroll');
  assert.equal(ribbon.scrollLeft,235);
  assert.equal(preset('face').attributes['aria-pressed'],'true');
+ preset('always').onclick();
+ assert.match(board.element.querySelector('.ness-tagboard-right-hint').textContent,/во всех ракурсах/);
+ preset('face').onclick();
+ assert.match(board.element.querySelector('.ness-tagboard-right-hint').textContent,/Слева — добавить/);
  preset('face').onclick();
  assert.equal(ribbon.scrollLeft,235,'Clicking already active preset is a no-op');
  board.setHintPinned(true);
