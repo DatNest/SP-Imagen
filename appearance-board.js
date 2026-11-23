@@ -19,7 +19,7 @@ export const SKIN_PRESETS=Object.freeze({
 export const SKIN_ALWAYS='always';
 export const NSFW_PRESETS=NSFW_AREAS;
 const copy=x=>JSON.parse(JSON.stringify(x));
-const norm=s=>String(s||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+const norm=s=>String(s||'').normalize('NFKC').replace(/[\u200B\u200C\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,'').trim().replace(/\s+/g,' ').toLowerCase();
 const validLabel=s=>String(s||'').trim().slice(0,50);
 const keyOK=id=>id===SKIN_ALWAYS||Object.hasOwn(SKIN_PRESETS,id);
 export function normalizeSkinTags(raw){
@@ -83,6 +83,13 @@ export function normalizeAppearanceSections(raw,base){
 /** Shared tag catalogue, with legacy source fields kept as prompt authorities. */
 export function normalizeAppearanceCatalog(raw,base,skin,nsfw={},legacySections=[]){
  const data=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+ // A modern mode catalogue owns its tags. Never rebuild the retired shared
+ // pool from base+skin+NSFW whenever the editor reads or saves a record.
+ if(data.modes&&typeof data.modes==='object'){
+  return {tags:Array.isArray(data.tags)?copy(data.tags):[],
+   sections:Array.isArray(data.sections)?copy(data.sections):[],
+   modes:normalizeAppearanceModeCatalog(data,base,skin,nsfw,legacySections).modes};
+ }
  const skinState=normalizeSkinTags(skin),tags=[],names=new Set(),ids=new Set();
  const add=(value,preferredId)=>{
   const valueText=String(value||'').trim().replace(/[,;\s]+$/,'').trim();
@@ -419,9 +426,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  
  const sectionsForMode=()=>modeCatalog.modes[mode].sections;
  function orderedSequence(){
-  const all=items(),sequence=[];
+  const all=items(),sectionsAt=new Map(),sequence=[];
+  for(const divider of sectionsForMode()){
+   if(!sectionsAt.has(divider.before))sectionsAt.set(divider.before,[]);
+   sectionsAt.get(divider.before).push(divider);
+  }
   for(let i=0;i<=all.length;i++){
-   for(const divider of sectionsForMode())if(divider.before===i)sequence.push({kind:'divider',id:divider.id,section:divider});
+   for(const divider of sectionsAt.get(i)||[])sequence.push({kind:'divider',id:divider.id,section:divider});
    if(i<all.length)sequence.push({kind:'tag',id:all[i].id,tag:all[i]});
   }
   return sequence;
