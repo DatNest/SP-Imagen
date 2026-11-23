@@ -892,6 +892,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   }
   const subtitle=right?.querySelector('.ness-tagboard-pane-head .ness-note');
   if(subtitle)subtitle.textContent=availablePresets()[preset]||preset;
+  const hint=right?.querySelector('.ness-tagboard-right-hint');
+  if(hint)hint.textContent=preset==='always'?'Эти теги появляются во всех ракурсах данного режима.':'Слева — добавить или убрать. Справа — убрать через ×.';
   const previewText=content.querySelector('.ness-tagboard-preview-text');
   if(previewText)previewText.textContent=preview();
   syncPresetRibbon();
