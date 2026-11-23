@@ -719,12 +719,53 @@ async function openLibraryEditor(){
  function searchNow(){closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=null;if(!done)renderList(true);}
 
  function editCharacter(id,group){
-  if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);const entry=draft[group][id],fields={};
+  if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);let entry=draft[group][id];const fields={};
   const heading=el('div',undefined,form,'ness-editor-heading');
   const identityCard=el('div',undefined,heading,'ness-editor-identity');
   const emblem=button('✦',identityCard,()=>openCharacterIconEditor(document,panel,{
    createDialog:createNessChildDialog,initial:entry.libraryIconData||'',
-   onSave:data=>{if(data)entry.libraryIconData=data;else delete entry.libraryIconData;drawEmblem();changed();}
+   restoreCandidate:(()=>{
+    if(entry.libraryIconData)return '';
+    const backup=SillyTavern.getContext()?.extensionSettings?.variables?.global?.[MASTER_BACKUP_KEY];
+    try{
+     const previous=typeof backup==='string'?JSON.parse(backup):backup;
+     const candidate=previous?.[group]?.[id]?.libraryIconData||'';
+     return typeof candidate==='string'&&/^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(candidate)?candidate:'';
+    }catch{return '';}
+   })(),
+   onSave:async data=>{
+    const savedRaw=baseline;
+    const original=entry.libraryIconData;
+    const stored=savedRaw?(typeof savedRaw==='string'?JSON.parse(savedRaw):cloneLibrary(savedRaw)):null;
+    if(stored?.[group]?.[id]){
+     // Commit only this icon to the exact stored JSON. No pending tag/text edits
+     // are silently saved and no other character's catalogue is normalized.
+     if(data)stored[group][id].libraryIconData=data;
+     else delete stored[group][id].libraryIconData;
+     const result=await saveMasterLibrary(stored,savedRaw,{preserveUserFields:true});
+     baseline=result.raw;
+     if(data)entry.libraryIconData=data;
+     else delete entry.libraryIconData;
+     if(editor?.id===id){
+      if(data)editor.original.libraryIconData=data;
+      else delete editor.original.libraryIconData;
+     }
+    }else{
+     // A brand-new unsaved record has no stable storage ID yet; persist it
+     // through the existing Save pathway rather than dropping its icon.
+     if(data)entry.libraryIconData=data;
+     else delete entry.libraryIconData;
+     const saved=await publishDraft(true);
+     if(!saved){
+      if(original!==undefined)entry.libraryIconData=original;
+      else delete entry.libraryIconData;
+      throw Error('Не удалось сохранить иконку нового персонажа. Проверь состояние библиотеки.');
+     }
+     entry=draft[editor.group][id];
+    }
+    drawEmblem();
+    status(dirty?'Иконка сохранена. Остальные изменения пока не сохранены.':'Иконка сохранена в библиотеке.');
+   }
   }),'ness-editor-emblem');
   emblem.title='Выбрать или обрезать иконку персонажа';
   emblem.setAttribute('aria-label','Изменить иконку персонажа');
