@@ -44,6 +44,15 @@ const DRAWING=[
  '<path d="M87 65L86 84Q95 90 104 84L103 65Z"/>',
  '<ellipse cx="95" cy="42" rx="23" ry="27"/>',
  '</g>',
+ '<g class="figure-zones">',
+ '<ellipse data-zone="head" cx="95" cy="42" rx="23" ry="27"/>',
+ '<path data-zone="torso" d="M75 79Q95 74 115 79L130 93L125 157Q120 167 127 178Q116 190 95 190Q74 190 63 178Q70 167 65 157L60 93Z"/>',
+ '<path data-zone="hips" d="M65 155Q95 161 125 155L127 177Q116 190 95 190Q74 190 63 177Z"/>',
+ '<path data-zone="arm-left" d="M58 89Q49 88 45 99L35 149L27 189L24 205Q24 214 31 213L36 207L41 188L52 155L65 105Z"/>',
+ '<path data-zone="arm-right" d="M132 89Q141 88 145 99L155 149L163 189L166 205Q166 214 159 213L154 207L149 188L138 155L125 105Z"/>',
+ '<path data-zone="leg-left" d="M65 177Q79 182 92 178L89 251L86 295Q84 304 76 306L66 306Q60 301 62 293L62 251Z"/>',
+ '<path data-zone="leg-right" d="M98 178Q111 182 125 177L128 251L130 293Q132 302 125 306L114 306Q106 304 105 295L101 251Z"/>',
+ '</g>',
  '<g data-cloth="shirt" class="figure-cloth figure-shirt">',
  '<path d="M74 82L85 81Q95 87 105 81L116 82L130 92L125 155Q95 161 65 155L60 92Z"/>',
  '<path class="figure-seam" d="M84 83Q95 100 106 83M66 150Q95 155 124 150"/>',
@@ -67,15 +76,7 @@ const DRAWING=[
  '<path d="M65 163Q95 169 125 163L129 213L106 216L95 191L84 216L61 213Z"/>',
  '<path class="figure-seam" d="M64 173Q95 178 126 173M95 172v19M62 208l22 2M106 210l22 -2"/>',
  '</g>',
- '<g class="figure-zones">',
- '<ellipse data-zone="head" cx="95" cy="42" rx="25" ry="28"/>',
- '<path data-zone="torso" d="M76 79Q95 73 114 79L132 92L125 156Q95 167 65 156L58 92Z"/>',
- '<path data-zone="hips" d="M64 151Q95 162 126 151L127 179Q95 196 63 179Z"/>',
- '<path data-zone="arm-left" d="M56 89Q46 87 43 100L33 150L24 190L20 208Q22 220 33 214L40 189L49 155L65 106Z"/>',
- '<path data-zone="arm-right" d="M134 89Q144 87 147 100L157 150L166 190L170 208Q168 220 157 214L150 189L141 155L125 106Z"/>',
- '<path data-zone="leg-left" d="M63 179Q78 184 92 179L89 252L86 297Q84 308 74 309L64 308L59 296L60 252Z"/>',
- '<path data-zone="leg-right" d="M98 179Q112 184 127 179L130 252L132 296L126 308L116 309Q106 308 104 297L101 252Z"/>',
- '</g>',
+
  '<g class="figure-front figure-face">',
  '<circle cx="86.5" cy="40" r="2.1"/><circle cx="103.5" cy="40" r="2.1"/>',
  '<path d="M95 44v5M89 54Q95 57 101 54" fill="none"/>',
@@ -113,7 +114,6 @@ export function createAppearanceFigure(ui,parent,onClose=()=>{}){
  const close=button('×',head,onClose,'quiet ness-figure-close');
  close.title='Свернуть визуальную подсказку';
  close.setAttribute('aria-label',close.title);
- const pickerHost=el('div',undefined,root,'ness-figure-pickers');
  const figure=el('div',undefined,root,'ness-figure-diagram');
  const orientation=el('span','● СПЕРЕДИ',figure,'ness-figure-orientation');
  const area=el('span','✦ ВЫБРАННАЯ ОБЛАСТЬ',figure,'ness-figure-area');
@@ -123,6 +123,7 @@ export function createAppearanceFigure(ui,parent,onClose=()=>{}){
  const name=el('strong','',root,'ness-figure-name');
  const details=el('p','',root,'ness-figure-details');
  el('p','✧ Подсвеченная область соответствует текущему ракурсу или участку.',root,'ness-figure-legend');
+ const pickerHost=el('div',undefined,root,'ness-figure-pickers');
  function update(mode,preset,label=''){
   const plan=describeAppearanceFigure(mode,preset);
   orientation.textContent=plan.rear?'↶ СО СПИНЫ':'● СПЕРЕДИ';
