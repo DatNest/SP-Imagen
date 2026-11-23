@@ -603,8 +603,8 @@
  #sp-imagen-review-panel .ness-tagboard-columns{display:flex;flex-direction:column}
  #sp-imagen-review-panel .ness-tagboard-left{padding:12px 0}
  #sp-imagen-review-panel .ness-tagboard-right{
-  position:sticky;bottom:0;z-index:8;flex:none;
-  height:204px;min-height:204px;max-height:204px;
+  position:static;bottom:auto;z-index:auto;flex:none;
+  height:auto;min-height:0;max-height:none;
   border:0;border-top:1px solid var(--ness-border);padding:8px 0 5px;
   background:var(--ness-surface);
  }
@@ -614,7 +614,7 @@
  #sp-imagen-review-panel .ness-tagboard-right .ness-tagboard-overline:first-child{font-size:9px}
  #sp-imagen-review-panel .ness-tagboard-right .ness-tagboard-pane-head strong{font-size:13px}
  #sp-imagen-review-panel .ness-tagboard-chosen-list{
-  height:auto;min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;
+  height:auto;min-height:0;max-height:min(28dvh,230px);flex:none;overflow-y:auto;overscroll-behavior:contain;
  }
  #sp-imagen-review-panel .ness-tagboard-right-hint{
   padding-top:4px;font-size:10px!important;line-height:1.35;
@@ -1037,6 +1037,7 @@
 }
 /* Identity stays above the tabs and never scrolls away with appearance fields. */
 #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading{
+ color:var(--ness-contrast-library-card,var(--ness-text));
  position:relative;z-index:12;
  display:grid;grid-template-columns:minmax(0,1fr) auto;
  gap:10px;align-items:start;
@@ -1179,7 +1180,7 @@
 
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-tools{background:var(--ness-library-card);border-color:var(--ness-library-line)}
 #sp-imagen-review-panel[data-dialog=library] .ness-button:is(.ness-tagboard-tool,.ness-tagboard-move-arrow){
- background:var(--ness-library-card)!important;color:var(--ness-library-cream)!important;border-color:var(--ness-library-line)!important;
+ background:var(--ness-library-card)!important;color:var(--ness-contrast-library-card,var(--ness-library-cream))!important;border-color:var(--ness-library-line)!important;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-button.ness-tagboard-tool[aria-pressed=true]{
  background:var(--ness-library-rose)!important;border-color:var(--ness-library-gold)!important;
@@ -1259,6 +1260,7 @@
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-left,
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-right{
+ color:var(--ness-contrast-library-pane,var(--ness-text));
  padding:13px!important;border:1px solid var(--ness-library-line)!important;
  border-radius:12px;background:color-mix(in srgb,var(--ness-bg) 88%,#643c31);
  min-width:0;min-height:0;overflow:hidden;
@@ -1280,7 +1282,7 @@
  order:1;flex:1;min-width:10px;background:var(--ness-library-line);
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-unified-section-toggle{
- order:0;font-size:12px!important;color:var(--ness-library-gold)!important;
+ order:0;font-size:12px!important;color:var(--ness-contrast-library-pane,var(--ness-library-gold))!important;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-unified-section-head>.ness-tagboard-add-slot{order:2;flex:none}
 #sp-imagen-review-panel[data-dialog=library] .ness-unified-section-head>.ness-section-actions{order:3}
@@ -1346,12 +1348,12 @@
  border:1px solid var(--ness-library-gold)!important;
  border-radius:10px!important;
  background:color-mix(in srgb,var(--ness-library-rose) 20%,var(--ness-bg))!important;
- color:var(--ness-library-cream)!important;
+ color:var(--ness-contrast-library-chosen,var(--ness-library-cream))!important;
  white-space:normal!important;overflow-wrap:anywhere;text-align:left!important;
  font-weight:500!important;cursor:pointer;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-chosen-chip .ness-chosen-remove-mark{
- flex:none;color:var(--ness-library-gold);font-size:17px;line-height:1;
+ flex:none;color:var(--ness-contrast-library-chosen,var(--ness-library-gold));font-size:17px;line-height:1;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-chosen-chip:hover{
  border-color:var(--ness-library-rose)!important;
@@ -1373,7 +1375,7 @@
  border-color:var(--ness-library-gold)!important;
  border-radius:11px!important;
  background:var(--ness-library-cream)!important;
- color:var(--ness-bg)!important;
+ color:var(--ness-contrast-library-cream,var(--ness-bg))!important;
  font-weight:750!important;
 }
 @media(max-width:1080px){
@@ -1419,17 +1421,31 @@
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-left,
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-right{padding:9px!important}
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-right{
-  position:sticky;bottom:0;z-index:8;
-  flex:none;height:245px;min-height:245px;max-height:245px;
-  background:var(--ness-bg);
+  position:static;bottom:auto;z-index:auto;
+  flex:none;height:auto;min-height:0;max-height:none;
+  overflow:visible;background:var(--ness-bg);
  }
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-chosen-list{
-  height:auto;min-height:0;flex:1;
+  height:auto;min-height:0;max-height:min(28dvh,230px);flex:none;overflow-y:auto;
  }
  #sp-imagen-review-panel[data-dialog=library] .ness-unified-tagflow{height:245px;max-height:38dvh}
  #sp-imagen-review-panel[data-dialog=library] .ness-tab-strip .ness-tab{
   padding:8px 11px!important;font-size:12px!important;
  }
+}
+/* Per-surface readability follows each user's chosen SillyTavern palette. */
+#sp-imagen-review-panel[data-dialog=library] .ness-editor-heading
+ :is(.ness-editor-name-input,.ness-editor-type-select,.ness-editor-name-pencil){
+ color:var(--ness-contrast-library-card,var(--ness-text))!important;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-tagboard-right
+ :is(.ness-tagboard-pane-head strong,.ness-tagboard-overline,.ness-tagboard-right-hint),
+#sp-imagen-review-panel[data-dialog=library] .ness-tagboard-left
+ :is(.ness-tagboard-pane-head strong,.ness-tagboard-overline,.ness-unified-chip){
+ color:var(--ness-contrast-library-pane,var(--ness-text))!important;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-tagboard-right .ness-tagboard-right-hint{
+ color:var(--ness-contrast-library-pane,var(--ness-text))!important;
 }
 /* Respond to the actual dialog width, even in a large browser or at high zoom. */
 @container spi-library (max-width:760px){
