@@ -228,7 +228,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const nsfw=button('NSFW',modes,()=>{if(!flushModeText())return;mode='nsfw';layout=layouts.nsfw;preset='nsfwChest';checked.clear();closeTransfer();render();},'quiet');
  const helpLayout=el('div',undefined,frame,'ness-appearance-main');
  const content=el('div',undefined,helpLayout,'ness-tagboard-body');
- const figure=createAppearanceFigure(ui,helpLayout,()=>setHelpPinned(false));
+ const figure=createAppearanceFigure(ui,helpLayout,()=>setHintPinned(false));
  function activeRibbon(){
   return figure.pickerHost.querySelector?.('.ness-tagboard-ribbon')||content.querySelector?.('.ness-tagboard-ribbon');
  }
@@ -249,14 +249,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(open)figure.update(mode,preset,availablePresets()[preset]||preset);
   onHelpChange(helpPinned,helpPeek);
  }
- function setHelpPinned(value){
+ function setHintPinned(value){
   helpPinned=Boolean(value);
   helpPeek=false;
   positionAppearancePickers();
   refreshHelp();
  }
  function toggleHintPeek(){
-  if(helpPinned){setHelpPinned(false);return;}
+  if(helpPinned){setHintPinned(false);return;}
   helpPeek=!helpPeek;
   refreshHelp();
  }
