@@ -925,8 +925,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const btn=button(label,ribbon,()=>selectPreset(id),'quiet');
    btn.dataset.presetId=id;
   }
-  ribbon.scrollLeft=ribbonScroll;
   syncPresetRibbon();
+  // Restore only after buttons and count badges exist: otherwise scrollWidth
+  // is empty and the browser clamps the previous horizontal offset to zero.
+  ribbon.scrollLeft=ribbonScroll;
   if(layout==='text'){
    el('p',mode==='base'?'Текст внешности редактируется в поле выше.':'Выбранные особенности этого участка:',content,'ness-note');
    if(mode!=='base'){
