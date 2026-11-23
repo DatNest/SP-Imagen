@@ -13,41 +13,61 @@ export const NSFW_AREAS = Object.freeze({
   nsfwLowerFront:'Нижняя передняя анатомия',
   nsfwLowerBack:'Нижняя задняя анатомия'
 });
-const key = s => String(s||'').normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase();
+// Identity comparisons ignore only non-printing format artifacts. The original
+// text and the first valid user ID are kept verbatim for edits and export.
+const key = s => String(s||'').normalize('NFKC')
+  .replace(/[\u200B\u200C\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,'')
+  .replace(/\s+/g,' ').trim().toLowerCase();
 const validTitle = s => String(s||'').trim().slice(0,50);
 const properId = s => /^[a-z][a-z0-9_]{0,48}$/.test(s);
 
 function modeData(raw, sourceTags, initialSections, prefix) {
-  const prior = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-  const tags=[], ids=new Set(), names=new Set();
-  const add = (text, suggested) => {
+  const prior=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+  const old=Array.isArray(prior.tags)?prior.tags:[];
+  const fromSource=Array.isArray(sourceTags)?sourceTags:[];
+  const tags=[],ids=new Set(),names=new Set();
+  const append=(text,suggested)=>{
     const value=String(text||'').trim().replace(/[,;\s]+$/,'').trim().slice(0,1200);
-    if (!value || names.has(key(value)) || tags.length>=700) return;
-    names.add(key(value));
+    const identity=key(value);
+    if(!value||!identity||names.has(identity)||tags.length>=700)return;
+    names.add(identity);
     let id=String(suggested||'');
-    if (!properId(id) || ids.has(id)) {
+    if(!properId(id)||ids.has(id)){
       let n=tags.length+1;
       while(ids.has(prefix+n))n++;
       id=prefix+n;
     }
-    ids.add(id);tags.push({id,text:value});
+    ids.add(id);
+    tags.push({id,text:value});
   };
-  if(Array.isArray(prior.tags))for(const t of prior.tags)if(t?.text)add(t.text,t.id);
-  for(const t of sourceTags)if(t?.text)add(t.text,t.id);
-  const sections=[],seen=new Set();
-  const input=Array.isArray(prior.sections)?prior.sections:initialSections||[];
-  for(const d of input) {
-    const title=validTitle(d?.title);
-    if(!title || sections.length>=60)continue;
-    let id=String(d.id||'');
-    if(!properId(id)||seen.has(id)){
-      let n=sections.length+1;while(seen.has('section'+n))n++;id='section'+n;
-    }
-    seen.add(id);
-    const before=Number.isInteger(d.before)?Math.min(tags.length,Math.max(0,d.before)):tags.length;
-    sections.push({id,title,before});
+  // Prefix lengths record where each ORIGINAL boundary ends after deduplication.
+  // Dividers remain attached to their following tags even when a corrupt
+  // catalogue contains repeated visually-identical strings.
+  const oldPrefix=[0],sourcePrefix=[0];
+  for(const tag of old){
+    if(typeof tag?.text==='string')append(tag.text,tag.id);
+    oldPrefix.push(tags.length);
   }
-  // A section at a given index always belongs to the following tags.
+  for(const tag of fromSource){
+    if(typeof tag?.text==='string')append(tag.text,tag.id);
+    sourcePrefix.push(tags.length);
+  }
+  const sections=[],sectionIds=new Set();
+  const definitions=Array.isArray(prior.sections)?prior.sections:initialSections||[];
+  const indexMap=old.length?oldPrefix:sourcePrefix;
+  for(const section of definitions){
+    const title=validTitle(section?.title);
+    if(!title||sections.length>=60)continue;
+    let id=String(section.id||'');
+    if(!properId(id)||sectionIds.has(id)){
+      let n=sections.length+1;
+      while(sectionIds.has('section'+n))n++;
+      id='section'+n;
+    }
+    sectionIds.add(id);
+    const original=Number.isInteger(section.before)?Math.max(0,Math.min(indexMap.length-1,section.before)):indexMap.length-1;
+    sections.push({id,title,before:indexMap[original]});
+  }
   return {tags,sections};
 }
 
