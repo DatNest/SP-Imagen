@@ -137,6 +137,10 @@ function applyReadableNessColors(target) {
             accent:'var(--ness-accent)',
             'library-card':'color-mix(in srgb,var(--ness-bg) 84%,#754632)',
             'library-pane':'color-mix(in srgb,var(--ness-bg) 88%,#643c31)',
+            'library-list':'color-mix(in srgb,var(--ness-bg) 89%,#523126)',
+            'library-mode':'color-mix(in srgb,var(--ness-bg) 76%,#754237)',
+            'library-active':'color-mix(in srgb,var(--ness-accent) 52%,#c88478)',
+            'library-format':'color-mix(in srgb,color-mix(in srgb,var(--ness-accent) 52%,#c88478) 34%,var(--ness-bg))',
             'library-chosen':'color-mix(in srgb,color-mix(in srgb,var(--ness-accent) 52%,#c88478) 20%,var(--ness-bg))',
             'library-cream':'color-mix(in srgb,var(--ness-text) 86%,#f2d7b3)',
         };
