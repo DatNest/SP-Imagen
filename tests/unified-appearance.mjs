@@ -760,3 +760,32 @@ test('Reorder arrows share the toolbar and do not open transfer modal',()=>{
  assert.equal(movement.querySelectorAll('.ness-tagboard-move-arrow').length,4);
  assert.equal(board.element.querySelector('.ness-tagboard-context-menu').hidden,true);
 });
+
+test('Section plus adds to the exact named section even when neighboring sections are empty',()=>{
+ for(const [mode,label] of [['base','Ракурсы'],['skin','Под одеждой'],['nsfw','NSFW']]){
+  const ui=makeUI(),catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+  catalog.modes[mode].sections=[{id:'first',title:'First',before:0},{id:'middle',title:'Middle',before:0},{id:'last',title:'Last',before:0}];
+  let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}},nsfw={...initialNsfw};
+  const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,initialSkin:skin,readBaseState:()=>state,writeBaseState:x=>{state=x;},readNsfwState:()=>nsfw,writeNsfwState:x=>{nsfw=x;},changed:()=>{},readOnly:()=>false});
+  board.element.querySelectorAll('button').find(b=>b.textContent===label).onclick();
+  const before=JSON.stringify(board.getCatalog());
+  const addField=()=>{board.element.querySelectorAll('.ness-tagboard-add-plus')[1].onclick();return board.element.querySelector('.ness-tagboard-inline-add-input');};
+  let field=addField();field.value='new feature';
+  field.onkeydown({key:'Enter',isComposing:true,preventDefault(){throw Error('IME must finish first');}});
+  assert.equal(JSON.stringify(board.getCatalog()),before);
+  let stopped=false;field.onkeydown({key:'Enter',preventDefault(){},stopPropagation(){stopped=true;}});
+  assert.ok(stopped);
+  const result=board.getCatalog().modes[mode];
+  assert.deepEqual(result.sections.map(s=>s.id),['first','middle','last']);
+  assert.equal(sectionTagCount(result,'first'),0);
+  assert.equal(sectionTagCount(result,'middle'),1);
+  assert.equal(result.tags[0].text,'new feature');
+  board.undo();assert.equal(JSON.stringify(board.getCatalog()),before);
+  field=addField();field.value='new feature';
+  board.element.querySelector('.ness-tagboard-add-confirm').onclick();
+  assert.equal(sectionTagCount(board.getCatalog().modes[mode],'middle'),1);
+  field=addField();field.value='new feature';
+  field.onkeydown({key:'Enter',preventDefault(){}});
+  assert.equal(sectionTagCount(board.getCatalog().modes[mode],'middle'),1);
+ }
+});
