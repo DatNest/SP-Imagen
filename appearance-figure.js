@@ -100,7 +100,7 @@ export function describeAppearanceFigure(mode,preset){
 
 /**
  * The card is mounted exactly once per appearance editor, with one SVG. The
- * original mode and camera buttons are moved into pickerHost when pinned.
+ * mode and camera controls remain in the editor toolbar.
  */
 export function createAppearanceFigure(ui,parent,onClose=()=>{}){
  const {el,button}=ui;
@@ -123,7 +123,6 @@ export function createAppearanceFigure(ui,parent,onClose=()=>{}){
  const name=el('strong','',root,'ness-figure-name');
  const details=el('p','',root,'ness-figure-details');
  el('p','✧ Подсвеченная область соответствует текущему ракурсу или участку.',root,'ness-figure-legend');
- const pickerHost=el('div',undefined,root,'ness-figure-pickers');
  function update(mode,preset,label=''){
   const plan=describeAppearanceFigure(mode,preset);
   orientation.textContent=plan.rear?'↶ СО СПИНЫ':'● СПЕРЕДИ';
@@ -139,5 +138,5 @@ export function createAppearanceFigure(ui,parent,onClose=()=>{}){
   for(const piece of svg.querySelectorAll('[data-cloth]'))piece.classList.toggle('is-off',!clothes[piece.getAttribute('data-cloth')]);
   for(const mark of svg.querySelectorAll('[data-anatomy]'))mark.classList.toggle('is-visible',plan.anatomy===mark.getAttribute('data-anatomy'));
  }
- return {element:root,pickerHost,update};
+ return {element:root,update};
 }

@@ -93,7 +93,7 @@ export function normalizeAppearanceModeCatalog(raw,base,skin,nsfw={},legacySecti
   // Preserve unassigned legacy shared-catalogue entries without moving them
   // into a sensitive mode. They remain available in the base catalogue only.
   if(!data.modes && Array.isArray(data.tags)){
-    const known=new Set([...baseTags,...skinData.tags,
+    const known=new Set([...baseTags,...skinData.tags,...nsfwTags,
       ...parseBaseTags(nsfw.nudeUpper||''),...parseBaseTags(nsfw.nudeLower||'')
     ].map(t=>key(t.text)));
     const isAlreadyAssigned = value => {

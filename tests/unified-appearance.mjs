@@ -491,7 +491,7 @@ test('Within-mode move-to-section repositions the selected chip without altering
 test('History buttons are docked into a sticky shared appearance toolbar, not duplicated',()=>{
  const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
  const lib=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
- assert.match(css,/\.ness-tagboard-tools\{\s*position:sticky;top:0/);
+ assert.match(css,/\.ness-tagboard-controls\{\s*position:sticky;top:0/);
  assert.match(lib,/inlineBoard\.historyHost\.append\(historyUndo,historyRedo\)/);
  const ui=makeUI();let state={base,ranges:[],selections:{}};
  const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
@@ -503,7 +503,7 @@ test('History buttons are docked into a sticky shared appearance toolbar, not du
 });
 
 
-test('One figure pin and peek mode move original selectors without changing selected tag state',()=>{
+test('Figure pin and peek leave the original selectors in the sticky header without changing tag state',()=>{
  const ui=makeUI(),initial={base,ranges:[],selections:{}};
  let changes=0,last=null;
  const board=createAppearanceBoard({
@@ -517,28 +517,27 @@ test('One figure pin and peek mode move original selectors without changing sele
  const modes=board.element.querySelector('.ness-tagboard-modes');
  const ribbon=board.element.querySelector('.ness-tagboard-ribbon');
  assert.ok(figure&&modes&&ribbon,'One figure and original mode/preset controls exist');
- const pickers=figure.querySelector('.ness-figure-pickers');
- const legend=figure.querySelector('.ness-figure-legend');
- assert.ok(pickers&&legend,'The same pinned guide includes the legend and control docking area');
- assert.equal(figure.children.at(-1),pickers,'The controls must be located beneath the body description, at the bottom of the guide');
- assert.ok(figure.children.indexOf(pickers)>figure.children.indexOf(legend));
-
+ const controls=board.element.querySelector('.ness-tagboard-controls');
+ assert.ok(controls&&figure.querySelector('.ness-figure-legend'));
+ assert.equal(controls.children[0].className,'ness-tagboard-tools');
+ assert.equal(modes.parentElement,controls);
+ assert.equal(ribbon.parentElement,controls);
  assert.equal(board.getHintPinned(),false);
  assert.equal(figure.hidden,true);
  board.setHintPinned(true);
  assert.equal(board.getHintPinned(),true);
  assert.deepEqual(last,[true,false]);
  assert.equal(figure.hidden,false);
- assert.equal(modes.parentElement.className,'ness-figure-pickers');
- assert.equal(ribbon.parentElement.className,'ness-figure-pickers');
+ assert.equal(modes.parentElement,controls);
+ assert.equal(ribbon.parentElement,controls);
  board.toggleHintPeek(); // When pinned, clicking the bulb unpins the same card.
  assert.equal(board.getHintPinned(),false);
- assert.equal(modes.parentElement,board.element);
- assert.equal(ribbon.parentElement.className,'ness-tagboard-body');
+ assert.equal(modes.parentElement,controls);
+ assert.equal(ribbon.parentElement,controls);
  board.toggleHintPeek();
  assert.equal(board.isHintPeek(),true);
  assert.equal(figure.hidden,false);
- assert.equal(modes.parentElement,board.element,'Temporary hint keeps original controls outside');
+ assert.equal(modes.parentElement,controls,'Temporary hint keeps original controls outside');
  board.toggleHintPeek();
  assert.deepEqual(last,[false,false]);
  assert.equal(figure.hidden,true);

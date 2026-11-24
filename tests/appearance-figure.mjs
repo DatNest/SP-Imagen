@@ -41,7 +41,8 @@ test('Figure is a single SVG with front-only face, rear-only markers and exposed
  const body=code.indexOf(" '<g class=\"figure-body\">',");
  assert.ok(body>=0&&zones>body&&clothing>zones,'All highlighted regions must render over the body but underneath clothing');
  const figureBody=code.slice(code.indexOf("export function createAppearanceFigure("));
- assert.ok(figureBody.indexOf("ness-figure-legend")<figureBody.indexOf("const pickerHost=el("),'Pinned mode and camera controls must follow the diagram and description');
+ assert.ok(figureBody.includes('ness-figure-legend'));
+ assert.doesNotMatch(figureBody,/pickerHost/);
  const figureStyles=css.slice(css.indexOf('/* Appearance figure guide:'));
  assert.match(figureStyles,/\.ness-figure-svg \[data-zone\]\{[^}]*stroke:none;opacity:0/);
  assert.doesNotMatch(figureStyles,/stroke-dasharray|filter:drop-shadow/,'Highlight must have no dotted stroke or outer halo');
@@ -59,13 +60,12 @@ test('Figure is a single SVG with front-only face, rear-only markers and exposed
  assert.match(css,/--figure-hot:color-mix\(in srgb,var\(--ness-accent\)/);
 });
 
-test('Existing camera and mode controls move to the pinned card and return to the original bar, with no extra model logic',()=>{
+test('Existing camera and mode controls stay in the shared top bar, with no extra model logic',()=>{
  const board=read('appearance-board.js'),library=read('library-runtime.js'),styles=read('style.css');
  assert.match(board,/const figure=createAppearanceFigure\(ui,helpLayout/);
- assert.match(board,/figure\.pickerHost\.appendChild\(modes\)/);
- assert.match(board,/figure\.pickerHost\.appendChild\(ribbon\)/);
- assert.match(board,/frame\.insertBefore\(modes,header\)/);
- assert.match(board,/content\.insertBefore\(ribbon,content\.firstChild/);
+ assert.doesNotMatch(board,/figure\.pickerHost|positionAppearancePickers/);
+ assert.match(board,/frame\.insertBefore\(controls,header\)/);
+ assert.match(board,/ribbon=el\('div',undefined,controls,'ness-tagboard-ribbon'\)/);
  assert.match(board,/getHintPinned:\(\)=>helpPinned,isHintPeek:\(\)=>helpPeek,setHintPinned,toggleHintPeek/);
  assert.match(library,/pinHint=button\('Подсказка',formatStrip/);
  assert.match(library,/bulb=button\('💡',formatStrip/);

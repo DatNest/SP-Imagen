@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { LEGACY_BODY_FIELDS, splitLegacyBodyTags, migrateLegacyBodyFields } from '../legacy-body-migration.js';
-import { formatSkinParts, normalizeSkinTags } from '../appearance-board.js';
+import { LEGACY_BODY_FIELDS, splitLegacyBodyTags, migrateLegacyBodyFields, separateMigratedAnatomy } from '../legacy-body-migration.js';
+import { formatSkinParts, normalizeSkinTags, normalizeAppearanceCatalog } from '../appearance-board.js';
 import { createSpImagenLibraryRuntime } from '../library-runtime.js';
 
 const legacy={
@@ -65,7 +65,8 @@ test('Repeated imports are idempotent and all old marks disappear from exported 
  assert.ok(entry.appearanceCatalog.modes.skin.tags.length>0);
  assert.ok((entry.appearanceSkin.selections.upper_front||[]).length>=2);
  assert.ok((entry.appearanceSkin.selections.lower_front||[]).length>=2);
- assert.equal((entry.appearanceCatalog.modes.nsfw.tags||[]).length,0);
+ assert.ok(entry.appearanceCatalog.modes.nsfw.tags.some(t=>t.text==='small round scars around nipples'));
+  assert.doesNotMatch(formatSkinParts(entry.appearanceSkin,['upper_front']),/nipples/);
 });
 
 test('Empty old fields are removed and token parsing accepts legacy newlines/semicolons',()=>{
@@ -120,4 +121,22 @@ test('Switching between Tags and Prose updates the visible input immediately',()
  const library=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
  assert.match(library,/proseWrap\.hidden=!baseMode\|\|format!=='prose'/);
  assert.match(library,/proseWrap\.hidden=mode!=='base'\|\|layout!=='text'/);
+});
+
+test('Migrated anatomy stays available in its own catalogue without visible skin assignments or rewriting the source',()=>{
+ const record={name:'Example',base:'blue eyes, short hair',nudeUpper:'small bust, pale pink nipples',nudeLower:'small scar, natural pubic hair'};
+ migrateLegacyBodyFields(record);
+ const before=JSON.stringify(record),repaired=separateMigratedAnatomy(record);
+ assert.equal(JSON.stringify(record),before);
+ assert.equal(formatSkinParts(repaired.appearanceSkin,['upper_front']),'small bust');
+ assert.equal(formatSkinParts(repaired.appearanceSkin,['lower_front']),'small scar');
+ assert.deepEqual(repaired.appearanceCatalog.modes.nsfw.tags.map(t=>t.text),['pale pink nipples','natural pubic hair']);
+ assert.ok(!repaired.nsfwChest&&!repaired.nsfwLowerFront);
+ assert.equal(separateMigratedAnatomy(repaired),repaired);
+});
+test('Legacy shared catalogue keeps assigned NSFW tags out of ordinary appearance',()=>{
+ const record={base:'blue eyes',nsfwChest:'pale pink nipples',appearanceCatalog:{tags:[{id:'old1',text:'pale pink nipples'},{id:'old2',text:'extra ordinary tag'}]}};
+ const {modes}=normalizeAppearanceCatalog(record.appearanceCatalog,record.base,{},record);
+ assert.deepEqual(modes.base.tags.map(t=>t.text),['blue eyes','extra ordinary tag']);
+ assert.deepEqual(modes.nsfw.tags.map(t=>t.text),['pale pink nipples']);
 });
