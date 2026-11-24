@@ -545,3 +545,18 @@ test('JSON repair preserves quotes and escapes, rejects incomplete or ambiguous 
  for(const kind of ['snapshot','comic','story_page'])assert.match(experimentalDirectorPrompt(kind),/JSON SYNTAX/);
  assert.match(experimentalDirectorPrompt('comic'),/entire page, across all panels combined/);
 });
+
+test('Page-specific dialogue settings are passed unchanged to director and compiler',()=>{
+ const runtime=read('runtime.js');
+ assert.match(runtime,/const maxLines=baseKind==='comic'\?runtimeSettings\.dialogue\.comicLines:runtimeSettings\.dialogue\.storyLines/);
+ assert.match(runtime,/const maxWords=baseKind==='comic'\?runtimeSettings\.dialogue\.comicWords:runtimeSettings\.dialogue\.storyWords/);
+ assert.match(runtime,/maxLines:useDialogueSettings\?maxLines:8,maxWords:useDialogueSettings\?maxWords:40/);
+ assert.match(runtime,/parseExperimentalDirector\(raw,\{kind:baseKind,includeText,maxLines:useDialogueSettings\?maxLines:null,maxWords:useDialogueSettings\?maxWords:null\}/);
+ for(const kind of ['comic','story_page']){
+  const data=sample();data.lettering=[];data.bubbles=Array.from({length:8},(_,i)=>({...data.bubbles[0],words:'Line '+i}));
+  for(const maxLines of [0,1,3,8]){
+   const result=parseExperimentalDirector(JSON.stringify(data),{kind,maxLines,maxWords:2});
+   assert.equal((result.config.prompt.match(/Speech bubble \d+:/g)||[]).length,maxLines);
+  }
+ }
+});
