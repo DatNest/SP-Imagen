@@ -17,12 +17,12 @@ export function experimentalProfileFor(id){
 const CORE=[
  'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object.',
  'JSON schema:',
- '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"clear English staging of each panel: composition, camera, visible setting, where each character is positioned, central visible action and interactions between participants","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":{{BUBBLES_EXAMPLE}},"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"detailed positions, poses, gestures, expressions, gaze and interaction by panel"}],"lettering":{{LETTERING_EXAMPLE}}}',
+ '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":{{BUBBLES_EXAMPLE}},"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"panel-specific body poses, expressions, gestures, gaze, hand and prop details, clothing/hair movement and individual action"}],"lettering":{{LETTERING_EXAMPLE}}}',
  'Use the supplied schema and standard JSON strings. Include every field and use empty arrays where appropriate.',
  'opening: illustration or page format and panel count. The extension calculates subject counts.',
- 'scene: stage the complete visual composition. For each panel, describe its placement on the page, camera framing, visible setting, where the participants are in relation to one another, and the central action or interaction connecting them. Keep the scene clear, expressive and spatially coherent.',
+ 'scene: stage the complete visual composition. For each panel, establish its place on the page, camera, visible setting, participants’ relative positions, and the central action or interaction connecting them. Keep clear spatial anchors for the characters and their shared interaction.',
  'borders: design the actual visible frames around panels, including the edges, outline weight, ink or decorative pattern, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence.',
- 'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props.',
+ 'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action.',
  '{{BUBBLE_RULE}}',
  '{{LETTERING_RULE}}',
  'Follow the RP chronology, current scene and composition wishes. Keep all visual descriptions in English. {{PRINTED_WORD_RULE}}',
@@ -31,12 +31,12 @@ const CORE=[
 const PAGE=[
  'Create a {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts with expressive artwork and coherent page layout.',
  'Comic: 2–5 complementary views of one established instant. Story Page: 2–5 panels showing 2–4 established beats in reading order.',
- 'In scene, describe each panel through its layout, camera angle, visible setting, positions of the participants, and central action or interaction. Keep the staging visually readable and coherent across the page.',
+ 'Keep the shared interaction and participants’ relative positions spatially coherent across panels, including changes in camera and visible background.',
  'Give the page distinctive visible panel frames through borders, suited to the mood and composition.',
  '{{TEXT_POLICY}}'
 ].join('\n\n');
 const SNAPSHOT=[
- 'Create one cinematic still near the latest established state from the last {{POST_COUNT}} RP posts. In scene, describe the visible setting, camera, lighting, relative positions of the participants, and the central action or interaction between them. Keep the composition expressive, spatially clear and focused on one cohesive instant.',
+ 'Create one cinematic still near the latest established state from the last {{POST_COUNT}} RP posts. Keep the visible setting, camera, lighting and participants’ relative positions clear in scene, with a central shared interaction. Use the character actions for precise poses, expressions, gaze and gestures within that single instant.',
  'Set borders to an empty string unless the scene explicitly requests an illustrated frame. If an actual note/sign/screen is visually important, put its exact words in lettering.'
 ].join('\n\n');
 /**

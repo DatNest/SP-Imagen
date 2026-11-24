@@ -162,8 +162,8 @@ test('Art director asks for expressive natural panel prose without numbered-list
  const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
  assert.match(result.config.prompt,/first panel: Large establishing panel/);
  assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
- assert.match(experimentalDirectorPrompt('comic'),/positions of the participants, and central action or interaction/);
- assert.match(experimentalDirectorPrompt('story_page'),/visually readable and coherent across the page/);
+ assert.match(experimentalDirectorPrompt('comic'),/participants’ relative positions spatially coherent across panels/);
+ assert.match(experimentalDirectorPrompt('story_page'),/spatially coherent across panels/);
 });
 
 test('All original explicit intimacy guidelines are included verbatim in test modes only',()=>{
@@ -189,12 +189,13 @@ test('All test formats keep spatial scene staging and fine character details in 
  for(const kind of ['snapshot','comic','story_page']){
   const instructions=experimentalDirectorPrompt(kind,{postCount:4});
   assert.match(instructions,/scene: stage the complete visual composition/);
-  assert.match(instructions,/where the participants are in relation to one another/);
+  assert.match(instructions,/participants’ relative positions/);
   assert.match(instructions,/central action or interaction connecting them/);
   assert.match(instructions,/action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/);
   assert.doesNotMatch(instructions,/two focused sentences|roughly two purposeful sentences|a few focused sentences|Keep one short phrase per panel/);
-  if(kind==='snapshot')assert.match(instructions,/relative positions of the participants, and the central action or interaction/);
-  else assert.match(instructions,/positions of the participants, and central action or interaction/);
+  if(kind==='snapshot')assert.match(instructions,/participants’ relative positions clear in scene/);
+  else assert.match(instructions,/participants’ relative positions spatially coherent across panels/);
+   assert.match(instructions,/Reference each panel and the position established in scene/);
   const data=sample();
   data.scene=stagedScene;
   if(kind==='snapshot')data.bubbles=[];
