@@ -219,3 +219,27 @@ test('Touch-screen library uses one-panel layout even when phone requests deskto
  assert.match(ui,/panel\.setAttribute\('data-view','list'\)/);
  assert.match(ui,/function showEditor\(\)\{[^\n]*panel\.setAttribute\('data-view','editor'\)/);
 });
+
+test('Guide follows the current two-screen library, and the footer steps do not force invalid drafts to close',()=>{
+ const steps=makeGuideSteps(true),index=read('index.js'),library=read('library-runtime.js');
+ assert.ok(steps.some(s=>s.view==='library'&&s.selector.includes('.ness-library-layout')));
+ assert.ok(steps.some(s=>s.view==='library-prompt'&&s.selector.includes('.ness-editor-back')));
+ assert.ok(steps.some(s=>s.selector?.includes('.ness-figure-bulb')));
+ assert.ok(steps.some(s=>s.view==='library-footer'&&s.selector.includes('data-library-save')));
+ assert.match(index,/if \(view === 'library'\) \{[\s\S]*?querySelector\('\.ness-editor-back'\)\?\.click\(\)/);
+ assert.match(index,/else if \(view !== 'library-footer'\)/);
+ assert.match(index,/if\(button\?\.getAttribute\('aria-pressed'\)!=='true'\)button\?\.click/);
+ assert.match(library,/ness-library-layout/);
+ assert.match(library,/ness-figure-bulb/);
+ assert.ok(steps.some(s=>s.text.includes('не назначаются автоматически')));
+});
+test('Guide teaches actual JSON pipeline, exact clothing and real stage selector without requests',()=>{
+ const steps=makeGuideSteps(true),gallery=read('media-slots.js'),onboarding=read('onboarding.js');
+ assert.ok(steps.some(s=>s.text.includes('дословно копировать')&&s.text.includes('русский переводить')));
+ assert.ok(steps.some(s=>s.text.includes('Action Tags')));
+ assert.ok(!steps.some(s=>s.title.includes('Тест:')));
+ assert.match(gallery,/function guidePromptSources\(\)/);
+ for(const id of ['final','director','parsed'])assert.ok(gallery.includes("id:'"+id+"'"));
+ assert.match(gallery,/showPromptPopup\(guideDemo.marker, guidePromptSources\(\)\[0\]\.text, 'Учебный промпт · Snapshot', guidePromptSources\(\)\)/);
+ assert.match(onboarding,/if\(!target\?\.isConnected\|\|!target\.getClientRects\(\)\.length\)target=null/);
+});

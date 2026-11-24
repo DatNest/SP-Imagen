@@ -49,5 +49,5 @@ test('Director raw prompt becomes accessible after one model call, before NovelA
  assert.match(gallery,/function promptSources\(view,slots\)/);
  assert.match(gallery,/const sources=promptSources\(view,slots\)/);
  assert.match(gallery,/Выбрать этап сохранённого промпта/);
- assert.match(help,/title:'Этапы промпта под ✧'/);
+ assert.match(help,/title:'Три этапа промпта под ▤'/);
 });
