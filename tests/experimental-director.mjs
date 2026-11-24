@@ -82,8 +82,8 @@ test('Library visibility injection remains compatible with test character sectio
 test('Textless Comic and Story Page request empty printed fields and omit unexpected text',()=>{
  for(const kind of ['comic','story_page']){
   const prompt=experimentalDirectorPrompt(kind,{includeText:false,maxLines:2,maxWords:10});
-  assert.match(prompt,/"bubbles":\[\]/);
-  assert.match(prompt,/"lettering":\[\]/);
+  assert.match(prompt,/"bubbles":\s*\[\]/);
+  assert.match(prompt,/"lettering":\s*\[\]/);
   assert.doesNotMatch(prompt,/Select up to|speaker name|balloon shape, position|bubble tail direction/);
   assert.match(prompt,/TEXT DISABLED/);
   const slots=sample(),raw=JSON.stringify(slots);
@@ -117,7 +117,7 @@ test('Corrupted, invalid or incomplete model slot JSON is rejected without fabri
 
 test('Snapshot schema never requests speech and ignores a model-supplied balloon',()=>{
  const rules=experimentalDirectorPrompt('snapshot',{includeText:true,postCount:3});
- assert.match(rules,/"bubbles":\[\]/);
+ assert.match(rules,/"bubbles":\s*\[\]/);
  assert.doesNotMatch(rules,/Select up to|speaker name|bubble tail direction|bubbles: give each spoken line/);
  const data=sample();data.bubbles=[{panel:1,speaker:'Ness',design:'oval',words:'Не нужно показывать'}];
  const result=parseExperimentalDirector(JSON.stringify(data),{kind:'custom_test_snapshot',includeText:true,maxLines:0,maxWords:0});
@@ -430,4 +430,17 @@ test('A fresh test Comic or Story Page cannot compile without frame and page bac
  }
  const snapshot=sample();snapshot.borders='';
  assert.doesNotThrow(()=>parseExperimentalDirector(JSON.stringify(snapshot),{kind:'snapshot'}));
+});
+
+test('Page instructions are direct, sectioned and contain no assembly commentary',()=>{
+ for(const kind of ['comic','story_page'])for(const includeText of [true,false]){
+  const p=experimentalDirectorPrompt(kind,{includeText,postCount:4,maxLines:2,maxWords:7});
+  for(const heading of ['SOURCE AND CONTINUITY','PAGE AND PANELS','PAGE DESIGN','CHARACTERS','OUTPUT','SAMPLE:'])
+   assert.ok(p.includes(heading));
+  const direct=p.slice(0,p.indexOf('NSFW / INTIMACY CONTINUITY:'));
+  assert.doesNotMatch(direct,/the extension|original scene and character guidelines|format only|silently verify/i);
+  assert.match(direct,/neutral decorative page surface outside and between panels/);
+  if(includeText)assert.match(direct,/select up to 2 complete, relevant spoken lines of up to 7 words each/);
+  else assert.match(direct,/bubbles and lettering MUST both be empty arrays/);
+ }
 });

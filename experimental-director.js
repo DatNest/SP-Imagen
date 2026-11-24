@@ -102,26 +102,23 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
   const legacy=experimentalLegacyIntimacy(kind);
   return pageRules+(legacy?'\n\n'+legacy:'')+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines)+'\n\nReturn one valid JSON object.';
  }
- let choice=SNAPSHOT;
- choice=choice.replaceAll('{{POST_COUNT}}',String(postCount));
+ const choice=SNAPSHOT.replaceAll('{{POST_COUNT}}',String(postCount));
  const core=CORE
-  .replace('{{OPENING_RULE}}',page?' Leave text and speech bubble tags to the extension.':'')
-  .replace('{{PANEL_RULE}}',page?' Use exactly one numbered Panel N: label for each panel, starting at Panel 1: and continuing in reading order; separate the panel descriptions with semicolon and space. Keep scene a single JSON string. Put all visual staging in these descriptions, without a separate introduction or repeated panel labels.':'')
-  .replace('{{CHARACTER_RULE}}',page?' For a speaker, describe the actual speaking action in the correct panel. Keep balloon design and printable words exclusively in the dedicated fields, not in character descriptions.':'')
-  .replace('{{ASSEMBLY_RULE}}',page?' The extension inserts each printed item inside its own panel and binds the balloon visually to its speaker; it creates one final Text: block in reading order. Never write Text: or pipe separators in any field.':'')
-  .replace('{{BUBBLES_EXAMPLE}}',allowBubbles
-   ?'[{"panel":1,"speaker":"Alex","design":"rounded white balloon above Alex, thin ink outline, clear dark lettering","words":"Привет!"}]':'[]')
+  .replace('{{OPENING_RULE}}','')
+  .replace('{{PANEL_RULE}}','')
+  .replace('{{CHARACTER_RULE}}','')
+  .replace('{{ASSEMBLY_RULE}}','')
+  .replace('{{BUBBLES_EXAMPLE}}','[]')
   .replace('{{LETTERING_EXAMPLE}}',includeText
    ?'[{"panel":1,"design":"visible note, sign or screen location","words":"exact visible inscription"}]':'[]')
-  .replace('{{BUBBLE_RULE}}',allowBubbles
-   ?'bubbles: one object per selected spoken line, in page reading order. panel is the exact integer N from the corresponding Panel N: in scene. speaker must exactly match the visible character name in characters. design describes a visibly enclosed comic speech balloon, its position near the speaker, shape, outline and readable lettering; the extension adds the tail toward the speaker and the words. Put only the exact spoken line in words, without additional quotation marks or speaker labels. Keep bubbles clear of faces and actions; silent panels have no bubble entry.':'')
+  .replace('{{BUBBLE_RULE}}','')
   .replace('{{LETTERING_RULE}}',includeText
-   ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.'+ (page?' Match panel to the numbered scene panel; put the visual placement in design and the exact inscription only in words.':''):'')
+   ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.':'')
   .replace('{{PRINTED_WORD_RULE}}',includeText?'Keep visible written words in their original language.':'')
   .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
- return core+'\n\n'+choice+(page?'\n\nSAMPLE (format only; use the actual RP, never the example cast or dialogue):\n'+pageSample(kind,includeText,maxLines):'')+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities'+(allowBubbles?', bubble tail direction':'')+' and syntax.';
+ return core+'\n\n'+choice+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities and syntax.';
 }
 function stringField(obj,key,{empty=false,max=16000}={}){
  const v=obj?.[key];check(typeof v==='string'&&v.length<=max&&(empty||v.trim()),'Поле '+key+' пусто либо слишком длинное');
