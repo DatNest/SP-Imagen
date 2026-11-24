@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {experimentalProfileFor,experimentalDirectorPrompt,parseExperimentalDirector,normalizeExperimentalDirectorSlots,normalizeExperimentalSceneLabels,experimentalLegacyIntimacy,EXPERIMENTAL_DIRECTOR_IDS} from '../experimental-director.js';
-import {generationFormats,baseKindFor} from '../profiles.js';
+import {generationFormats,baseKindFor,promoteBuiltInProfiles,primaryProfileId,isStructuredDirectorPrompt} from '../profiles.js';
 import {pageTextEnabled} from '../page-text-mode.js';
 import {validateImagePromptLayout} from '../image-prompt.js';
 import {insertVisibleAppearance} from '../appearance-visibility.js';
@@ -22,14 +22,27 @@ const sample=()=>({
  lettering:[{panel:1,design:'a visible yellow sticky note on the desk',words:'Hi'}]
 });
 
-test('Test profiles are an additive opt-in; OFF hides them without removing original formats',()=>{
- const off=generationFormats({customProfiles:[],visibleBuiltIns:{},experimentalModeEnabled:false},{visibleOnly:true});
- assert.deepEqual(off.map(x=>x.id),['snapshot','comic','story_page']);
- const on=generationFormats({customProfiles:[],visibleBuiltIns:{},experimentalModeEnabled:true},{visibleOnly:true});
- assert.deepEqual(on.slice(0,3).map(x=>x.id),['snapshot','comic','story_page']);
- assert.deepEqual(on.slice(-3).map(x=>x.id),Object.keys(EXPERIMENTAL_DIRECTOR_IDS));
- assert.equal(baseKindFor({},'custom_test_comic'),'comic');
- assert.equal(experimentalProfileFor('custom_test_story_page').kind,'story_page');
+test('Primary formats use the former test slot IDs with normal labels, regardless of old test switch',()=>{
+ for(const experimentalModeEnabled of [true,false]){
+  const state={customProfiles:[],visibleBuiltIns:{},experimentalModeEnabled};
+  const formats=generationFormats(state,{visibleOnly:true});
+  assert.deepEqual(formats.map(x=>x.id),Object.keys(EXPERIMENTAL_DIRECTOR_IDS));
+  assert.deepEqual(formats.map(x=>x.name),['Snapshot','Comic','Story Page']);
+  assert.ok(formats.every(x=>x.builtIn&&x.structured));
+  assert.equal(promoteBuiltInProfiles(state),true);
+  assert.equal(Object.hasOwn(state,'experimentalModeEnabled'),false);
+  assert.equal(promoteBuiltInProfiles(state),false);
+ }
+ const state={visibleBuiltIns:{comic:false},experimentalModeEnabled:true};
+ promoteBuiltInProfiles(state);assert.equal(state.visibleBuiltIns.comic,true);
+ state.visibleBuiltIns.comic=false;promoteBuiltInProfiles(state);
+ assert.ok(!generationFormats(state,{visibleOnly:true}).some(x=>x.baseKind==='comic'));
+ for(const [id,kind] of Object.entries(EXPERIMENTAL_DIRECTOR_IDS)){
+  assert.equal(primaryProfileId(kind),id);
+  assert.equal(baseKindFor({},id),kind);
+  assert.equal(experimentalProfileFor(id).kind,kind);
+  assert.equal(experimentalProfileFor(kind).kind,kind);
+ }
  assert.equal(pageTextEnabled('custom_test_comic',false),false);
  assert.equal(pageTextEnabled('custom_test_story_page',true),true);
 });
@@ -127,13 +140,17 @@ test('Snapshot schema never requests speech and ignores a model-supplied balloon
  assert.equal(validateImagePromptLayout(result.config.prompt,'snapshot'),result.config.prompt);
 });
 
-test('Test mode is controlled in the star menu and leaves the legacy output parser untouched',()=>{
+test('Only primary profiles appear in the star menu; legacy personal HTML remains compatible',()=>{
  const index=read('index.js'),menu=read('media-slots.js'),runtime=read('runtime.js');
- assert.match(index,/experimentalModeEnabled \?\?= false/);
- assert.match(index,/setExperimentalMode\(enabled\)/);
- assert.match(menu,/Тест: ON/);
- assert.match(menu,/Тест: OFF/);
- assert.match(menu,/setExperimentalMode/);
+ assert.doesNotMatch(index,/setExperimentalMode|experimentalModeEnabled/);
+ assert.doesNotMatch(menu,/Тест: ON|Тест: OFF|setExperimentalMode|experimental-toggle/);
+ assert.match(index,/const builtin=experimentalProfileFor\(kind\)/);
+ assert.match(index,/source:'bundled',baseKind:builtin.kind,structured:true/);
+ assert.match(index,/structured:isStructuredDirectorPrompt\(personal.directorPrompt\)/);
+ assert.match(index,/createPromptJson\(builtInDirectorTemplates\(\)\)/);
+ assert.match(index,/getTemplate=\(\)=>experimentalDirectorPrompt\(kind.value\)/);
+ assert.match(runtime,/director.source==='custom'\?director.prompt/);
+ assert.match(runtime,/if\(experimental\)config.structuredDirector=true/);
  assert.match(runtime,/parseExperimentalDirector\(raw/);
  assert.match(runtime,/experimental\s*\?\s*parseExperimentalDirector/);
  assert.match(runtime,/if\(!experimental\)config.prompt=normalizeImagePrompt/);
@@ -353,7 +370,7 @@ test('Every new page SAMPLE is real valid JSON, obeys active limits and compiles
  }
 });
 
-test('Only test Comic and Story Page put the exact final Text block in the NovelAI base caption',async()=>{
+test('All primary and compatible built-in IDs put the exact final Text block in the NovelAI base caption',async()=>{
  const oldFetch=globalThis.fetch, calls=[];
  globalThis.fetch=async(url,options)=>{
   calls.push(JSON.parse(options.body));
@@ -364,13 +381,13 @@ test('Only test Comic and Story Page put the exact final Text block in the Novel
   const data=sample();
   data.scene='Panel 1: upper office view; Panel 2: close-up of Clark';
   const prompt=parseExperimentalDirector(JSON.stringify(data),{kind:'comic'}).config.prompt;
-  for(const profileId of ['custom_test_comic','custom_test_story_page','comic','story_page','custom_test_snapshot']){
+  for(const profileId of ['custom_test_comic','custom_test_story_page','comic','story_page','custom_test_snapshot','snapshot','custom_personal']){
    await generateNovelAI({settings,prompt,profileId,style:'ink drawing',aspectRatio:'2:3'});
    const request=calls.at(-1),caption=request.parameters.v4_prompt.caption;
    assert.equal(request.input,caption.base_caption);
    assert.equal(caption.char_captions.length,2);
    assert.ok(caption.base_caption.startsWith('ink drawing, '));
-   if(profileId==='custom_test_comic'||profileId==='custom_test_story_page'||profileId==='custom_test_snapshot'){
+   if(profileId!=='custom_personal'){
     assert.ok(caption.base_caption.endsWith('Text: Hi\n\nТы слышишь меня?'));
     assert.ok(caption.char_captions.every(x=>!x.char_caption.includes('Text:')));
     assert.match(caption.char_captions[0].char_caption,/visible speech balloon beside Clark Kent/);
@@ -479,4 +496,20 @@ test('Dog subject survives the count, section validator and library marker fallb
  assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
  const result=insertVisibleAppearance(prompt,new Map([['clark',{base:'dark hair'}],['ness',{base:'brown eyes'}],['rex',{base:'golden fur'}]]));
  assert.match(result,/\| dog, Rex, golden fur/);
+});
+
+test('Wardrobe fidelity is present exactly once in each primary director; translations preserve details and weights',()=>{
+ for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
+  const prompt=experimentalDirectorPrompt(kind,{includeText});
+  assert.equal(prompt.split('CURRENT WARDROBE contains authoritative, ready-to-use garment descriptions.').length-1,1);
+  assert.match(prompt,/Copy every visible English clothing fragment verbatim/);
+  assert.match(prompt,/Translate Russian or other non-English clothing fragments faithfully into English/);
+  assert.match(prompt,/Source fidelity takes priority over conciseness/);
+  assert.match(prompt,/blue cable-knit wool sweater, ribbed cuffs, crew neck/);
+  assert.equal(isStructuredDirectorPrompt(prompt),true);
+  assert.equal(isStructuredDirectorPrompt('legacy HTML director'),false);
+ }
+ const data=sample();data.characters[0].wardrobe='{{blue cable-knit wool sweater}}, ribbed cuffs, 2::crew neck::';
+ const result=parseExperimentalDirector(JSON.stringify(data),{kind:'comic'});
+ assert.ok(result.config.prompt.includes(data.characters[0].wardrobe));
 });

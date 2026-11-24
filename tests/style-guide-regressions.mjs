@@ -84,7 +84,7 @@ test('Novice guide uses existing controls, explains new modes, textless comics a
    assert.ok(a.some(step=>step.view===mode),mode);
  }
  assert.ok(a.some(step=>step.view==='post-formats-text'));
- assert.ok(a.some(step=>step.view==='post-test-mode'));
+ assert.ok(!a.some(step=>step.view==='post-test-mode'));
  assert.ok(a.some(step=>/промпт/i.test(step.title)&&/режиссёра/.test(step.text)));
  assert.ok(!a.some(step=>/ness-tagboard-grip|ness-unified-add|ness-edit-toggle/.test(step.selector||'')));
  assert.match(read('media-slots.js'),/collectPostPrompts\(view\.message,draft,saved\)/);
