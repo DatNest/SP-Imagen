@@ -381,8 +381,9 @@ test('Library import/export validation roundtrips modes, camera marks and origin
  assert.equal(ji.nudeLower,undefined);
  const upper=ji.appearanceSkin.tags.filter(t=>(ji.appearanceSkin.selections.upper_front||[]).includes(t.id)).map(t=>t.text);
  const lower=ji.appearanceSkin.tags.filter(t=>(ji.appearanceSkin.selections.lower_front||[]).includes(t.id)).map(t=>t.text);
- assert.deepEqual(upper,['legacy bust','stomach']);
- assert.deepEqual(lower,['legacy lower anatomy']);
+ assert.deepEqual(upper,[]);
+ assert.deepEqual(lower,[]);
+ for(const tag of ['legacy bust','stomach','legacy lower anatomy'])assert.ok(ji.appearanceCatalog.modes.skin.tags.some(t=>t.text===tag));
  assert.deepEqual([ji.nsfwChest,ji.nsfwLowerFront,ji.nsfwLowerBack],Object.values(initialNsfw));
  assert.equal(ji.appearanceCatalog.modes.base.sections[0].title,'Лицо');
  assert.equal(ji.appearanceCatalog.modes.skin.sections[0].title,'Шрамы');
@@ -705,4 +706,22 @@ test('Hundreds of base tags are indexed once per paint and selection, without re
  assert.equal(rows.filter(row=>!row.hidden).length,1);
  assert.equal(rows.find(row=>!row.hidden).dataset.tagId,board.getCatalog().modes.base.tags[249].id);
  assert.equal(board.getCatalog().modes.base.tags.length,250);
+});
+
+test('A previously hidden duplicate skin assignment is shown and can be removed through the actual editor',()=>{
+ const ui=makeUI(),raw={tags:[{id:'first',text:'tiny scar;'},{id:'second',text:'tiny scar'}],selections:{upper_front:['second'],arms:['first']},sections:[]};
+ let state={base,ranges:[],selections:{}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:raw,initialCatalog:{},readBaseState:()=>state,writeBaseState:next=>{state=next;},changed:()=>{},readOnly:()=>false});
+ board.element.querySelectorAll('button').find(b=>b.textContent==='Под одеждой').onclick();
+ const chip=board.element.querySelectorAll('.ness-unified-chip').find(x=>x.textContent.includes('tiny scar'));
+ assert.ok(chip);
+ assert.equal(chip.attributes['data-highlighted'],'true');
+ chip.onclick();
+ const result=board.getSkin();
+ assert.deepEqual(result.selections.upper_front,[]);
+ assert.deepEqual(result.selections.arms,['first']);
+ assert.equal(result.tags.length,1);
+ assert.equal(result.tags[0].text,'tiny scar');
+ board.undo();
+ assert.deepEqual(board.getSkin().selections.upper_front,['first']);
 });

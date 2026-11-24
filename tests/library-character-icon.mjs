@@ -21,7 +21,7 @@ test('Untrusted external image addresses cannot be stored as prompt/library icon
 
 test('Character icon data is not inserted into the prompt snapshot or generic text fields',()=>{
  const source=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
- assert.match(source,/entry:\{appearanceRanges,appearanceSelections,appearanceCatalog,libraryIconData,\.\.\.entry\}/);
+ assert.match(source,/entry:\{appearanceRanges,appearanceSelections,appearanceCatalog,libraryIconData,legacyBodyArchive,\.\.\.entry\}/);
  assert.match(source,/key!=='libraryIconData'/);
  assert.match(source,/openCharacterIconEditor/);
 });
