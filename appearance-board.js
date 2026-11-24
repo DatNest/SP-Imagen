@@ -24,26 +24,33 @@ const validLabel=s=>String(s||'').trim().slice(0,50);
 const keyOK=id=>id===SKIN_ALWAYS||Object.hasOwn(SKIN_PRESETS,id);
 export function normalizeSkinTags(raw){
  const data=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
- const items=[],ids=new Set();
+ const items=[],ids=new Set(),byText=new Map(),remap=new Map(),prefix=[0];
  for(const tag of Array.isArray(data.tags)?data.tags:[]){
-  if(typeof tag?.text!=='string'||!tag.text.trim())continue;
-  const id=String(tag.id||'');
-  if(!/^[a-z][a-z0-9_]{0,48}$/.test(id)||ids.has(id))continue;
-  ids.add(id);items.push({id,text:tag.text.trim().slice(0,1200),section:String(tag.section||'')});
-  if(items.length>=600)break;
+  const rawText=typeof tag?.text==='string'?tag.text.trim().replace(/[,;\s]+$/,'').trim():'';
+  const id=String(tag?.id||'');
+  if(rawText&&/^[a-z][a-z0-9_]{0,48}$/.test(id)&&!ids.has(id)){
+   ids.add(id);
+   const text=rawText.slice(0,1200),identity=norm(text),prior=byText.get(identity);
+   if(prior)remap.set(id,prior);
+   else if(items.length<600){
+    byText.set(identity,id);remap.set(id,id);
+    items.push({id,text,section:String(tag.section||'')});
+   }
+  }
+  prefix.push(items.length);
  }
  const sectionIdsSeen=new Set();
  const sections=(Array.isArray(data.sections)?data.sections:[]).filter(x=>{
   if(!x||typeof x.id!=='string'||!/^[a-z][a-z0-9_]{0,48}$/.test(x.id)||!validLabel(x.title)||sectionIdsSeen.has(x.id))return false;
   sectionIdsSeen.add(x.id);return true;
  }).slice(0,60)
- .map(x=>({id:x.id,title:validLabel(x.title),before:Number.isInteger(x.before)?Math.max(0,Math.min(items.length,x.before)):Math.max(0,items.findIndex(t=>t.section===x.id))}));
+ .map(x=>({id:x.id,title:validLabel(x.title),before:Number.isInteger(x.before)?prefix[Math.max(0,Math.min(prefix.length-1,x.before))]:Math.max(0,items.findIndex(t=>t.section===x.id))}));
  const sectionIds=new Set(sections.map(x=>x.id));
  for(const item of items)if(!sectionIds.has(item.section))item.section='';
  const all=new Set(items.map(x=>x.id)),selections={};
  for(const [id,arr] of Object.entries(data.selections||{})){
   if(!keyOK(id)||!Array.isArray(arr))continue;
-  selections[id]=[...new Set(arr.filter(x=>typeof x==='string'&&all.has(x)))];
+  selections[id]=[...new Set(arr.map(x=>remap.get(x)).filter(x=>all.has(x)))];
  }
  const always=new Set(selections.always||[]);
  for(const id of Object.keys(SKIN_PRESETS))if(selections[id])selections[id]=selections[id].filter(x=>!always.has(x));

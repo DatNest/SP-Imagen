@@ -15,7 +15,7 @@ export const NSFW_AREAS = Object.freeze({
 });
 // Identity comparisons ignore only non-printing format artifacts. The original
 // text and the first valid user ID are kept verbatim for edits and export.
-const key = s => String(s||'').normalize('NFKC')
+const key = s => String(s||'').trim().replace(/[,;\s]+$/,'').normalize('NFKC')
   .replace(/[\u200B\u200C\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,'')
   .replace(/\s+/g,' ').trim().toLowerCase();
 const validTitle = s => String(s||'').trim().slice(0,50);

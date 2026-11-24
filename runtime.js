@@ -16,7 +16,7 @@ import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost
 import { rememberPostPrompts } from './post-prompt-state.js';
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, appearanceVisibilityInstruction, insertVisibleAppearance, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { hasSkinSelections, skinAppearanceInstruction, insertSkinAppearance } from './appearance-board.js';
-import { separateMigratedAnatomy } from './legacy-body-migration.js';
+import { prepareBodyAppearance } from './legacy-body-migration.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
 export function createSpImagenRuntime({ getExtension, getMediaSlots } = {}){
 const codePrompt = key => getExtension?.()?.getCodePrompt?.(key) || CODE_PROMPT_DEFAULTS[key] || '';
@@ -1961,7 +1961,7 @@ const chosen=new Set(v.sp_imagen_present_ids||[]);
 const lines=[],visibility=new Map();
 for(const [id,entry] of Object.entries({...data.personas,...data.characters})){
  if(!chosen.has(id))continue;
- const e=separateMigratedAnatomy(entry);
+ const e=prepareBodyAppearance(entry);
  lines.push('CHARACTER: '+e.name);
  if(e.aliases?.length)lines.push('Aliases: '+e.aliases.join(', '));
  if(typeof e.promptName==='string'&&e.promptName.trim())lines.push('Prompt name: '+e.promptName.trim());

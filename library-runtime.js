@@ -5,7 +5,7 @@ import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_A
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, parseBaseTags, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
 import { openCharacterIconEditor } from './character-icon-editor.js';
-import { migrateLegacyBodyFields, LEGACY_BODY_FIELDS, separateMigratedAnatomy } from './legacy-body-migration.js';
+import { LEGACY_BODY_FIELDS, prepareBodyAppearance } from './legacy-body-migration.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -487,9 +487,9 @@ function validateMasterLibrary(input,{copy=true,preserveCurrent=false}={}){
   // Explicit legacy import keeps the established migration. An already saved
   // user's library is read without silently changing old or modern fields.
   const modern=entry.appearanceCatalog?.modes&&typeof entry.appearanceCatalog.modes==='object'&&(preserveCurrent||!oldBody);
-  const migrated=modern?{changed:false}:migrateLegacyBodyFields(entry);
-  if(migrated.changed&&!Object.hasOwn(entry,'appearanceCatalog'))entry.appearanceCatalog={};
-  if(!modern){
+  const migrated=!preserveCurrent?prepareBodyAppearance(entry):entry;
+  if(migrated!==entry){Object.assign(entry,migrated);for(const key of Object.keys(LEGACY_BODY_FIELDS))if(!Object.hasOwn(migrated,key))delete entry[key];}
+  if(!modern&&!preserveCurrent){
   if(Object.hasOwn(entry,'appearanceRanges')){
    const ranges=normalizeAppearanceRanges(entry.base,entry.appearanceRanges);
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
@@ -502,7 +502,6 @@ function validateMasterLibrary(input,{copy=true,preserveCurrent=false}={}){
     ...Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,entry[k]]))
   },entry.appearanceSections);
   }
-  if(!preserveCurrent&&migrated.changed)Object.assign(entry,separateMigratedAnatomy(entry));
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
  // In v3 the organizer is already the saved user catalogue. Do not collapse
@@ -539,7 +538,7 @@ function loadMasterLibrary(){
 
 // Module: library_publish
 function librarySnapshot(data){
- return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,libraryIconData,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
+ return 'PERSONAL CHARACTER IDENTITY LIBRARY — fixed appearance data; use only people visible in the scene. Copy retained descriptions verbatim. Optional marks and anatomy apply only when uncovered and visible.\n'+JSON.stringify(libraryEntries(data).map(({id,group,entry:{appearanceRanges,appearanceSelections,appearanceCatalog,libraryIconData,legacyBodyArchive,...entry}})=>({id,type:group==='personas'?'persona':'character',...entry})),null,1);
 }
 async function saveMasterLibrary(input,expectedRaw,{preserveUserFields=false}={}){
  const st=SillyTavern.getContext();
@@ -548,6 +547,7 @@ async function saveMasterLibrary(input,expectedRaw,{preserveUserFields=false}={}
  // For a surgical icon save, validate a clone but write back the exact
  // original user-defined catalogue and sections, byte for byte.
  const data=preserveUserFields?cloneLibrary(input):validateMasterLibrary(input,{preserveCurrent:true});
+ if(!preserveUserFields)for(const {id,group,entry} of libraryEntries(data))data[group][id]=prepareBodyAppearance(entry);
  if(preserveUserFields)validateMasterLibrary(data,{preserveCurrent:true});
  // A no-op Save must not rewrite metadata or generate a new backup.
  if(typeof expectedRaw==='string'&&expectedRaw===JSON.stringify(data))return {data,raw:expectedRaw};
@@ -617,6 +617,9 @@ async function openLibraryEditor(){
   // Rendering the editor is read-only. Only explicit appearance changes may
   // rewrite the saved tag IDs, section order or per-camera selections.
   if(editor.appearanceEdited()){
+   const migrated=editor.bodyMigration;
+   if(migrated?.legacyBodyArchive)entry.legacyBodyArchive=migrated.legacyBodyArchive;
+   if(migrated)for(const key of Object.keys(LEGACY_BODY_FIELDS))if(!Object.hasOwn(migrated,key))delete entry[key];
    const {ranges,selections,skin,sections,catalog,nsfw}=visibility.value;
    if(nsfw)for(const key of Object.keys(NSFW_PRESETS))if(nsfw[key]||Object.hasOwn(entry,key))entry[key]=String(nsfw[key]||'');
    if(skin.tags.length||skin.sections.length||entry.appearanceSkin)entry.appearanceSkin=skin;
@@ -842,13 +845,14 @@ async function openLibraryEditor(){
   // One inline highlight editor. No extra full-screen constructor or duplicated tag UI.
   let appearanceEdited=false;
   const markAppearanceEdited=()=>{appearanceEdited=true;changed();};
-  const appearanceEntry=separateMigratedAnatomy(entry);
+  const appearanceEntry=prepareBodyAppearance(entry);
   const nsfwState=Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,String(entry[k]||'')]));
   let appearanceState={
     base:fields.base.value,
     ranges:normalizeAppearanceRanges(fields.base.value,entry.appearanceRanges),
     selections:normalizeAppearanceSelections(fields.base.value,entry.appearanceSelections)
   };
+  if(appearanceEntry!==entry)el('p','Старые отметины восстановлены в каталогах. Проверь назначения в «Под одеждой» и NSFW; новые теги не включены автоматически. Перенос сохранится при сохранении библиотеки.',appearance,'ness-note');
   const inlineHost=el('div',undefined,appearance,'ness-inline-appearance-editor');
   const inlineBoard=createAppearanceBoard({
     ui:{el,button,clear,input,wheelAlongX:view.wheelAlongX},parent:inlineHost,
@@ -955,7 +959,7 @@ async function openLibraryEditor(){
   el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
   const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&key!=='libraryIconData'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
-  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags,appearanceEdited:()=>appearanceEdited,clearAppearanceEdited:()=>{appearanceEdited=false;}};
+  editor={id,group,fields,kind,aliases,visibility,appearanceFormat,bodyMigration:appearanceEntry,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags,appearanceEdited:()=>appearanceEdited,clearAppearanceEdited:()=>{appearanceEdited=false;}};
   let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
   view.showEditor();renderList();
  }

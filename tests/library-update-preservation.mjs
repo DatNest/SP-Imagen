@@ -129,3 +129,25 @@ test('Import and export use the preserving validator instead of rearranging prev
  const old=sample();
  assert.equal(JSON.stringify(helpers.validateMasterLibrary(old,{preserveCurrent:true})),JSON.stringify(old));
 });
+
+test('Explicit save migrates remaining old fields once, preserves raw backup and excludes archive from the prompt snapshot',async()=>{
+ const original=sample();
+ original.characters.a.shoulderMarks='hidden shoulder scar; another mark';
+ original.characters.a.nudeUpper='small body trait';
+ const raw=JSON.stringify(original),storage={[MASTER_LIBRARY_KEY]:raw};
+ let writes=0;const old=globalThis.SillyTavern;
+ globalThis.SillyTavern={getContext:()=>({extensionSettings:{variables:{global:storage}},saveSettingsDebounced:async()=>{writes++;}})};
+ try{
+  const loaded=helpers.loadMasterLibrary();assert.equal(JSON.stringify(loaded),raw);assert.equal(writes,0);
+  const result=await helpers.saveMasterLibrary(loaded,raw);
+  const entry=result.data.characters.a;
+  assert.equal(entry.shoulderMarks,undefined);assert.equal(entry.nudeUpper,undefined);
+  assert.equal(entry.legacyBodyArchive.shoulderMarks,original.characters.a.shoulderMarks);
+  assert.ok(entry.appearanceCatalog.modes.skin.tags.some(t=>t.text==='hidden shoulder scar'));
+  assert.ok(entry.appearanceSkin.selections.arms.includes('skin1'));
+  assert.equal(storage[MASTER_BACKUP_KEY],raw);
+  assert.doesNotMatch(storage[MASTER_SNAPSHOT_KEY],/legacyBodyArchive|hidden shoulder scar/);
+  const again=await helpers.saveMasterLibrary(result.data,result.raw);
+  assert.equal(again.raw,result.raw);assert.equal(writes,1);
+ }finally{globalThis.SillyTavern=old;}
+});

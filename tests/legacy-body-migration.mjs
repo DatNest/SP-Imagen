@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { LEGACY_BODY_FIELDS, splitLegacyBodyTags, migrateLegacyBodyFields, separateMigratedAnatomy } from '../legacy-body-migration.js';
+import { LEGACY_BODY_FIELDS, splitLegacyBodyTags, migrateLegacyBodyFields, separateMigratedAnatomy, prepareBodyAppearance } from '../legacy-body-migration.js';
 import { formatSkinParts, normalizeSkinTags, normalizeAppearanceCatalog } from '../appearance-board.js';
 import { createSpImagenLibraryRuntime } from '../library-runtime.js';
 
@@ -18,57 +18,42 @@ const text=(record,part)=>record.appearanceSkin.tags
  .filter(tag=>(record.appearanceSkin.selections?.[part]||[]).includes(tag.id))
  .map(tag=>tag.text);
 
-test('All seven old body fields migrate into their actual visible skin regions',()=>{
+test('All seven old body fields migrate into editable catalogues without automatic exposure',()=>{
  const entry={name:'Example',base:'black hair, brown eyes;',...legacy};
  const result=migrateLegacyBodyFields(entry);
  assert.equal(result.changed,true);
- assert.equal(result.added,13);
- assert.deepEqual(text(entry,'arms'),['small flower tattoo on left shoulder','blue tattoo on right forearm']);
- assert.deepEqual(text(entry,'legs'),['thin scar on left thigh','birthmark on right thigh','tiny scar below left knee','freckles on both shins']);
- assert.deepEqual(text(entry,'upper_front'),['natural chest','small round scars around nipples','soft stomach','narrow waist']);
- assert.deepEqual(text(entry,'lower_front'),['narrow hips','small scar on the pelvis','natural anatomy']);
- assert.deepEqual(text(entry,'upper_back'),[]);
- assert.deepEqual(text(entry,'lower_back'),[]);
- for(const field of Object.keys(LEGACY_BODY_FIELDS))assert.equal(Object.hasOwn(entry,field),false,field);
- assert.match(formatSkinParts(entry.appearanceSkin,['arms']),/flower tattoo/);
- assert.match(formatSkinParts(entry.appearanceSkin,['legs']),/thin scar/);
+ assert.equal(result.selected,0);
+ const all=Object.values(entry.appearanceCatalog.modes).flatMap(m=>m.tags.map(t=>t.text));
+ for(const [field,value] of Object.entries(legacy)){
+  for(const tag of splitLegacyBodyTags(value))assert.ok(all.includes(tag),tag);
+  assert.equal(entry.legacyBodyArchive[field],value);
+  assert.equal(Object.hasOwn(entry,field),false,field);
+ }
+ assert.equal(formatSkinParts(entry.appearanceSkin,['arms','legs','upper_front','lower_front']),'');
+ assert.ok(entry.appearanceCatalog.modes.nsfw.tags.some(t=>t.text==='small round scars around nipples'));
 });
-
-test('Migration preserves existing assignments, non-legacy anatomical fields and does not duplicate tags',()=>{
+test('Migration preserves existing selections, anatomy fields and avoids duplicate chips',()=>{
  const entry={name:'Existing',base:'golden eyes;',
-   appearanceSkin:{tags:[{id:'prior',text:'thin scar on left thigh',section:''}],
-    selections:{legs:['prior'],upper_back:['prior']},sections:[]},
-   nsfwChest:'two freckles',nsfwLowerFront:'lower anatomy',
-   thighMarks:'thin scar on left thigh, thigh tattoo'
- };
+  appearanceSkin:{tags:[{id:'prior',text:'thin scar on left thigh',section:''}],selections:{legs:['prior'],upper_back:['prior']},sections:[]},
+  nsfwChest:'two freckles',nsfwLowerFront:'lower anatomy',thighMarks:'thin scar on left thigh, thigh tattoo'};
  const result=migrateLegacyBodyFields(entry);
  assert.equal(result.added,1);
- assert.deepEqual(text(entry,'legs'),['thin scar on left thigh','thigh tattoo']);
+ assert.deepEqual(text(entry,'legs'),['thin scar on left thigh']);
  assert.deepEqual(text(entry,'upper_back'),['thin scar on left thigh']);
+ assert.ok(entry.appearanceCatalog.modes.skin.tags.some(t=>t.text==='thigh tattoo'));
  assert.equal(entry.nsfwChest,'two freckles');
  assert.equal(entry.nsfwLowerFront,'lower anatomy');
- assert.equal(entry.thighMarks,undefined);
  assert.equal(migrateLegacyBodyFields(entry).changed,false);
 });
-
-test('Repeated imports are idempotent and all old marks disappear from exported JSON',()=>{
- const library={version:1,personas:{},characters:{demo:{
-  name:'Demo',base:'green eyes, brown hair;',...legacy
- }}};
+test('Repeated imports are idempotent and archive the old strings without injecting them',()=>{
+ const library={version:1,personas:{},characters:{demo:{name:'Demo',base:'green eyes, brown hair;',...legacy}}};
  const {validateMasterLibrary}=createSpImagenLibraryRuntime({}).utilities;
- const first=validateMasterLibrary(library);
- const serialized=JSON.stringify(first);
- const second=validateMasterLibrary(JSON.parse(serialized));
- const entry=second.characters.demo;
+ const first=validateMasterLibrary(library),serialized=JSON.stringify(first);
+ const second=validateMasterLibrary(JSON.parse(serialized)),entry=second.characters.demo;
  assert.equal(JSON.stringify(second),serialized);
- for(const key of Object.keys(LEGACY_BODY_FIELDS))assert.equal(Object.hasOwn(entry,key),false);
- assert.ok(entry.appearanceCatalog.modes.skin.tags.length>0);
- assert.ok((entry.appearanceSkin.selections.upper_front||[]).length>=2);
- assert.ok((entry.appearanceSkin.selections.lower_front||[]).length>=2);
- assert.ok(entry.appearanceCatalog.modes.nsfw.tags.some(t=>t.text==='small round scars around nipples'));
-  assert.doesNotMatch(formatSkinParts(entry.appearanceSkin,['upper_front']),/nipples/);
+ assert.deepEqual(entry.legacyBodyArchive,legacy);
+ assert.equal(formatSkinParts(entry.appearanceSkin,['upper_front','lower_front','arms','legs']),'');
 });
-
 test('Empty old fields are removed and token parsing accepts legacy newlines/semicolons',()=>{
  assert.deepEqual(splitLegacyBodyTags(' first,\n second;\rthird  '),['first','second','third']);
  const entry={name:'Blank',base:'eyes;',nudeUpper:' ',nudeLower:'',thighMarks:''};
@@ -123,16 +108,27 @@ test('Switching between Tags and Prose updates the visible input immediately',()
  assert.match(library,/proseWrap\.hidden=mode!=='base'\|\|layout!=='text'/);
 });
 
-test('Migrated anatomy stays available in its own catalogue without visible skin assignments or rewriting the source',()=>{
- const record={name:'Example',base:'blue eyes, short hair',nudeUpper:'small bust, pale pink nipples',nudeLower:'small scar, natural pubic hair'};
- migrateLegacyBodyFields(record);
- const before=JSON.stringify(record),repaired=separateMigratedAnatomy(record);
+test('Previously migrated anatomy stays available in NSFW without visible skin assignments or rewriting the source',()=>{
+ const record={name:'Example',base:'blue eyes, short hair',appearanceSkin:{
+  tags:[{id:'legacy1',text:'small bust'},{id:'legacy2',text:'pale pink nipples'},{id:'legacy3',text:'small scar'},{id:'legacy4',text:'natural pubic hair'}],
+  selections:{upper_front:['legacy1','legacy2'],lower_front:['legacy3','legacy4']},sections:[]}};
+ const before=JSON.stringify(record),repaired=prepareBodyAppearance(record);
  assert.equal(JSON.stringify(record),before);
  assert.equal(formatSkinParts(repaired.appearanceSkin,['upper_front']),'small bust');
  assert.equal(formatSkinParts(repaired.appearanceSkin,['lower_front']),'small scar');
  assert.deepEqual(repaired.appearanceCatalog.modes.nsfw.tags.map(t=>t.text),['pale pink nipples','natural pubic hair']);
  assert.ok(!repaired.nsfwChest&&!repaired.nsfwLowerFront);
- assert.equal(separateMigratedAnatomy(repaired),repaired);
+ assert.equal(prepareBodyAppearance(repaired),repaired);
+});
+test('Duplicate skin IDs merge all assignments and do not create hidden injected tags',()=>{
+ const raw={tags:[{id:'first',text:'small scar;'},{id:'second',text:'small scar'},{id:'third',text:'freckles'}],
+  selections:{arms:['second'],legs:['first'],upper_front:['first','second']},sections:[{id:'head',title:'Marks',before:2}]};
+ const clean=normalizeSkinTags(raw);
+ assert.deepEqual(clean.tags.map(t=>t.id),['first','third']);
+ assert.deepEqual(clean.selections,{arms:['first'],legs:['first'],upper_front:['first']});
+ assert.equal(clean.sections[0].before,1);
+ assert.equal(formatSkinParts(raw,['arms','legs','upper_front']),'small scar');
+ assert.equal(formatSkinParts({...clean,selections:{}},['arms','legs','upper_front']),'');
 });
 test('Legacy shared catalogue keeps assigned NSFW tags out of ordinary appearance',()=>{
  const record={base:'blue eyes',nsfwChest:'pale pink nipples',appearanceCatalog:{tags:[{id:'old1',text:'pale pink nipples'},{id:'old2',text:'extra ordinary tag'}]}};

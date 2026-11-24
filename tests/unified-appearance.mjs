@@ -381,8 +381,9 @@ test('Library import/export validation roundtrips modes, camera marks and origin
  assert.equal(ji.nudeLower,undefined);
  const upper=ji.appearanceSkin.tags.filter(t=>(ji.appearanceSkin.selections.upper_front||[]).includes(t.id)).map(t=>t.text);
  const lower=ji.appearanceSkin.tags.filter(t=>(ji.appearanceSkin.selections.lower_front||[]).includes(t.id)).map(t=>t.text);
- assert.deepEqual(upper,['legacy bust','stomach']);
- assert.deepEqual(lower,['legacy lower anatomy']);
+ assert.deepEqual(upper,[]);
+ assert.deepEqual(lower,[]);
+ for(const tag of ['legacy bust','stomach','legacy lower anatomy'])assert.ok(ji.appearanceCatalog.modes.skin.tags.some(t=>t.text===tag));
  assert.deepEqual([ji.nsfwChest,ji.nsfwLowerFront,ji.nsfwLowerBack],Object.values(initialNsfw));
  assert.equal(ji.appearanceCatalog.modes.base.sections[0].title,'Лицо');
  assert.equal(ji.appearanceCatalog.modes.skin.sections[0].title,'Шрамы');
