@@ -311,7 +311,7 @@ test('Move-mode arrows reorder actual base tags and preserve camera selections w
  assert.deepEqual(parseBaseTags(state.base).map(x=>x.text),['long blonde hair','freckles','blue eyes']);
 });
 
-test('Long-press move menu transfers across modes, follows highlighted tag, and Undo reverses the transfer',()=>{
+test('Transfer mode opens on click, moves across modes, and Undo reverses the transfer',()=>{
  const ui=makeUI();let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}};
  const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skin,initialCatalog:{},
   readBaseState:()=>state,writeBaseState:next=>{state=next;},
@@ -320,18 +320,20 @@ test('Long-press move menu transfers across modes, follows highlighted tag, and 
  const originalWindow=globalThis.window,originalConfirm=globalThis.confirm;
  globalThis.window={innerHeight:900};globalThis.confirm=()=>true;
  try{
-  const move=board.element.querySelectorAll('.ness-tagboard-tool').find(b=>b.textContent==='✥');
+  const move=board.element.querySelectorAll('.ness-tagboard-tool').find(b=>b.textContent==='⇄');
   move.onclick();
   const chip=board.element.querySelectorAll('.ness-unified-chip').find(b=>b.textContent.includes('freckles'));
-  chip.parentElement.oncontextmenu({target:{closest:()=>null},preventDefault(){}});
+  assert.equal(chip.parentElement.oncontextmenu,undefined);
+  chip.onclick();
   const menu=board.element.querySelector('.ness-tagboard-context-menu');
-  assert.ok(menu.querySelectorAll('button').some(b=>b.textContent==='↗ Под одеждой'));
-  menu.querySelectorAll('button').find(b=>b.textContent==='↗ Под одеждой').onclick();
+  assert.ok(menu.querySelectorAll('button').some(b=>b.textContent==='Под одеждой'));
+  menu.querySelectorAll('button').find(b=>b.textContent==='Под одеждой').onclick();
   assert.equal(board.getMode(),'skin');
   const moved=board.getCatalog().modes.skin.tags.find(t=>t.text==='freckles');
   assert.ok(moved);
   assert.equal(moved.id,id);
-  assert.equal(board.getToolMode(),'move');
+  assert.equal(board.getToolMode(),'transfer');
+  assert.equal(menu.hidden,true);
   assert.equal(board.element.querySelectorAll('.ness-unified-tag-row').find(r=>r.dataset.tagId===id).dataset.moveSelected,'true');
   assert.ok(!parseBaseTags(state.base).some(t=>t.text==='freckles'));
   board.undo();
@@ -400,7 +402,7 @@ test('Toolbar modes are mutually exclusive, deleting a tag is undoable, and hist
   changed:()=>{},readOnly:()=>false});
  const buttons=board.element.querySelectorAll('.ness-tagboard-tool');
  const pencil=buttons.find(x=>x.textContent==='✎'),trash=buttons.find(x=>x.textContent==='🗑'),move=buttons.find(x=>x.textContent==='✥');
- assert.equal(buttons.length,3);
+ assert.equal(buttons.length,4);
  pencil.onclick();
  assert.equal(board.getToolMode(),'edit');
  assert.equal(board.element.querySelectorAll('.ness-tagboard-rename-input').length,3);
@@ -476,11 +478,12 @@ test('Within-mode move-to-section repositions the selected chip without altering
   changed:()=>{},readOnly:()=>false});
  const oldWindow=globalThis.window;globalThis.window={innerHeight:900};
  try{
-  board.element.querySelectorAll('.ness-tagboard-tool').find(b=>b.textContent==='✥').onclick();
+  board.element.querySelectorAll('.ness-tagboard-tool').find(b=>b.textContent==='⇄').onclick();
   const row=board.element.querySelectorAll('.ness-unified-tag-row').find(x=>x.dataset.tagId===board.getCatalog().modes.base.tags[0].id);
-  row.oncontextmenu({target:{closest:()=>null},preventDefault(){}});
+  row.querySelector('.ness-unified-chip').onclick();
   const popup=board.element.querySelector('.ness-tagboard-context-menu');
-  popup.querySelectorAll('button').find(x=>x.textContent==='↳ Eyes').onclick();
+  popup.querySelectorAll('button').find(x=>x.textContent==='Ракурсы · текущий').onclick();
+  popup.querySelectorAll('button').find(x=>x.textContent==='Eyes').onclick();
   assert.equal(sectionTagCount(board.getCatalog().modes.base,'first'),1);
   assert.equal(sectionTagCount(board.getCatalog().modes.base,'second'),2);
   assert.ok(state.selections.face.some(x=>x.text==='freckles'));
@@ -724,4 +727,36 @@ test('A previously hidden duplicate skin assignment is shown and can be removed 
  assert.equal(result.tags[0].text,'tiny scar');
  board.undo();
  assert.deepEqual(board.getSkin().selections.upper_front,['first']);
+});
+
+test('Transfer wizard back, cancel and close do not edit data; adjacent empty sections receive the correct tag',()=>{
+ const ui=makeUI(),catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+ catalog.modes.skin.sections=[{id:'first',title:'First',before:0},{id:'second',title:'Second',before:0}];
+ let state={base,ranges:[],selections:{face:[parseBaseTags(base)[0]]}},changes=0;
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,initialSkin:skin,readBaseState:()=>state,writeBaseState:x=>{state=x;},changed:()=>changes++,readOnly:()=>false});
+ const find=(root,label)=>root.querySelectorAll('button').find(b=>b.textContent===label);
+ const popup=board.element.querySelector('.ness-tagboard-context-menu');
+ const before=JSON.stringify(board.getCatalog());
+ find(board.element,'⇄').onclick();
+ const open=()=>board.element.querySelectorAll('.ness-unified-chip').find(b=>b.textContent.includes('freckles')).onclick();
+ open();find(popup,'Под одеждой').onclick();find(popup,'← Назад').onclick();find(popup,'Отмена').onclick();
+ assert.equal(popup.hidden,true);assert.equal(changes,0);assert.equal(JSON.stringify(board.getCatalog()),before);
+ open();find(popup,'×').onclick();assert.equal(changes,0);
+ open();find(popup,'Под одеждой').onclick();find(popup,'First').onclick();
+ assert.equal(sectionTagCount(board.getCatalog().modes.skin,'first'),1);
+ assert.equal(sectionTagCount(board.getCatalog().modes.skin,'second'),1);
+ assert.equal(board.getMode(),'skin');
+ assert.ok(!Object.values(board.getSkin().selections).flat().includes(board.getCatalog().modes.skin.tags.find(x=>x.text==='freckles').id));
+ board.undo();assert.equal(JSON.stringify(board.getCatalog()),before);
+});
+test('Reorder arrows share the toolbar and do not open transfer modal',()=>{
+ const ui=makeUI();let state={base,ranges:[],selections:{}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skin,readBaseState:()=>state,writeBaseState:x=>{state=x;},changed:()=>{},readOnly:()=>false});
+ const tools=board.element.querySelector('.ness-tagboard-tool-modes'),movement=tools.querySelector('.ness-tagboard-tool-movement');
+ assert.ok(movement);assert.equal(movement.hidden,true);
+ tools.querySelectorAll('button').find(b=>b.textContent==='✥').onclick();
+ board.element.querySelector('.ness-unified-chip').onclick();
+ assert.equal(movement.hidden,false);
+ assert.equal(movement.querySelectorAll('.ness-tagboard-move-arrow').length,4);
+ assert.equal(board.element.querySelector('.ness-tagboard-context-menu').hidden,true);
 });
