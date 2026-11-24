@@ -993,7 +993,8 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
       // Successful persistence changes only disabled controls, not the roster DOM.
       for(const {cb} of checks)cb.disabled=false;
       for(const item of current.querySelectorAll('button'))item.disabled=false;
-      list.refresh(true);
+      for(const item of results.querySelectorAll('button'))item.disabled=false;
+      list.refresh();
      }
     }
    }
