@@ -5,7 +5,7 @@ import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_A
 import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges } from './appearance-visibility.js';
 import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, parseBaseTags, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
 import { openCharacterIconEditor } from './character-icon-editor.js';
-import { migrateLegacyBodyFields, LEGACY_BODY_FIELDS } from './legacy-body-migration.js';
+import { migrateLegacyBodyFields, LEGACY_BODY_FIELDS, separateMigratedAnatomy } from './legacy-body-migration.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension } = {}){
 const NESS_RECOVERED_BODY={
@@ -502,6 +502,7 @@ function validateMasterLibrary(input,{copy=true,preserveCurrent=false}={}){
     ...Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,entry[k]]))
   },entry.appearanceSections);
   }
+  if(!preserveCurrent&&migrated.changed)Object.assign(entry,separateMigratedAnatomy(entry));
  }
  const source=data.organizer||{},tags=[],tagIds=new Set(),names=new Map(),remap=new Map();
  // In v3 the organizer is already the saved user catalogue. Do not collapse
@@ -841,6 +842,7 @@ async function openLibraryEditor(){
   // One inline highlight editor. No extra full-screen constructor or duplicated tag UI.
   let appearanceEdited=false;
   const markAppearanceEdited=()=>{appearanceEdited=true;changed();};
+  const appearanceEntry=separateMigratedAnatomy(entry);
   const nsfwState=Object.fromEntries(Object.keys(NSFW_PRESETS).map(k=>[k,String(entry[k]||'')]));
   let appearanceState={
     base:fields.base.value,
@@ -850,9 +852,9 @@ async function openLibraryEditor(){
   const inlineHost=el('div',undefined,appearance,'ness-inline-appearance-editor');
   const inlineBoard=createAppearanceBoard({
     ui:{el,button,clear,input,wheelAlongX:view.wheelAlongX},parent:inlineHost,
-    initialSkin:entry.appearanceSkin,
+    initialSkin:appearanceEntry.appearanceSkin,
     initialSections:entry.appearanceSections,
-    initialCatalog:entry.appearanceCatalog,
+    initialCatalog:appearanceEntry.appearanceCatalog,
     initialMode:'base',
     initialHelpPinned:appearanceHintPinned,
     onHelpChange:(pinned,peek)=>{
