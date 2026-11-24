@@ -150,7 +150,7 @@ test('Library filter scrolls vertically through two rows without a visible horiz
  assert.match(css,/overflow-x:hidden!important;overflow-y:auto!important/);
  assert.match(css,/touch-action:pan-y;-webkit-overflow-scrolling:touch/);
  assert.match(css,/\.ness-tag-tools>\.ness-tag-strip::-webkit-scrollbar\{[\s\S]*?display:none/);
- assert.match(runtime,/const stripScroll=view\.tagStrip\.scrollTop;/);
+ assert.match(runtime,/filterScroll=view\.tagStrip\.scrollTop;/);
  assert.match(runtime,/view\.tagStrip\.scrollTop=stripScroll;/);
 });
 

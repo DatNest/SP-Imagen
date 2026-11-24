@@ -919,25 +919,36 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
 
 // Module: virtual_list
 // Keep only the visible rows plus a small scroll buffer in the DOM.
-function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.'}={}){
+function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1,mountRow=()=>{}}={}){
  const ui=createUiKit(D),top=ui.el('div',undefined,container),rows=ui.el('div',undefined,container),bottom=ui.el('div',undefined,container);
  top.setAttribute('aria-hidden','true');bottom.setAttribute('aria-hidden','true');
- let items=[],start=-1,end=-1,frame=null,disposed=false;
+ let items=[],start=-1,end=-1,frame=null,disposed=false,previousColumns=1,previousHeight=0,pendingReset=false,forceNext=false;
  const request=typeof window.requestAnimationFrame==='function'?fn=>window.requestAnimationFrame(fn):fn=>setTimeout(fn,16);
  const getRowHeight=()=>typeof rowHeight==='function'?rowHeight():rowHeight;
  const cancel=typeof window.cancelAnimationFrame==='function'?id=>window.cancelAnimationFrame(id):id=>clearTimeout(id);
  function paint(force=false){
-  if(disposed)return;
-  const rowHeight=getRowHeight(),height=container.clientHeight||400,from=Math.max(0,Math.floor((container.scrollTop||0)/rowHeight)-overscan),to=Math.min(items.length,from+Math.ceil(height/rowHeight)+overscan*2);
-  if(!force&&from===start&&to===end)return;start=from;end=to;
-  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,items.length-to)*rowHeight)+'px';ui.clear(rows);
-  if(!items.length){ui.el('p',emptyText,rows,'ness-note');return;}
-  for(let i=from;i<to;i++)rows.appendChild(renderRow(items[i]));
+  if(disposed||!container.clientHeight)return;
+  const cols=Math.max(1,Math.floor(columns())||1),rowHeight=getRowHeight(),height=container.clientHeight;
+  const totalRows=Math.ceil(items.length/cols),limit=Math.max(0,totalRows*rowHeight-height);
+  const reflow=cols!==previousColumns||(previousHeight>0&&previousHeight!==rowHeight);
+  const scroll=container.scrollTop||0,oldHeight=previousHeight||rowHeight;
+  const anchor=Math.floor(scroll/oldHeight)*previousColumns;
+  const wanted=pendingReset?0:Math.max(0,Math.min(limit,reflow?Math.floor(anchor/cols)*rowHeight:scroll));
+  const from=Math.max(0,Math.floor(wanted/rowHeight)-overscan),to=Math.min(totalRows,from+Math.ceil(height/rowHeight)+overscan*2);
+  if(!force&&!pendingReset&&!reflow&&from===start&&to===end)return;
+  start=from;end=to;previousColumns=cols;previousHeight=rowHeight;pendingReset=false;
+  // Restore after every complete rebuild, not just when the grid changes.
+  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';ui.clear(rows);
+  rows.style.display=cols>1?'grid':'block';
+  rows.style.gridTemplateColumns=cols>1?'repeat('+cols+',minmax(0,1fr))':'';
+  if(!items.length)ui.el('p',emptyText,rows,'ness-note');
+  else for(let i=from*cols;i<Math.min(items.length,to*cols);i++){const row=renderRow(items[i]);rows.appendChild(row);mountRow(row,items[i]);}
+  container.scrollTop=wanted;
  }
- function refresh(){if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint(true);});}
- container.onscroll=()=>{if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});};
- const Observer=window.ResizeObserver;const observer=Observer?new Observer(refresh):null;observer?.observe(container);
- return {setItems(value,{reset=false}={}){items=value;const limit=Math.max(0,items.length*getRowHeight()-(container.clientHeight||400));container.scrollTop=reset?0:Math.min(container.scrollTop||0,limit);paint(true);},refresh,dispose(){disposed=true;if(frame!==null)cancel(frame);observer?.disconnect();container.onscroll=null;},get renderedCount(){return rows.children.length;}};
+ function refresh(force=false){if(disposed)return;forceNext=forceNext||force;if(frame!==null)return;frame=request(()=>{frame=null;const rebuild=forceNext;forceNext=false;paint(rebuild);});}
+ container.onscroll=()=>refresh();
+ const Observer=window.ResizeObserver;const observer=Observer?new Observer(()=>refresh()):null;observer?.observe(container);
+ return {setItems(value,{reset=false}={}){items=value;pendingReset=pendingReset||reset;if(!container.clientHeight){start=-1;end=-1;return;}paint(true);},refresh,dispose(){disposed=true;if(frame!==null)cancel(frame);observer?.disconnect();container.onscroll=null;},get renderedCount(){return rows.children.length;}};
 }
 
 // Module: cast_picker
@@ -953,20 +964,20 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
  const count=ui.note(addBox,''),results=el('div',undefined,addBox,'ness-results'),error=el('p','',element,'ness-error');
  const list=createVirtualList(D,results,({id,entry})=>{const b=ui.button('+ '+String(entry.name||id),undefined,()=>update([...ids,id],id));b.disabled=busy;if(colors.has(id))b.style.borderLeft='5px solid '+colors.get(id);b.className+=' ness-cast-result';return b;},{rowHeight:44,overscan:4,emptyText:'Нет подходящих персонажей.'});
  function syncChecks(){for(const {id,cb}of checks){if(cb.checked)selected.add(id);else selected.delete(id);}}
- function renderResults(){
+ function renderResults(reset=false){
   if(disposed)return;if(timer!==null){clearTimeout(timer);timer=null;}
-  if(!addBox.open){list.setItems([]);count.textContent='';return;}
+  if(!addBox.open)return;
   const roster=new Set(ids),query=norm(search.value),available=index.filter(item=>!roster.has(item.id)&&(!query||item.search.includes(query)));
-  count.textContent=available.length?'Найдено: '+available.length:'Нет подходящих персонажей.';list.setItems(available,{reset:true});
+  count.textContent=available.length?'Найдено: '+available.length:'Нет подходящих персонажей.';list.setItems(available,{reset});
  }
  function render(){
-  if(disposed)return;ui.clear(current);checks.length=0;
+  if(disposed)return;const viewport=element.closest?.('[data-review-scroll]'),top=viewport?.scrollTop;ui.clear(current);checks.length=0;
   if(!ids.length)ui.note(current,'Список пуст. Добавь нужных персонажей из библиотеки.');
   for(const id of ids){const entry=library.get(id),row=el('div',undefined,current,'ness-chip');if(colors.has(id))row.style.borderLeft='5px solid '+colors.get(id);
    const label=el('label',undefined,row),cb=el('input',undefined,label);cb.type='checkbox';cb.checked=selected.has(id);cb.disabled=busy;el('span',String(entry.name||id),label);label.title='Включить '+String(entry.name||id)+' в текущую иллюстрацию. Внешность передаётся только отмеченным персонажам.';
    const remove=ui.button('×',row,()=>update(ids.filter(x=>x!==id)), 'icon quiet');remove.title='Убрать из списка этого чата';remove.setAttribute('aria-label','Убрать '+String(entry.name||id)+' из списка чата');remove.disabled=busy;checks.push({id,cb});
   }
-  renderResults();
+  renderResults();if(viewport)viewport.scrollTop=top;
  }
  function update(next,added){
   if(disposed||busy)return pending;syncChecks();const previous=ids.slice(),previousSelected=new Set(selected);ids=valid(next);if(added)selected.add(added);const roster=new Set(ids);selected=new Set([...selected].filter(id=>roster.has(id)));
@@ -982,13 +993,14 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
       // Successful persistence changes only disabled controls, not the roster DOM.
       for(const {cb} of checks)cb.disabled=false;
       for(const item of current.querySelectorAll('button'))item.disabled=false;
+      for(const item of results.querySelectorAll('button'))item.disabled=false;
       list.refresh();
      }
     }
    }
   })();return pending;
  }
- addBox.ontoggle=renderResults;search.oninput=()=>{if(timer!==null)clearTimeout(timer);timer=setTimeout(renderResults,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();renderResults();}};
+ addBox.ontoggle=()=>renderResults();search.oninput=()=>{if(timer!==null)clearTimeout(timer);timer=setTimeout(()=>renderResults(true),140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();renderResults(true);}};
  update(ids);
  return {element,checks,flush:()=>pending,dispose(){disposed=true;if(timer!==null)clearTimeout(timer);addBox.ontoggle=null;search.oninput=null;list.dispose();},get rosterIds(){return ids.slice();}};
 }
@@ -1177,7 +1189,9 @@ async function openSettings(){
    const profile=mode==='export'?makeNessSettingsProfile(form.getValue()):null;
    transferClose=openNessSettingsTransfer(document,panel,{mode,profile,isCurrent,onClose:()=>{transferClose=null;},onApply:settings=>{
     const scope=form.scope.value,next=createGen2SettingsPanel(document,settings,undefined,markDirty);next.scope.value=scope;
+    const top=scroll.scrollTop,left=scroll.scrollLeft;
     form.dispose();form.element.remove();form=next;settingsMount.appendChild(form.element);markDirty();
+    scroll.scrollTop=top;scroll.scrollLeft=left;
     message.textContent='Настройки загружены в окно. Проверь значения и «Сохранить для», затем нажми «Сохранить настройки».';
    }});
   }catch(e){message.textContent='Не удалось открыть '+(mode==='export'?'экспорт':'импорт')+': '+String(e.message||e);}

@@ -249,13 +249,20 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const content=el('div',undefined,helpLayout,'ness-tagboard-body');
  const figure=createAppearanceFigure(ui,helpLayout,()=>setHintPinned(false));
  function activeRibbon(){return controls.querySelector('.ness-tagboard-ribbon');}
+ function scrollPositions(){
+  const nodes=[frame.closest?.('#sp-imagen-review-panel'),frame.closest?.('.ness-library-editorpane'),frame.closest?.('.ness-tab-viewport'),frame.closest?.('.ness-tab-content'),activeRibbon(),content.querySelector('.ness-unified-tagflow'),content.querySelector('.ness-tagboard-chosen-list')].filter(Boolean);
+  const positions=nodes.map(node=>[node,node.scrollTop||0,node.scrollLeft||0]);
+  return ()=>{for(const [node,top,left] of positions){node.scrollTop=top;node.scrollLeft=left;}};
+ }
  function refreshHelp(){
+  const restore=scrollPositions();
   const open=helpPinned||helpPeek;
   figure.element.hidden=!open;
   helpLayout.setAttribute('data-help-open',String(open));
   helpLayout.setAttribute('data-help-state',helpPinned?'pinned':helpPeek?'peek':'closed');
   if(open)figure.update(mode,preset,availablePresets()[preset]||preset);
   onHelpChange(helpPinned,helpPeek);
+  restore();
  }
  function setHintPinned(value){
   helpPinned=Boolean(value);
@@ -347,6 +354,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function syncPresetRibbon(){
   const ribbon=activeRibbon();
   if(!ribbon)return;
+  const offset=ribbon.scrollLeft||0;
   const counts=presetTagCounts(),headings=availablePresets();
   for(const btn of ribbon.querySelectorAll('.ness-button')){
    const id=btn.dataset.presetId;
@@ -358,6 +366,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    btn.setAttribute('aria-label',count?label+', выбрано тегов: '+count:label+', пока без тегов');
    btn.title=count?label+' · '+count+' тегов':'Пока нет выбранных тегов';
   }
+  ribbon.scrollLeft=offset;
  }
  function selectPreset(id){
   if(id===preset)return;
@@ -627,15 +636,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const plus=button('＋',slot,()=>{
    if(readOnly())return;
    let field=slot.querySelector('.ness-tagboard-inline-add-input');
-   if(field){field.focus?.();return;}
+   if(field){field.focus?.({preventScroll:true});return;}
    field=el('input',undefined,slot,'ness-input ness-tagboard-inline-add-input');
    field.type='text';field.placeholder='Новый тег';field.setAttribute('aria-label','Добавить тег в раздел');
    field.onkeydown=e=>{
-    if(e.key==='Escape'){e.preventDefault?.();field.remove();plus.hidden=false;plus.focus?.();return;}
+    if(e.key==='Escape'){e.preventDefault?.();field.remove();plus.hidden=false;plus.focus?.({preventScroll:true});return;}
     if(e.key==='Enter'){e.preventDefault?.();if(addTag(field.value,indexFor(),sectionId)){field.remove();}}
    };
    field.onblur=()=>{if(!field.value.trim()){field.remove();plus.hidden=false;}};
-   plus.hidden=true;field.focus?.();
+   plus.hidden=true;field.focus?.({preventScroll:true});
   },'quiet ness-tagboard-add-plus');
   plus.title='Добавить тег здесь';plus.setAttribute('aria-label','Добавить тег здесь');
   return slot;
@@ -846,6 +855,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function refreshSelection(){
   const columns=content.querySelector('.ness-tagboard-columns');
   if(!columns){render();return;}
+  const restore=scrollPositions();
   const byId=new Map(items().map(tag=>[tag.id,tag]));
   const selected=selectedKeys(preset),shared=preset!=='always'&&mode!=='nsfw'?selectedKeys('always'):null;
   for(const row of columns.querySelectorAll('.ness-unified-tag-row')){
@@ -922,6 +932,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const previewText=content.querySelector('.ness-tagboard-preview-text');
   if(previewText)previewText.textContent=preview();
   syncPresetRibbon();
+  restore();
  }
  function render(){
   // Structural changes rebuild the board; preserve every parent viewport
@@ -1046,12 +1057,12 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const editSection=button('✎',actions,()=>{
     if(readOnly())return;
     const previous=bar.querySelector('.ness-tagboard-section-input');
-    if(previous){previous.focus();return;}
+    if(previous){previous.focus({preventScroll:true});return;}
     const field=el('input',undefined,bar,'ness-input ness-tagboard-section-input');
     field.value=token.section.title;field.setAttribute('aria-label','Название раздела');
     const commit=()=>{if(field.dataset.cancelled==='true')return;const text=field.value.trim();if(text&&text!==token.section.title)renameGroup(token.id,text);else field.remove();};
     field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();commit();}else if(e.key==='Escape'){e.preventDefault();field.dataset.cancelled='true';field.remove();}};
-    field.onblur=commit;field.focus();field.select();
+    field.onblur=commit;field.focus({preventScroll:true});field.select();
    },'quiet ness-section-action');
    editSection.title='Переименовать раздел';editSection.setAttribute('aria-label','Переименовать раздел '+token.section.title);
    const removeSection=button('🗑',actions,()=>deleteGroup(token.id),'quiet ness-section-action');
@@ -1072,7 +1083,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const addSection=el('div',undefined,left,'ness-tagboard-section-add');
   const groupToggle=button('＋ Новый раздел',addSection,()=>{
    groupInput.hidden=!groupInput.hidden;createGroup.hidden=groupInput.hidden;
-   if(!groupInput.hidden)groupInput.focus?.();
+   if(!groupInput.hidden)groupInput.focus?.({preventScroll:true});
   },'quiet');
   const sectionHelp=button('?',addSection,()=>openExplanation('Добавление тегов','Маленький ＋ рядом с заголовком добавляет тег внутрь этого раздела. В списке без разделов два плюса стоят в начале и в конце. «＋ Новый раздел» создаёт ещё одну группу. Нажми Enter, чтобы сохранить новый тег.'),'quiet ness-tagboard-help');
   sectionHelp.title='Как добавлять теги и разделы';sectionHelp.setAttribute('aria-label','Помощь по добавлению тегов');
@@ -1089,13 +1100,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   el('div',undefined,right,'ness-tagboard-chosen-list');
   refreshSelection();
   el('p',preset==='always'?'Эти теги появляются во всех ракурсах данного режима.':'Слева — добавить или убрать. Справа — убрать через ×.',right,'ness-tagboard-right-hint');
-  tagFlow.scrollTop=tagScroll;right.querySelector('.ness-tagboard-chosen-list').scrollTop=chosenScroll;
   const details=el('details',undefined,content,'ness-tagboard-preview');
   el('summary','Предпросмотр строки',details);el('p',preview(),details,'ness-tagboard-preview-text');
+  // Restore after the entire board (including preview and count badges) exists.
+  tagFlow.scrollTop=tagScroll;right.querySelector('.ness-tagboard-chosen-list').scrollTop=chosenScroll;ribbon.scrollLeft=ribbonScroll;
   restore();
   if(followMovedTag&&toolMode==='move'&&focusTagId){
    const active=[...content.querySelectorAll('.ness-unified-tag-row')].find(row=>row.dataset.tagId===focusTagId);
-   active?.scrollIntoView?.({block:'nearest',inline:'nearest'});
+   // Follow a deliberately moved tag only inside its own pane, never the whole dialog.
+   if(active&&tagFlow.getBoundingClientRect&&active.getBoundingClientRect){const a=active.getBoundingClientRect(),p=tagFlow.getBoundingClientRect();if(a.top<p.top)tagFlow.scrollTop+=a.top-p.top;else if(a.bottom>p.bottom)tagFlow.scrollTop+=a.bottom-p.bottom;}
    followMovedTag=false;
   }
  }

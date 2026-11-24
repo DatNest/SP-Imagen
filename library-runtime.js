@@ -335,11 +335,13 @@ function createAliasTags(D,values,onChange){
  ui.help(element,'Другие имена и псевдонимы',input);
  let items=[...(values||[])];
  function render(){
+  const viewport=element.closest?.('.ness-tab-viewport'),top=viewport?.scrollTop;
   ui.clear(chips);
   items.forEach((name,index)=>{
    const chip=ui.el('span',undefined,chips,'ness-alias-chip');ui.el('span',name,chip);
    const remove=ui.button('×',chip,()=>{items.splice(index,1);render();onChange();},'icon quiet');remove.setAttribute('aria-label','Удалить псевдоним '+name);remove.title='Удалить '+name;
   });
+  if(viewport)viewport.scrollTop=top;
  }
  function add(text){
   const names=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);let changed=false;
@@ -355,36 +357,36 @@ function createAliasTags(D,values,onChange){
 
 // Module: virtual_list
 // Keep only the visible rows plus a small scroll buffer in the DOM.
-function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1}={}){
+function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1,mountRow=()=>{}}={}){
  const ui=createUiKit(D),top=ui.el('div',undefined,container),rows=ui.el('div',undefined,container),bottom=ui.el('div',undefined,container);
  top.setAttribute('aria-hidden','true');bottom.setAttribute('aria-hidden','true');
- let items=[],start=-1,end=-1,frame=null,disposed=false,previousColumns=1;
+ let items=[],start=-1,end=-1,frame=null,disposed=false,previousColumns=1,previousHeight=0,pendingReset=false,forceNext=false;
  const request=typeof window.requestAnimationFrame==='function'?fn=>window.requestAnimationFrame(fn):fn=>setTimeout(fn,16);
  const getRowHeight=()=>typeof rowHeight==='function'?rowHeight():rowHeight;
  const cancel=typeof window.cancelAnimationFrame==='function'?id=>window.cancelAnimationFrame(id):id=>clearTimeout(id);
  function paint(force=false){
   if(disposed||!container.clientHeight)return;
   const cols=Math.max(1,Math.floor(columns())||1),rowHeight=getRowHeight(),height=container.clientHeight;
-  const totalRows=Math.ceil(items.length/cols);
-  const reflow=cols!==previousColumns;
-  const scroll=container.scrollTop||0;
-  const anchor=Math.floor(scroll/rowHeight)*previousColumns;
-  const wanted=reflow?Math.min(Math.floor(anchor/cols)*rowHeight,Math.max(0,totalRows*rowHeight-height)):scroll;
+  const totalRows=Math.ceil(items.length/cols),limit=Math.max(0,totalRows*rowHeight-height);
+  const reflow=cols!==previousColumns||(previousHeight>0&&previousHeight!==rowHeight);
+  const scroll=container.scrollTop||0,oldHeight=previousHeight||rowHeight;
+  const anchor=Math.floor(scroll/oldHeight)*previousColumns;
+  const wanted=pendingReset?0:Math.max(0,Math.min(limit,reflow?Math.floor(anchor/cols)*rowHeight:scroll));
   const from=Math.max(0,Math.floor(wanted/rowHeight)-overscan),to=Math.min(totalRows,from+Math.ceil(height/rowHeight)+overscan*2);
-  if(!force&&cols===previousColumns&&from===start&&to===end)return;
-  start=from;end=to;previousColumns=cols;
+  if(!force&&!pendingReset&&!reflow&&from===start&&to===end)return;
+  start=from;end=to;previousColumns=cols;previousHeight=rowHeight;pendingReset=false;
+  // Restore after every complete rebuild, not just when the grid changes.
   top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';ui.clear(rows);
   rows.style.display=cols>1?'grid':'block';
   rows.style.gridTemplateColumns=cols>1?'repeat('+cols+',minmax(0,1fr))':'';
-  if(!items.length){ui.el('p',emptyText,rows,'ness-note');return;}
-  for(let i=from*cols;i<Math.min(items.length,to*cols);i++)rows.appendChild(renderRow(items[i]));
-  // Restore after DOM geometry changes, so browsers cannot clamp to the previous grid height.
-  if(reflow)container.scrollTop=wanted;
+  if(!items.length)ui.el('p',emptyText,rows,'ness-note');
+  else for(let i=from*cols;i<Math.min(items.length,to*cols);i++){const row=renderRow(items[i]);rows.appendChild(row);mountRow(row,items[i]);}
+  container.scrollTop=wanted;
  }
- function refresh(){if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});}
- container.onscroll=()=>{if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});};
- const Observer=window.ResizeObserver;const observer=Observer?new Observer(refresh):null;observer?.observe(container);
- return {setItems(value,{reset=false}={}){items=value;if(!container.clientHeight){start=-1;end=-1;return;}const limit=Math.max(0,Math.ceil(items.length/Math.max(1,previousColumns))*getRowHeight()-container.clientHeight);container.scrollTop=reset?0:Math.min(container.scrollTop||0,limit);paint(true);},refresh,dispose(){disposed=true;if(frame!==null)cancel(frame);observer?.disconnect();container.onscroll=null;},get renderedCount(){return rows.children.length;}};
+ function refresh(force=false){if(disposed)return;forceNext=forceNext||force;if(frame!==null)return;frame=request(()=>{frame=null;const rebuild=forceNext;forceNext=false;paint(rebuild);});}
+ container.onscroll=()=>refresh();
+ const Observer=window.ResizeObserver;const observer=Observer?new Observer(()=>refresh()):null;observer?.observe(container);
+ return {setItems(value,{reset=false}={}){items=value;pendingReset=pendingReset||reset;if(!container.clientHeight){start=-1;end=-1;return;}paint(true);},refresh,dispose(){disposed=true;if(frame!==null)cancel(frame);observer?.disconnect();container.onscroll=null;},get renderedCount(){return rows.children.length;}};
 }
 
 // Module: dialogs
@@ -679,19 +681,24 @@ async function openLibraryEditor(){
   },'primary');
  },'icon quiet ness-appearance-rules-trigger');
  rulesButton.title='Правила ракурсов';rulesButton.setAttribute('aria-label','Правила ракурсов');
+ let filterScroll=0,bulkScroll=0;
  function renderTags(){
-  const stripScroll=view.tagStrip.scrollTop;
+  if(!view.tagStrip.hidden&&view.tagStrip.clientHeight)filterScroll=view.tagStrip.scrollTop;
+  const stripScroll=filterScroll;
   view.tagStrip.hidden=!view.tagEditor.hidden;
   clear(view.tagStrip);
   const selectedTag=draft.organizer.filterTagId;
   const addFilter=(id,name,color)=>{const chip=el('button',name,view.tagStrip,'ness-tag-filter');chip.type='button';chip.setAttribute('data-tag-filter',id);chip.setAttribute('aria-pressed',String(selectedTag===id));if(color){chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',color);}chip.onclick=()=>{if(busy||draft.organizer.filterTagId===id)return;draft.organizer.filterTagId=id;changed();for(const node of view.tagStrip.querySelectorAll('[data-tag-filter]'))node.setAttribute('aria-pressed',String(node.getAttribute('data-tag-filter')===id));view.editTag.hidden=!draft.organizer.tags.some(t=>t.id===id);searchNow();};};
   addFilter('*','Все');addFilter('','Без тегов');for(const tag of draft.organizer.tags)addFilter(tag.id,tag.name,tag.color);
   view.editTag.hidden=!view.tagEditor.hidden||!draft.organizer.tags.some(t=>t.id===selectedTag);
-  view.tagStrip.scrollTop=stripScroll;
+  if(!view.tagStrip.hidden)view.tagStrip.scrollTop=stripScroll;
  }
  function renderBulkTags(){
-  clear(view.bulkTags);if(!selected.size)return;
+  if(view.bulkTags.clientHeight)bulkScroll=view.bulkTags.scrollTop;
+  if(!selected.size)return;
+  clear(view.bulkTags);
   for(const tag of draft.organizer.tags){const assigned=[...selected].every(id=>draft.organizer.characters[id]?.tagIds?.includes(tag.id));const chip=el('button',(assigned?'✓ ':'+ ')+tag.name,view.bulkTags,'ness-tag-filter');chip.type='button';chip.setAttribute('aria-pressed',String(assigned));chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',tag.color);chip.onclick=()=>assignSelectedTag(tag.id,!assigned);}
+  view.bulkTags.scrollTop=bulkScroll;
  }
  function renderList(reset=false){
   const q=norm(search.value);
@@ -701,7 +708,9 @@ async function openLibraryEditor(){
    const tags=draft.organizer.characters[id]?.tagIds||[];
    return (selectedTag==='*'||(selectedTag===''?tags.length===0:tags.includes(selectedTag)))&&(!q||searchText.includes(q));
   });
+  const top=list.scrollTop;
   view.selection(selected.size);view.counts(searchIndex.length,entries.length);renderBulkTags();
+  if(!reset&&list.clientHeight)list.scrollTop=top;
   virtualList.setItems(entries,{reset});
   // The guide follows the first record in the CURRENT filtered list, not the full catalogue.
   currentVisibleRecords = entries;
@@ -723,6 +732,7 @@ async function openLibraryEditor(){
   closeTagPicker=()=>{box.remove();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('scroll',scroll,true);closeTagPicker=()=>{};};
   paint();positionNessPopover(box,anchor,true);document.addEventListener('pointerdown',outside,true);document.addEventListener('scroll',scroll,true);
  }
+ const recordTagScroll=new Map();
  function renderLibraryRow({id,group,entry}){
   const row=el('div',undefined,undefined,'ness-library-item');row.setAttribute('data-active',String(editor?.id===id));
   const cb=el('input',undefined,row);cb.type='checkbox';cb.checked=selected.has(id);cb.disabled=busy;cb.setAttribute('data-library-id',id);cb.setAttribute('aria-label','Выбрать '+entry.name+' для действий');cb.onclick=e=>e?.stopPropagation?.();
@@ -734,13 +744,14 @@ async function openLibraryEditor(){
   const title=el('span',undefined,open,'ness-record-title');el('span',entry.name,title,'ness-record-name');el('span',group==='personas'?'Персона':'Персонаж',title,'ness-record-type');
   const tags=el('div',undefined,content,'ness-record-tags'),ids=draft.organizer.characters[id]?.tagIds||[];
   view.wheelAlongX(tags);
+  tags.addEventListener('scroll',()=>{if(tags.isConnected&&tags.clientWidth)recordTagScroll.set(id,tags.scrollLeft);},{passive:true});
   const add=el('button','+',tags,'ness-tag-add');add.type='button';add.disabled=busy;add.setAttribute('aria-label','Назначить теги: '+entry.name);add.setAttribute('data-row-tags',id);add.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,add);};
   for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){const chip=el('button',tag.name,tags,'ness-tag-badge');chip.type='button';chip.style.setProperty('--ness-tag-color',tag.color);chip.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,chip);};}
   return row;
  }
  let listLayout='grid';try{if(window.localStorage?.getItem('sp-imagen-library-layout')==='list')listLayout='list';}catch{}
  const updateListLayout=()=>{view.layoutList.setAttribute('aria-pressed',String(listLayout==='list'));view.layoutGrid.setAttribute('aria-pressed',String(listLayout==='grid'));};
- const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:68,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1});
+ const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:68,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
  const selectListLayout=next=>{if(listLayout===next)return;closeTagPicker();listLayout=next;updateListLayout();try{window.localStorage?.setItem('sp-imagen-library-layout',next);}catch{}virtualList.refresh();};
  view.layoutList.onclick=()=>selectListLayout('list');view.layoutGrid.onclick=()=>selectListLayout('grid');updateListLayout();
  let searchTimer=null;
@@ -812,6 +823,7 @@ async function openLibraryEditor(){
   const kind=choice([['personas','Персона'],['characters','Персонаж']],group);kind.className+=' ness-editor-type-select';kind.setAttribute('aria-label','Тип записи');kind.onchange=()=>changed(true);identity.appendChild(kind);
   const recordTagHost=el('div',undefined,identityCard,'ness-editor-meta-tags');
   function renderHeaderTags(){
+    const scroll=recordTagHost.scrollLeft;
     clear(recordTagHost);
     const ids=draft.organizer.characters[id]?.tagIds||[];
     for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){
@@ -819,6 +831,7 @@ async function openLibraryEditor(){
       chip.title='Изменить теги записи';chip.onclick=()=>openRecordTags(id,chip);
     }
     const plus=button('+',recordTagHost,undefined,'quiet ness-editor-meta-add');plus.title='Добавить тег записи';plus.setAttribute('aria-label','Добавить тег записи');plus.onclick=()=>openRecordTags(id,plus);
+    recordTagHost.scrollLeft=scroll;
   }
   renderHeaderTags();
   const toolbar=el('div',undefined,heading,'ness-editor-toolbar');
@@ -997,7 +1010,7 @@ async function openLibraryEditor(){
   return true;
  };
  function showTagEditor(id=null){
-  if(!tryFlush())return;closeTagPicker();editingTag=id;deleteTagAsked=false;view.deleteTag.textContent='Удалить';view.tagEditor.hidden=false;view.tagName.value=draft.organizer.tags.find(t=>t.id===id)?.name||'';view.tagColor.value=draft.organizer.tags.find(t=>t.id===id)?.color||(loadNessTheme()?.accent || activeNessThemeForEditor().accent);view.deleteTag.hidden=!id;renderTags();view.tagName.focus();
+  if(!tryFlush())return;closeTagPicker();editingTag=id;deleteTagAsked=false;view.deleteTag.textContent='Удалить';view.tagEditor.hidden=false;view.tagName.value=draft.organizer.tags.find(t=>t.id===id)?.name||'';view.tagColor.value=draft.organizer.tags.find(t=>t.id===id)?.color||(loadNessTheme()?.accent || activeNessThemeForEditor().accent);view.deleteTag.hidden=!id;renderTags();view.tagName.focus({preventScroll:true});
  }
  function applyTag(){
   if(busy)return;const name=view.tagName.value.trim();if(!name){status('Введи название тега.');return;}
