@@ -3,7 +3,9 @@ import { resolveImageStyle } from './image-style-selection.js';
 import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles, promoteBuiltInProfiles, primaryProfileId, isStructuredDirectorPrompt } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
-import { eventSource, event_types } from '../../../../script.js';
+import { eventSource, event_types, getRequestHeaders } from '../../../../script.js';
+import { createLibraryStore, createLibraryFileTransport } from './library-persistence.js';
+import { MASTER_LIBRARY_KEY, MASTER_BACKUP_KEY } from './shared-data.js';
 import { createPromptJson, parsePromptJson, SP_IMAGEN_PROMPT_JSON_KEYS } from './prompt-json.js';
 import { saveBase64AsFile } from '../../../utils.js';
 import { createSpImagenRuntime } from './runtime.js';
@@ -19,7 +21,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.58';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.59';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -61,6 +63,10 @@ const hash = async value => {
 function context() {
     return SillyTavern.getContext();
 }
+const libraryStore=createLibraryStore({transport:createLibraryFileTransport({headers:getRequestHeaders}),legacy:()=>{
+    const global=context()?.extensionSettings?.variables?.global||{};
+    return {current:global[MASTER_LIBRARY_KEY],previous:global[MASTER_BACKUP_KEY]};
+}});
 
 // Import only persistent SP Imagen chat data from previous releases.
 // The new namespace prevents collisions with old scripts; nothing is read from other extensions.
@@ -188,14 +194,14 @@ async function synchronizePrompts() {
 }
 
 async function getRuntime() {
-    const loaded = runtime ??= createSpImagenRuntime({ getExtension: () => extensionApi, getMediaSlots: () => mediaSlots });
+    const loaded = runtime ??= createSpImagenRuntime({ getExtension: () => extensionApi, getMediaSlots: () => mediaSlots, libraryStore });
     if (typeof loaded.resumePost !== 'function' || typeof loaded.generateAt !== 'function')
         throw new Error('SP Imagen: модули обновились не полностью. Останови генерацию, обнови расширение целиком и перезагрузи страницу без кэша.');
     return loaded;
 }
 
 async function getLibraryRuntime() {
-    const loaded=libraryRuntime ??= createSpImagenLibraryRuntime({ getExtension: () => extensionApi });
+    const loaded=libraryRuntime ??= createSpImagenLibraryRuntime({ getExtension: () => extensionApi, libraryStore });
     if(loaded?.bundleVersion!==SP_IMAGEN_BUNDLE_VERSION)
         throw new Error('SP Imagen: несовместимая версия библиотеки. Не запускай генерацию и обнови расширение целиком, затем перезагрузи страницу без кэша.');
     return loaded;
@@ -1198,7 +1204,7 @@ async function showGuideSection(view) {
 function launchQuickGuide() {
     let hasCharacters = false;
     try {
-        const api = libraryRuntime ?? createSpImagenLibraryRuntime({getExtension:()=>extensionApi});
+        const api = libraryRuntime ?? createSpImagenLibraryRuntime({getExtension:()=>extensionApi,libraryStore});
         hasCharacters = api.utilities.libraryEntries(api.utilities.loadMasterLibrary()).length > 0;
     } catch (error) { console.warn('[SP Imagen] library guide availability:',error); }
     return startQuickGuide({ navigate: showGuideSection, steps: makeGuideSteps(hasCharacters), onExit: () => mediaSlots?.endGuideDemo?.() });
@@ -1404,6 +1410,7 @@ async function initialize() {
     if (initializing) return;
     initializing = true;
     try {
+        try{await libraryStore.refresh();}catch(error){console.warn('[SP Imagen] library storage:',error);toastr.warning('Хранилище библиотеки недоступно. Данные не перезаписаны.');}
         await synchronizePrompts();
         mediaSlots = await installSpImagenMediaSlots({ getExtension: () => extensionApi });
         if (mediaSlots?.bundleVersion !== SP_IMAGEN_BUNDLE_VERSION) {
