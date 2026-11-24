@@ -66,7 +66,7 @@ export function appearanceVisibilityInstruction(records,rules={},customTemplate)
 
 function visibilityMarkerLocation(prompt,index){
  const before=prompt.slice(0,index);
- const sections=[...before.matchAll(/\|\s*(girl|boy|cat|other)\s*,\s*([^,;|\r\n]+)/gi)];
+ const sections=[...before.matchAll(/\|\s*(girl|boy|cat|dog|other)\s*,\s*([^,;|\r\n]+)/gi)];
  const latest=sections.at(-1);
  if(!latest||before.slice(latest.index+latest[0].length).includes('|'))return 'в общей части промпта, вне секции персонажа';
  const name=latest[2].trim().slice(0,70);
@@ -153,7 +153,7 @@ export function insertVisibleAppearance(prompt,records){
   }
   return '';
  };
- return result.replace(/(\|[ \t]*(?:girl|boy|cat|other)[ \t]*,)([^|\n]*)/gi,(whole,prefix,body)=>{
+ return result.replace(/(\|[ \t]*(?:girl|boy|cat|dog|other)[ \t]*,)([^|\n]*)/gi,(whole,prefix,body)=>{
   const candidates=ids.filter(([id,r])=>!seen.has(id)&&identityMatch(body,r));
   if(candidates.length!==1)return whole;
   const [id,record]=candidates[0];

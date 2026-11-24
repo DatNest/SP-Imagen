@@ -7,7 +7,7 @@
 export function validateImagePromptLayout(value,kind='comic') {
     const text=String(value??'');
     if(!text.trim())throw new Error('Итоговый промпт пуст.');
-    const actors=[...text.matchAll(/\|\s*(?:girl|boy|cat|other)\s*,/giu)].map(m=>m.index);
+    const actors=[...text.matchAll(/\|\s*(?:girl|boy|cat|dog|other)\s*,/giu)].map(m=>m.index);
     const firstActor=actors[0]??-1;
     let inQuote=false,escaped=false;
     const textMarks=[];
@@ -44,7 +44,7 @@ export function normalizeImagePrompt(value,{parseLettering=true}={}) {
         if (c === '\\') { description += c; escaped = true; continue; }
         if (c === '"') { quoted = !quoted; description += c; continue; }
         if (parseLettering && !quoted && text.startsWith('Text:', i) && (i === 0 || /[\s;.]/.test(text[i - 1]))) { textAt = i; break; }
-        if (c === '|' && (quoted || !/^[ \t]*(?:girl|boy|cat|other)\b/.test(text.slice(i + 1)))) description += '—';
+        if (c === '|' && (quoted || !/^[ \t]*(?:girl|boy|cat|dog|other)\b/.test(text.slice(i + 1)))) description += '—';
         else description += c;
     }
     if (textAt < 0) return description;
@@ -114,7 +114,7 @@ export function limitComicDialogue(prompt, kind, settings) {
     const last = [...full.matchAll(textEnd)].at(-1);
     const visual = last ? full.slice(0, last.index) : full;
     const tail = last ? full.slice(last.index + last[0].length) : '';
-    const firstCharacter = visual.search(/\s\|\s*(?:girl|boy|cat|other)\s*,/iu);
+    const firstCharacter = visual.search(/\s\|\s*(?:girl|boy|cat|dog|other)\s*,/iu);
     const base = firstCharacter < 0 ? visual : visual.slice(0, firstCharacter);
     const actors = firstCharacter < 0 ? '' : visual.slice(firstCharacter);
     const parsed = parseBubbles(base);

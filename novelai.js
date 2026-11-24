@@ -85,7 +85,7 @@ function resolveRequestSettings(input) {
 
 function splitCharacterPrompts(prompt, baseLettering = false) {
     const source = String(prompt || '');
-    // Test Comic/Story Page store Text: at the end of the editable full prompt.
+    // Test profiles store Text: at the end of the editable full prompt.
     // NovelAI expects that single block at the end of base_caption, not char_captions.
     const textAt = baseLettering ? source.search(/\r?\n[ \t]*\r?\nText:/u) : -1;
     const visual = textAt < 0 ? source : source.slice(0, textAt);
@@ -109,7 +109,7 @@ function validate(settings, aspectRatio) {
 
 function buildParameters(settings, prompt, negativePrompt, aspectRatio, profileId) {
     validate(settings, aspectRatio);
-    const positive = splitCharacterPrompts(prompt, profileId === 'custom_test_comic' || profileId === 'custom_test_story_page');
+    const positive = splitCharacterPrompts(prompt, profileId === 'custom_test_comic' || profileId === 'custom_test_story_page' || profileId === 'custom_test_snapshot');
     const medium = settings.model === MEDIUM_MODEL;
     // V5 Full Medium has fixed Undesired Content in NovelAI itself.
     // Do not inject custom/Heavy tags such as 'multiple views' in its payload.

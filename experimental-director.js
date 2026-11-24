@@ -2,7 +2,7 @@ import { SP_IMAGEN_PROMPTS } from './official-prompts.js';
 /** Experimental one-call director. JS assembles all final NovelAI section separators. */
 export const EXPERIMENTAL_DIRECTOR_IDS=Object.freeze({custom_test_snapshot:'snapshot',custom_test_comic:'comic',custom_test_story_page:'story_page'});
 const TITLES={snapshot:'Snapshot',comic:'Comic',story_page:'Story Page'};
-const SUBJECTS=['boy','girl','cat','other'];
+const SUBJECTS=['boy','girl','cat','dog','other'];
 const RATIOS=new Set(['1:1','2:3','3:2','9:16']);
 const fail=reason=>{throw new Error('Тестовый режиссёр: '+reason+'. NovelAI не запускался, ответ режиссёра сохранён.');};
 const check=(valid,reason)=>{if(!valid)fail(reason);};
@@ -14,27 +14,30 @@ export function experimentalProfileFor(id){
   includeScene:true,includeCharacters:true,includeWardrobe:true,includeComposition:true,useDialogueSettings:true,useArtStyle:true,useNegativePrompt:true
  }}};
 }
-const VISUAL_DENSITY="Maximize distinct visual information per token in all descriptive fields. Use compact, precise tags for individual visual traits and short natural-language phrases for composition, spatial relationships and interactions. Group related details and use one precise expression per visual feature, retaining essential panel and speaker anchors. Preserve all relevant visual specifics, supplied library markers and exact printed words.";
+const VISUAL_DENSITY="Use compact, precise tags and short natural-language phrases. Preserve all relevant visual specifics, supplied library markers and exact printed words.";
+const ACTION_TAGS="ACTION TAGS\nEnd each interacting character's action field with applicable NovelAI Action Tags, separated by commas. Use Action Tags exclusively for interactions between living characters. Describe interactions with objects, props and surroundings using regular visual tags or short phrases.\nUse paired source#action and target#action for directional interactions, or mutual#action in both participants' entries for reciprocal interactions.\nExamples: source#hug / target#hug; mutual#hug / mutual#hug.\nMatch tags to established visible interactions, participant roles and physical contact. Specify interaction partners and relevant panels through concise natural-language descriptions. Use each applicable Action Tag once per character. Reserve # exclusively for Action Tag syntax.";
 const CORE=[
- 'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object. '+VISUAL_DENSITY,
+ 'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object matching the structure and descriptive approach of the SAMPLE. Maximize distinct visual information per token in all descriptive fields. '+VISUAL_DENSITY,
  'JSON schema:',
  '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":{{BUBBLES_EXAMPLE}},"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"panel-specific body poses, expressions, gestures, gaze, hand and prop details, clothing/hair movement and individual action"}],"lettering":{{LETTERING_EXAMPLE}}}',
  'Use the supplied schema and standard JSON strings. Include every field and use empty arrays where appropriate.',
  'opening: illustration or page format and panel count. The extension calculates subject counts.{{OPENING_RULE}}',
  'scene: stage the complete visual composition. For each panel, establish its place on the page, camera, visible setting, participants’ relative positions, and the central action or interaction connecting them. Keep clear spatial anchors for the characters and their shared interaction.{{PANEL_RULE}}',
- 'borders: design the actual visible frames around panels, including the edges, outline weight, ink or decorative pattern, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence.',
- 'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action.{{CHARACTER_RULE}}',
+ 'borders: design the actual visible frames around panels, including the edges, outline weight, ink; add decorative pattern or physical decorations to the border if composition welcomes it, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence. Use one compact sentence for it.',
+ 'characters: one entry per physically present participant. subject is boy, girl, cat, dog or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action. Describe visible details rather than poetic surplus.{{CHARACTER_RULE}}',
+ ACTION_TAGS,
  '{{BUBBLE_RULE}}',
  '{{LETTERING_RULE}}',
  'Follow the RP chronology, current scene and composition wishes. Keep all visual descriptions in English. {{PRINTED_WORD_RULE}}',
- 'The extension assembles subject counts, separators and the final image prompt from these fields.{{ASSEMBLY_RULE}} Output the JSON object.'
+ 'Output only the filled out JSON object.{{ASSEMBLY_RULE}}'
 ].join('\n\n');
 const PAGE=[
- 'Create one {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts. Return one JSON object matching the SAMPLE. '+VISUAL_DENSITY,
+ 'Create one {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts. Return one JSON object matching the SAMPLE. Use compact, precise tags and short natural-language phrases. Group related details and use one precise expression per visual feature, retaining essential panel and speaker anchors. Preserve all relevant visual specifics, supplied library markers and exact printed words.',
  'SOURCE AND CONTINUITY\nUse established RP events, current clothing and its visible state, character identities, and composition requests. Preserve continuity of anatomy, contact, props, and relative positions. Write visual descriptions in English and reproduce selected visible text verbatim in its original language.',
- 'PAGE AND PANELS\n{{PAGE_RULE}} Compose expressive panels with purposeful crops, clear reading order, varied framing and scene-appropriate lighting. Use close or medium views for expressions and interaction; widen for spatial clarity or established action.\nopening: page type, panel count and relevant scene tags.\nscene: one string, with Panel 1:, Panel 2:, and subsequent consecutive labels in reading order, separated by semicolons. For each panel, describe its position on the page, camera and crop, visible setting, named participants and their relative positions, and central shared interaction. Keep scene staging spatially coherent across panels. Keep attention directed toward people, objects or events within the scene. Describe visible details appropriate to the crop.',
- 'PAGE DESIGN\nborders: a non-empty description of visible panel silhouettes, edge irregularities, line weight, ink color or material, inset edges, gutter width and color, outer margins and scene-appropriate ornaments. Describe the neutral decorative page surface outside and between panels, including its color, material and texture. Match the page design to the composition and mood; preserve clear faces, hands, contact points, balloons and reading order. Keep page graphics distinct from the fictional scenery inside the panels.',
- 'CHARACTERS\ncharacters: one entry per distinct visible participant, in order of first appearance. subject: boy, girl, cat or other. name: exact character or library Prompt name. appearance: use the supplied NESS_VIS and NESS_SKIN markers where applicable; otherwise give established visible identifying traits. wardrobe: current visible clothing and its established state. action: panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details, and named physical interactions. Reference the panel and position established in scene. Keep each character’s details in their own entry.',
+ 'PAGE AND PANELS\n{{PAGE_RULE}} Compose expressive panels with purposeful crops, clear reading order, varied framing and scene-appropriate lighting. Use close or medium views for expressions and interaction; widen for spatial clarity or established action.\nopening: page type, panel count and relevant scene tags.\nscene: one string, with an overall short informative location, lighting and atmosphere description; then Panel 1:, Panel 2:, and subsequent consecutive labels in reading order, separated by semicolons. For each panel, describe its position on the page, camera angle and crop, visible exterior/interior, named participants and their relative positions to each other, and central shared interaction. Keep scene staging spatially coherent across panels.{{BEAT_RULE}} Keep attention directed toward people, objects or events within the scene. Describe visible details appropriate to the crop rather than poetic surplus.',
+ 'PAGE DESIGN\nborders: a mandatory non-empty description of visible panel silhouettes, edge irregularities, line weight, ink color or material, inset edges, gutter width and color, outer margins and scene-appropriate ornaments. Describe the neutral decorative page surface outside and between panels, including its color, material and texture. Match the page design to the composition and mood; preserve clear faces, hands, contact points, balloons and reading order. Keep page graphics distinct from the fictional scenery inside the panels. Use one or two short sentences of compact descriptions for borders and space in between them.',
+ 'CHARACTERS\ncharacters: one entry per distinct visible participant, in order of first appearance. subject: boy, girl, cat, dog or other. name: exact character or library Prompt name. appearance: use the supplied NESS_VIS and NESS_SKIN markers where applicable; otherwise give established visible identifying traits. wardrobe: current visible clothing and its established state. action: panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details, and named physical interactions. Reference the panel and position established in scene. Keep each character’s details in their own entry.',
+ ACTION_TAGS,
  '{{TEXT_POLICY}}',
  'OUTPUT\nUse all SAMPLE fields with their shown JSON types; use empty arrays for absent entries. Keep text and speech bubble tags, cast counts, Text: and pipe separators out of descriptive fields. Return valid JSON only.'
 ].join('\n\n');
@@ -56,7 +59,7 @@ export function experimentalLegacyIntimacy(kind){
   ?source.indexOf('\nAPPEARANCE AND WARDROBE — SOURCE FIDELITY',begin)
   :source.indexOf('\nOUTPUT CONTRACT',begin);
  if(end<=begin)return '';
- return source.slice(begin,end).trimEnd();
+ return source.slice(begin,end).trimEnd().replace("\nUse concise, affirmative visual descriptions and applicable NovelAI Action Tags to communicate each character's role.",'');
 }
 const ORDINALS=['first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth'];
 /** Remove only technical numbered-list prefixes, never artistic scene content. */
@@ -65,21 +68,34 @@ export function normalizeExperimentalSceneLabels(text){
   (full,prefix,index)=>prefix+(ORDINALS[Number(index)-1]||'another')+' panel: ');
 }
 // A complete page example uses the same schema and active text policy as the director.
-function pageSample(kind,includeText,maxLines) {
+function snapshotSample(includeText){
+ return JSON.stringify({
+  schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
+  opening:'single cinematic illustration, slice of life, romantic atmosphere',
+  scene:'Cozy cafe interior, sunny afternoon, warm natural window light; eye-level medium two-shot, Alex seated on the left facing Rita on the right, small wooden table between them, holding hands beside two ceramic mugs, handwritten chalkboard menu in the background, soft window reflections',
+  borders:'',bubbles:[],
+  characters:[
+   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:'blue knitted sweater',action:'leaning forward, relaxed shoulders, gentle smile, eyes on Rita, right hand clasping her left hand on the table, mutual#holding hands'},
+   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream cardigan',action:"slightly tilted head, warm smile, rosy cheeks, looking into Alex's eyes, left hand clasping his right hand, right hand holding a ceramic mug, mutual#holding hands"}
+  ],
+  lettering:includeText?[{panel:1,design:'small handwritten inscription on the background chalkboard, white chalk lettering',words:'Coffee'}]:[]
+ },null,2);
+}
+function pageSample(kind,includeText,maxLines,maxWords) {
  const first=includeText&&maxLines>0, second=first&&kind==='story_page'&&maxLines>1;
  const story=kind==='story_page';
  return JSON.stringify({
   schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
-  opening:story?'2 panels, sequential story page':'2 panels, expressive comic page',
-  scene:'Panel 1: large upper chest-up two-shot, Alex on the left facing Rita on the right by a sunlit window; Panel 2: small lower close-up of Rita looking toward Alex',
-  borders:story?'warm sepia hand-inked frames with gently irregular edges, a neutral, subtly textured cream parchment page background visible outside the frames and in the broad gutter between the two beats, a lower inset outlined with a finer double ink stroke and a softly rounded corner, airy outer margins with tiny hand-drawn sunlight motifs':'warm sepia hand-inked borders with gently irregular strokes, a broad upper frame with slightly rounded corners, a smaller overlapping inset edged like torn cream paper, a neutral, subtly textured ivory paper page background visible beyond the panel edges, in narrow gutters and generous outer margins, delicate hand-drawn window-light flourishes at the page corners',
+  opening:story?'2 panels, splash panel and inset panel, expressive sequential story page':'2 panels, splash panel and inset panel, expressive comic page',
+  scene:story?'Cozy cafe interior, sunny afternoon, warm natural daylight, romantic atmosphere; Panel 1: upper splash panel occupying three quarters of the page, medium two-shot at eye level, Alex on the left approaching Rita on the right beside a sunlit window, Alex offering her a small bouquet of daisies; Panel 2: smaller inset panel slightly overlapping the splash panel at the lower right corner, chest-up two-shot, Rita hugging Alex with one arm while holding the received bouquet':'Sunny day, natural daylight, romantic atmosphere; Panel 1: splash panel, upper side of the page, 3/4 of the page, large upper chest-up two-shot, Alex on the left facing Rita on the right by a sunlit window, embracing each other; Panel 2: small inset panel slightly overlapping splash panel, lower corner of the page, close-up of Rita looking toward Alex',
+  borders:story?'Warm sepia hand-inked borders, softly irregular splash panel outline, torn-paper inset frame, narrow ivory gutters. Neutral textured cream paper beyond panel edges, generous outer margins decorated with delicate hand-drawn daisy motifs.':'warm sepia hand-inked borders with gently irregular strokes, a broad splash panel frame with slightly rounded corners, an inset panel edged like torn cream paper, a neutral, subtly textured ivory paper page background visible beyond the panel edges, in narrow gutters and generous outer margins, delicate hand-drawn window-light flourishes at the page corners',
   bubbles:first?[
-   {panel:1,speaker:'Alex',design:'rounded white balloon in the upper left, thin dark outline, clear dark lettering',words:'Привет!'},
-   ...(second?[{panel:2,speaker:'Rita',design:'small oval balloon above Rita, clear dark lettering',words:'Привет.'}]:[])
+   {panel:1,speaker:'Alex',design:'rounded white balloon above Alex, charcoal-like pastel outline, clear dark lettering',words:story&&maxWords>=2?'Это тебе.':'Привет!'},
+   ...(second?[{panel:2,speaker:'Rita',design:'small softly rounded cream balloon beside Rita, delicate sepia outline, clear dark lettering',words:maxWords>=2?'Какая прелесть!':'Спасибо!'}]:[])
   ]:[],
   characters:[
-   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:'blue sweater',action:'Panel 1: '+(first?'speaking to Rita, ':'')+'gentle smile, eyes on Rita'},
-   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream cardigan',action:'Panel 1: facing Alex, attentive expression; Panel 2: '+(second?'answering Alex, ':'')+'smiling toward Alex'}
+   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:story?'blue knitted sweater':'blue sweater',action:story?'Panel 1: facing Rita, right hand extending the bouquet toward her, gentle slightly nervous smile, eyes on her face; Panel 2: receiving Rita’s embrace, surprised warm smile, relaxed arms, target#hug':'Panel 1: '+(first?'speaking to Rita, ':'')+'gentle smile, eyes on Rita, arms around her waist, mutual#hug'},
+   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream cardigan',action:story?'Panel 1: widened eyes, surprised smile, both hands reaching toward the bouquet; Panel 2: holding the received daisies in her left hand, right arm around Alex’s shoulders, rosy cheeks, delighted smile, source#hug':'Panel 1: facing Alex, attentive expression, arms around his shoulders; Panel 2: smiling toward Alex, mutual#hug'}
   ],
   lettering:[]
  },null,2);
@@ -91,7 +107,7 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
   const textRules=includeText?[
    'DIALOGUE AND LETTERING',
    allowBubbles
-    ?'bubbles: select up to '+maxLines+' complete, relevant spoken lines of up to '+maxWords+' words each. Preserve exact words and punctuation. Use one entry per line in reading order; panel: corresponding integer panel number; speaker: exact name from characters; design: enclosed speech balloon near the speaker, with clear shape, outline, position and readable lettering, clear of faces and actions; words: verbatim line without added quotes or speaker labels. Use [] when no suitable speech exists. Describe speaking actions in the relevant character entries.'
+    ?'bubbles: select up to '+maxLines+' complete, relevant spoken lines of up to '+maxWords+' words each. Preserve exact words and punctuation. Use one entry per line in reading order; panel: corresponding integer panel number; speaker: exact name from characters; design: enclosed speech balloon near the speaker, with clear comic-appropriate shape, outline, position and readable lettering, clear of faces and actions; words: verbatim line without added quotes or speaker labels. Use [] when no suitable speech exists. Describe speaking actions in the relevant character entries.'
     :'bubbles: [].',
    'lettering: visible writing on actual objects; panel: corresponding integer panel number; design: object and placement; words: exact inscription. Use [] when absent. Keep all printed words in bubbles or lettering.'
   ].join('\n'):'TEXT DISABLED\nbubbles and lettering MUST both be empty arrays. Use visual acting and composition instead of readable text, captions or speech balloons.';
@@ -99,9 +115,10 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
    .replace('{{PAGE_KIND}}',kind==='comic'?'comic page':'sequential story page')
    .replace('{{POST_COUNT}}',String(postCount))
    .replace('{{PAGE_RULE}}',kind==='comic'?'Show 2–5 complementary views of one established instant.':'Show 2–5 panels covering 2–4 established beats in chronological reading order.')
+   .replace('{{BEAT_RULE}}',kind==='story_page'?' Reflect established changes in actions, expressions, positions and surroundings as events progress.':'')
    .replace('{{TEXT_POLICY}}',textRules);
   const legacy=experimentalLegacyIntimacy(kind);
-  return pageRules+(legacy?'\n\n'+legacy:'')+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines)+'\n\nReturn one valid JSON object.';
+  return pageRules+(legacy?'\n\n'+legacy:'')+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines,maxWords)+'\n\nReturn one valid JSON object.';
  }
  const choice=SNAPSHOT.replaceAll('{{POST_COUNT}}',String(postCount));
  const core=CORE
@@ -119,14 +136,14 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
   .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
- return core+'\n\n'+choice+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities and syntax.';
+ return core+'\n\n'+choice+intimacy+'\n\nSAMPLE:\n'+snapshotSample(includeText)+'\n\nFINAL: output only one valid JSON object matching the SAMPLE structure. Silently verify artistic consistency, chronology, identities and syntax.';
 }
 function stringField(obj,key,{empty=false,max=16000}={}){
  const v=obj?.[key];check(typeof v==='string'&&v.length<=max&&(empty||v.trim()),'Поле '+key+' пусто либо слишком длинное');
  return v.trim();
 }
 function noSyntax(value,field){
- check(!/(\|\s*(?:boy|girl|cat|other)\s*,|\bSpeech bubble\s+\d+\s*:|\bText\s*:)/iu.test(value),'В поле '+field+' попали служебные маркеры промпта');
+ check(!/(\|\s*(?:boy|girl|cat|dog|other)\s*,|\bSpeech bubble\s+\d+\s*:|\bText\s*:)/iu.test(value),'В поле '+field+' попали служебные маркеры промпта');
  check(!value.includes('|'),'В поле '+field+' недопустим разделитель |');
 }
 function parseJSON(raw){
@@ -142,12 +159,13 @@ const boundary=s=>String(s).trim().replace(/[;\s]+$/u,'');
 // free-form scenes intact rather than guessing where a panel begins or ends.
 function numberedPanels(scene) {
  const marks=[...scene.matchAll(/(?:^|;\s*|\n+)Panel\s+(\d{1,2}):\s*/giu)];
- if(!marks.length||marks[0].index!==0||marks.some((m,i)=>Number(m[1])!==i+1))return null;
+ if(!marks.length||marks.some((m,i)=>Number(m[1])!==i+1))return null;
+ const intro=boundary(scene.slice(0,marks[0].index));
  const panels=marks.map((m,i)=>({
   panel:i+1,
   description:boundary(scene.slice(m.index+m[0].length,marks[i+1]?.index??scene.length))
  }));
- return panels.every(p=>p.description)?panels:null;
+ return panels.every(p=>p.description)?{intro,panels}:null;
 }
 function pagePrintedItems(bubbles,lettering) {
  let bubbleNumber=0,letterNumber=0;
@@ -220,7 +238,7 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  // Never silently compile a frameless Comic or Story Page, or invent missing artwork.
  check(base==='snapshot'||Boolean(boundary(borders)),'В поле borders отсутствует описание рамок и фона страницы');
  for(const [field,value] of [['opening',opening],['scene',scene],['borders',borders]])noSyntax(value,field);
- check(!/\b\d+\s*(?:boys?|girls?|cats?|others?)\b/iu.test(opening),'Не пиши количество участников в opening: его посчитает расширение');
+ check(!/\b\d+\s*(?:boys?|girls?|cats?|dogs?|others?)\b/iu.test(opening),'Не пиши количество участников в opening: его посчитает расширение');
  check(Array.isArray(data.characters)&&data.characters.length<=16,'characters должен быть массивом до 16 участников');
  const allowBubbles=base!=='snapshot'&&includeText;
  if(allowBubbles)check(Array.isArray(data.bubbles)&&data.bubbles.length<=8,'bubbles должен быть массивом до 8 записей');
@@ -257,7 +275,8 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  const count=SUBJECTS.map(subject=>[subject,characters.filter(x=>x.subject===subject).length])
   .filter(([,n])=>n).map(([subject,n])=>n+subject).join(', ');
  const printedItems=pagePrintedItems(bubbles,lettering);
- const panels=base==='snapshot'?null:numberedPanels(scene);
+ const numbered=base==='snapshot'?null:numberedPanels(scene);
+ const panels=numbered?.panels;
  const panelLocal=panels&&printedItems.every(x=>x.panel<=panels.length);
  const prefix=[[count,opening].filter(Boolean).join(', ')];
  if(panelLocal&&printedItems.length) {
@@ -271,7 +290,7 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  const legacyBubble=(x,i)=>'Speech bubble '+i+': In panel '+x.panel+', a visible, outlined comic speech bubble beside '+boundary(x.speaker)+"'s face containing "+JSON.stringify(x.words)+'; '+boundary(x.design)+"; the attached tail points to "+boundary(x.speaker)+"'s mouth";
  const panelBubble=x=>'Speech bubble '+x.number+': In panel '+x.panel+', '+boundary(x.design)+", tail pointing toward "+boundary(x.speaker)+"'s mouth, saying "+JSON.stringify(x.words);
  const baseText=(panelLocal
-  ?[...prefix,...panels.map(p=>[
+  ?[...prefix,numbered.intro,...panels.map(p=>[
    'Panel '+p.panel+': '+p.description,
    ...printedItems.filter(x=>x.panel===p.panel).map(x=>x.type==='bubble'?panelBubble(x):letterText(x,x.number))
   ].join('; '))]
@@ -282,11 +301,16 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
   const unique=characters.filter(a=>sameName(a.name,x.name)).length===1;
   const spokenPanels=panelLocal&&unique?[...new Set(printedItems.filter(b=>b.type==='bubble'&&sameName(b.speaker,x.name)).map(b=>b.panel))]:[];
   const cues=spokenPanels.map(n=>'Panel '+n+': visible speech balloon beside '+x.name+", tail pointing toward "+x.name+"'s mouth");
+  const action=boundary(x.action);
+  // Preserve the action description; place generated balloon cues before trailing Action Tags.
+  const trailing=action.match(/(?:^|,\s*|;\s*)((?:source|target|mutual)#[^,;\r\n]+(?:,\s*(?:source|target|mutual)#[^,;\r\n]+)*)$/iu);
+  const body=trailing?boundary(action.slice(0,trailing.index)):action;
   return '| '+x.subject+', '+x.name
    +(x.appearance?', '+boundary(x.appearance):'')
    +(x.wardrobe?'; '+boundary(x.wardrobe):'')
-   +(x.action?'; '+boundary(x.action):'')
-   +(cues.length?'; '+cues.join('; '):'');
+   +(body?'; '+body:'')
+   +(cues.length?'; '+cues.join('; '):'')
+   +(trailing?(cues.length?'; ':body?', ':'; ')+trailing[1]:'');
  });
  // Exact words are copied once, in the same panel reading order as the visual items.
  const printed=printedItems.map(x=>x.words);
