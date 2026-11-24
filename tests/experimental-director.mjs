@@ -6,6 +6,7 @@ import {generationFormats,baseKindFor} from '../profiles.js';
 import {pageTextEnabled} from '../page-text-mode.js';
 import {validateImagePromptLayout} from '../image-prompt.js';
 import {insertVisibleAppearance} from '../appearance-visibility.js';
+import {defaultNovelAISettings,generateNovelAI} from '../novelai.js';
 
 const read=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
 const sample=()=>({
@@ -297,4 +298,79 @@ test('Ambiguous mixed slot objects and non-text mode still fail safely',()=>{
  assert.equal(withoutText.repaired,true);
  data=sample();data.borders=null;
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(data)),/borders/);
+});
+
+test('Numbered page scenes interleave each balloon and inscription with its own panel in both test profiles',()=>{
+ for(const kind of ['custom_test_comic','custom_test_story_page']){
+  const data=sample();
+  data.scene='Panel 1: upper two-shot; Panel 2: close-up of Ness; Panel 3: detail of hands';
+  data.bubbles=[
+   {panel:2,speaker:'Ness',design:'small oval balloon above Ness',words:'Да.'},
+   {panel:1,speaker:'Clark Kent',design:'white rounded balloon above Clark',words:'Ты здесь?'}
+  ];
+  const raw=JSON.stringify(data),prompt=parseExperimentalDirector(raw,{kind}).config.prompt;
+  const base=prompt.split(' | ')[0];
+  assert.match(base,/text, speech bubble/);
+  assert.ok(base.indexOf('Panel 1:')<base.indexOf('Speech bubble 1:'));
+  assert.ok(base.indexOf('Speech bubble 1:')<base.indexOf('Panel 2:'));
+  assert.ok(base.indexOf('Panel 2:')<base.indexOf('Speech bubble 2:'));
+  assert.ok(base.indexOf('Speech bubble 2:')<base.indexOf('Panel 3:'));
+  assert.ok(base.indexOf('Lettering 1:')<base.indexOf('Panel 2:'));
+  assert.match(base,/Speech bubble 1: In panel 1, white rounded balloon above Clark, tail pointing toward Clark Kent's mouth, saying "Ты здесь\?"/);
+  const [clark,ness]=prompt.split(' | ').slice(1).map(x=>x.split('\n\nText:')[0]);
+  assert.match(clark,/Panel 1: visible speech balloon beside Clark Kent/);
+  assert.doesNotMatch(clark,/balloon beside Ness|Да\.|Ты здесь\?/);
+  assert.match(ness,/Panel 2: visible speech balloon beside Ness/);
+  assert.doesNotMatch(ness,/balloon beside Clark|Да\.|Ты здесь\?/);
+  assert.ok(prompt.endsWith('Text: Hi\n\nТы здесь?\n\nДа.'));
+  for(const line of ['Ты здесь?','Да.'])assert.equal(prompt.split(line).length-1,2);
+  assert.equal(validateImagePromptLayout(prompt,kind),prompt);
+  assert.equal(JSON.stringify(data),raw);
+  const noText=parseExperimentalDirector(raw,{kind,includeText:false}).config.prompt;
+  assert.doesNotMatch(noText,/Speech bubble|visible speech balloon|Text:|Lettering 1:|text, speech bubble/i);
+  assert.ok(noText.includes('Panel 3: detail of hands'));
+ }
+});
+
+test('Every new page SAMPLE is real valid JSON, obeys active limits and compiles through the same assembler',()=>{
+ for(const kind of ['comic','story_page'])for(const [includeText,maxLines] of [[true,2],[true,1],[true,0],[false,0]]){
+  const instructions=experimentalDirectorPrompt(kind,{includeText,maxLines,maxWords:1});
+  const raw=instructions.match(/SAMPLE \(format only;[^\n]*\):\n([\s\S]*?)\n\n/)?.[1];
+  assert.ok(raw);
+  const data=JSON.parse(raw);
+  const result=parseExperimentalDirector(raw,{kind,includeText,maxLines,maxWords:1});
+  assert.ok(data.bubbles.length<=maxLines);
+  assert.equal(validateImagePromptLayout(result.config.prompt,kind),result.config.prompt);
+  assert.equal(result.config.prompt.includes('Text:'),data.bubbles.length>0);
+  if(data.bubbles.length)assert.ok(result.config.prompt.indexOf('Speech bubble 1:')<result.config.prompt.indexOf('Panel 2:'));
+ }
+});
+
+test('Only test Comic and Story Page put the exact final Text block in the NovelAI base caption',async()=>{
+ const oldFetch=globalThis.fetch, calls=[];
+ globalThis.fetch=async(url,options)=>{
+  calls.push(JSON.parse(options.body));
+  return {ok:true,headers:{get:()=> 'application/json'},json:async()=>({images:[{image:'iVBORw0KGgo='}]})};
+ };
+ try {
+  const settings={...defaultNovelAISettings(),apiKey:'DUMMY_TEST_ONLY',neverSpendAnlas:false};
+  const data=sample();
+  data.scene='Panel 1: upper office view; Panel 2: close-up of Clark';
+  const prompt=parseExperimentalDirector(JSON.stringify(data),{kind:'comic'}).config.prompt;
+  for(const profileId of ['custom_test_comic','custom_test_story_page','comic','story_page','custom_test_snapshot']){
+   await generateNovelAI({settings,prompt,profileId,style:'ink drawing',aspectRatio:'2:3'});
+   const request=calls.at(-1),caption=request.parameters.v4_prompt.caption;
+   assert.equal(request.input,caption.base_caption);
+   assert.equal(caption.char_captions.length,2);
+   assert.ok(caption.base_caption.startsWith('ink drawing, '));
+   if(profileId==='custom_test_comic'||profileId==='custom_test_story_page'){
+    assert.ok(caption.base_caption.endsWith('Text: Hi\n\nТы слышишь меня?'));
+    assert.ok(caption.char_captions.every(x=>!x.char_caption.includes('Text:')));
+    assert.match(caption.char_captions[0].char_caption,/visible speech balloon beside Clark Kent/);
+   }else{
+    assert.doesNotMatch(caption.base_caption,/\n\nText:/);
+    assert.ok(caption.char_captions[1].char_caption.endsWith('Text: Hi\n\nТы слышишь меня?'));
+   }
+  }
+ }finally{globalThis.fetch=oldFetch;}
 });
