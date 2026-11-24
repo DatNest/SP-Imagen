@@ -236,7 +236,7 @@ test('Snapshot with empty borders keeps a clean scene and legacy modules remain 
 });
 
 
-test('Real director misplacement: borders bubble array and missing bubbles are recovered verbatim',()=>{
+test('Real director misplacement: recover bubbles and existing frame artwork verbatim, never invent missing frames',()=>{
  const data={
   schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
   opening:'comic page, 4 panels, expressive warm-weather illustration',
@@ -251,6 +251,10 @@ test('Real director misplacement: borders bubble array and missing bubbles are r
   ],
   lettering:[]
  };
+ const missingRaw=JSON.stringify(data);
+ assert.throws(()=>parseExperimentalDirector(missingRaw,{kind:'custom_test_comic',includeText:true,maxLines:3,maxWords:10}),/borders.*рамок/);
+ assert.equal(normalizeExperimentalDirectorSlots(data).data.borders,'');
+ data.panel_borders='warm sepia frames, textured parchment page behind panels, cream gutters';
  const raw=JSON.stringify(data);
  const fence=String.fromCharCode(96,96,96);
  const result=parseExperimentalDirector(fence+'json\n'+JSON.stringify(data,null,2)+'\n'+fence,{kind:'custom_test_comic',includeText:true,maxLines:3,maxWords:10});
@@ -265,7 +269,8 @@ test('Real director misplacement: borders bubble array and missing bubbles are r
  assert.ok(prompt.includes(data.characters[1].appearance));
  assert.equal(data.borders.length,2,'original JSON must not be mutated');
  assert.equal(JSON.stringify(data),raw);
- assert.equal(normalizeExperimentalDirectorSlots(data).data.borders,'');
+ assert.equal(normalizeExperimentalDirectorSlots(data).data.borders,data.panel_borders);
+ assert.ok(prompt.includes('panel borders: '+data.panel_borders));
  assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
 });
 
@@ -293,6 +298,8 @@ test('Ambiguous mixed slot objects and non-text mode still fail safely',()=>{
  data.borders=[{panel:1,speaker:'Ji',design:'balloon',words:'Да'},{panel:2,design:'frame only'}];
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(data)),/смешивает рамки и реплики/);
  data=sample();data.borders=data.bubbles;delete data.bubbles;
+ assert.throws(()=>parseExperimentalDirector(JSON.stringify(data),{kind:'comic',includeText:false}),/borders.*рамок/);
+ data.border_design='thin warm sepia frames, ivory paper page background';
  const withoutText=parseExperimentalDirector(JSON.stringify(data),{kind:'comic',includeText:false});
  assert.doesNotMatch(withoutText.config.prompt,/Speech bubble|Text:/);
  assert.equal(withoutText.repaired,true);
@@ -380,12 +387,16 @@ test('Both test page formats retain expressive and independent frame design with
   const instructions=experimentalDirectorPrompt(kind,{includeText});
   assert.match(instructions,/borders is a required non-empty artistic description/);
   assert.match(instructions,/gutter width and color, inset edges, page margins/);
+  assert.match(instructions,/visible page background or substrate behind and between the panels/);
+  assert.match(instructions,/neutral, unobtrusive decorative surface that complements the composition and mood/);
+  assert.match(instructions,/Page graphics belong to the page, not the fictional location/);
   const raw=instructions.match(/SAMPLE \(format only;[^\n]*\):\n([\s\S]*?)\n\n/)?.[1];
   const data=JSON.parse(raw);
   assert.match(data.borders,/sepia/);
   assert.match(data.borders,/gutter/);
   assert.match(data.borders,/inset/);
   assert.match(data.borders,/margin/);
+  assert.match(data.borders,/neutral,.*page background/);
   const prompt=parseExperimentalDirector(raw,{kind,includeText}).config.prompt;
   const frame='panel borders: '+data.borders;
   assert.equal(prompt.split(frame).length-1,1);
@@ -394,4 +405,29 @@ test('Both test page formats retain expressive and independent frame design with
   else assert.doesNotMatch(prompt,/Speech bubble|\n\nText:/);
  }
  assert.doesNotMatch(experimentalDirectorPrompt('snapshot'),/borders is a required non-empty artistic description/);
+});
+
+test('A fresh test Comic or Story Page cannot compile without frame and page background artwork, regardless of text mode',()=>{
+ for(const kind of ['custom_test_comic','custom_test_story_page'])for(const includeText of [true,false]){
+  for(const missing of [undefined,'','   ',';;;',[],null]){
+   const data=sample();
+   data.scene='Panel 1: rainy bus stop; Panel 2: close view of a speaker; Panel 3: street lights';
+   if(missing===undefined)delete data.borders;
+   else data.borders=missing;
+   assert.throws(()=>parseExperimentalDirector(JSON.stringify(data),{kind,includeText}),/borders/);
+  }
+  const data=sample();
+  data.scene='Panel 1: rainy bus stop; Panel 2: close view of a speaker; Panel 3: street lights';
+  data.borders='irregular graphite outlines, dark blue textured page behind panels, pale gray gutters, raindrop motifs in the outer margins';
+  const prompt=parseExperimentalDirector(JSON.stringify(data),{kind,includeText}).config.prompt;
+  assert.equal(prompt.split('panel borders: '+data.borders).length-1,1);
+  assert.ok(prompt.indexOf('panel borders:')<prompt.indexOf('Panel 1:'));
+  if(includeText){
+   assert.ok(prompt.indexOf('Panel 2:')<prompt.indexOf('Speech bubble 1:'));
+   assert.ok(prompt.indexOf('Speech bubble 1:')<prompt.indexOf('Panel 3:'));
+   assert.ok(prompt.endsWith('Text: Hi\n\nТы слышишь меня?'));
+  }
+ }
+ const snapshot=sample();snapshot.borders='';
+ assert.doesNotThrow(()=>parseExperimentalDirector(JSON.stringify(snapshot),{kind:'snapshot'}));
 });
