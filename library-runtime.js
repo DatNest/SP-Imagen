@@ -355,25 +355,34 @@ function createAliasTags(D,values,onChange){
 
 // Module: virtual_list
 // Keep only the visible rows plus a small scroll buffer in the DOM.
-function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.'}={}){
+function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1}={}){
  const ui=createUiKit(D),top=ui.el('div',undefined,container),rows=ui.el('div',undefined,container),bottom=ui.el('div',undefined,container);
  top.setAttribute('aria-hidden','true');bottom.setAttribute('aria-hidden','true');
- let items=[],start=-1,end=-1,frame=null,disposed=false;
+ let items=[],start=-1,end=-1,frame=null,disposed=false,previousColumns=1;
  const request=typeof window.requestAnimationFrame==='function'?fn=>window.requestAnimationFrame(fn):fn=>setTimeout(fn,16);
  const getRowHeight=()=>typeof rowHeight==='function'?rowHeight():rowHeight;
  const cancel=typeof window.cancelAnimationFrame==='function'?id=>window.cancelAnimationFrame(id):id=>clearTimeout(id);
  function paint(force=false){
-  if(disposed)return;
-  const rowHeight=getRowHeight(),height=container.clientHeight||400,from=Math.max(0,Math.floor((container.scrollTop||0)/rowHeight)-overscan),to=Math.min(items.length,from+Math.ceil(height/rowHeight)+overscan*2);
-  if(!force&&from===start&&to===end)return;start=from;end=to;
-  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,items.length-to)*rowHeight)+'px';ui.clear(rows);
+  if(disposed||!container.clientHeight)return;
+  const cols=Math.max(1,Math.floor(columns())||1),rowHeight=getRowHeight(),height=container.clientHeight;
+  const totalRows=Math.ceil(items.length/cols);
+  if(cols!==previousColumns){
+   const anchor=Math.floor((container.scrollTop||0)/rowHeight)*previousColumns;
+   container.scrollTop=Math.min(Math.floor(anchor/cols)*rowHeight,Math.max(0,totalRows*rowHeight-height));
+  }
+  const from=Math.max(0,Math.floor((container.scrollTop||0)/rowHeight)-overscan),to=Math.min(totalRows,from+Math.ceil(height/rowHeight)+overscan*2);
+  if(!force&&cols===previousColumns&&from===start&&to===end)return;
+  start=from;end=to;previousColumns=cols;
+  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';ui.clear(rows);
+  rows.style.display=cols>1?'grid':'block';
+  rows.style.gridTemplateColumns=cols>1?'repeat('+cols+',minmax(0,1fr))':'';
   if(!items.length){ui.el('p',emptyText,rows,'ness-note');return;}
-  for(let i=from;i<to;i++)rows.appendChild(renderRow(items[i]));
+  for(let i=from*cols;i<Math.min(items.length,to*cols);i++)rows.appendChild(renderRow(items[i]));
  }
  function refresh(){if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});}
  container.onscroll=()=>{if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});};
  const Observer=window.ResizeObserver;const observer=Observer?new Observer(refresh):null;observer?.observe(container);
- return {setItems(value,{reset=false}={}){items=value;const limit=Math.max(0,items.length*getRowHeight()-(container.clientHeight||400));container.scrollTop=reset?0:Math.min(container.scrollTop||0,limit);paint(true);},refresh,dispose(){disposed=true;if(frame!==null)cancel(frame);observer?.disconnect();container.onscroll=null;},get renderedCount(){return rows.children.length;}};
+ return {setItems(value,{reset=false}={}){items=value;if(!container.clientHeight){start=-1;end=-1;return;}const limit=Math.max(0,Math.ceil(items.length/Math.max(1,previousColumns))*getRowHeight()-container.clientHeight);container.scrollTop=reset?0:Math.min(container.scrollTop||0,limit);paint(true);},refresh,dispose(){disposed=true;if(frame!==null)cancel(frame);observer?.disconnect();container.onscroll=null;},get renderedCount(){return rows.children.length;}};
 }
 
 // Module: dialogs
@@ -432,6 +441,9 @@ function createLibraryView(D){
  const tools=el('div',undefined,panel,'ness-library-tools'),filters=el('div',undefined,tools,'ness-library-filters');
  const search=field(filters,'⌕ Поиск',input('','search'));search.placeholder='Найти персонажа…';search.setAttribute('data-library-search','');search.setAttribute('aria-label','Поиск персонажей');
  const add=button('+ Персонаж',filters,undefined,'primary');
+ const listLayout=el('div',undefined,filters,'ness-library-layout');listLayout.setAttribute('role','group');listLayout.setAttribute('aria-label','Вид списка персонажей');
+ const layoutList=button('☰',listLayout,undefined,'quiet'),layoutGrid=button('▦',listLayout,undefined,'quiet');
+ layoutList.title='Список';layoutList.setAttribute('aria-label','Список');layoutGrid.title='Карточки';layoutGrid.setAttribute('aria-label','Карточки');
  const tagTools=el('div',undefined,tools,'ness-tag-tools'),addTag=button('+ Тег',tagTools),tagStrip=el('div',undefined,tagTools,'ness-tag-strip');tagStrip.setAttribute('data-tag-filters','');
  const editTag=button('⋯',tagTools,undefined,'icon quiet');editTag.hidden=true;editTag.setAttribute('aria-label','Изменить выбранный тег');ui.tip(editTag,'Имя, цвет и удаление выбранного тега.');
  const tagEditor=el('div',undefined,tagTools,'ness-tag-editor');tagEditor.hidden=true;
@@ -451,11 +463,12 @@ function createLibraryView(D){
  const upload=input('','file');upload.hidden=true;upload.accept='.json,application/json';upload.setAttribute('data-library-import','');footerLeft.appendChild(upload);importButton.onclick=()=>upload.click();
  const message=el('p','',actions,'ness-status');message.setAttribute('role','status');message.setAttribute('aria-live','polite');
  const close=button(getExtension?.()?.hubChildOpen?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
- function resetEditor(){ui.clear(form);const empty=el('div',undefined,form,'ness-library-empty');el('div','✧',empty,'ness-empty-symbol');el('h4','Выбери персонажа',empty);note(empty,'Нажми на строку слева, чтобы открыть запись.');panel.setAttribute('data-view','list');}
- function showEditor(){panel.setAttribute('data-view','editor');form.scrollTop=0;}
+ let listScroll=0;
+ function resetEditor(){ui.clear(form);panel.setAttribute('data-view','list');list.scrollTop=listScroll;}
+ function showEditor(){if(panel.getAttribute('data-view')!=='editor')listScroll=list.scrollTop;panel.setAttribute('data-view','editor');form.scrollTop=0;}
   function selection(n){count.textContent='Выбрано: '+n;bulk.hidden=n===0;}
  function counts(all,visible){total.textContent=String(all);resultCount.textContent=visible===all?'Персонажей: '+all:'Найдено: '+visible+' из '+all;}
- resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkTags,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton};
+ resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkTags,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton,layoutList,layoutGrid};
 }
 
 // Module: library_store
@@ -712,6 +725,8 @@ async function openLibraryEditor(){
   const row=el('div',undefined,undefined,'ness-library-item');row.setAttribute('data-active',String(editor?.id===id));
   const cb=el('input',undefined,row);cb.type='checkbox';cb.checked=selected.has(id);cb.disabled=busy;cb.setAttribute('data-library-id',id);cb.setAttribute('aria-label','Выбрать '+entry.name+' для действий');cb.onclick=e=>e?.stopPropagation?.();
   cb.onchange=()=>{if(cb.checked)selected.add(id);else selected.delete(id);view.selection(selected.size);renderBulkTags();};
+  const portrait=el('span',undefined,row,'ness-library-row-icon');portrait.setAttribute('aria-hidden','true');
+  if(entry.libraryIconData){const img=el('img',undefined,portrait);img.src=entry.libraryIconData;img.alt='';img.loading='lazy';img.decoding='async';}else portrait.textContent='✦';
   const content=el('div',undefined,row,'ness-record-content'),open=el('button',undefined,content,'ness-record-open');open.type='button';open.disabled=busy;open.title='Редактировать '+entry.name;open.setAttribute('aria-label','Открыть '+entry.name);open.setAttribute('data-open-record',id);open.onclick=e=>{e?.stopPropagation?.();editCharacter(id,group);};
   row.onclick=e=>{if(!busy&&e?.target!==cb)editCharacter(id,group);};
   const title=el('span',undefined,open,'ness-record-title');el('span',entry.name,title,'ness-record-name');el('span',group==='personas'?'Персона':'Персонаж',title,'ness-record-type');
@@ -721,13 +736,18 @@ async function openLibraryEditor(){
   for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){const chip=el('button',tag.name,tags,'ness-tag-badge');chip.type='button';chip.style.setProperty('--ness-tag-color',tag.color);chip.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,chip);};}
   return row;
  }
- const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:68,emptyText:'Нет персонажей с таким тегом или именем.'});
+ let listLayout='grid';try{if(window.localStorage?.getItem('sp-imagen-library-layout')==='list')listLayout='list';}catch{}
+ const updateListLayout=()=>{view.layoutList.setAttribute('aria-pressed',String(listLayout==='list'));view.layoutGrid.setAttribute('aria-pressed',String(listLayout==='grid'));};
+ const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:68,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1});
+ const selectListLayout=next=>{if(listLayout===next)return;closeTagPicker();listLayout=next;updateListLayout();try{window.localStorage?.setItem('sp-imagen-library-layout',next);}catch{}virtualList.refresh();};
+ view.layoutList.onclick=()=>selectListLayout('list');view.layoutGrid.onclick=()=>selectListLayout('grid');updateListLayout();
  let searchTimer=null;
  function searchNow(){closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=null;if(!done)renderList(true);}
 
  function editCharacter(id,group){
   if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);let entry=draft[group][id];const fields={};
   const heading=el('div',undefined,form,'ness-editor-heading');
+  const back=button('←',heading,()=>{if(!tryFlush())return;closeTagPicker();closeNessTooltip();editor?.visibility?.closeBoard?.();editor=null;view.resetEditor();renderList();},'quiet ness-editor-back');back.title='К списку персонажей';back.setAttribute('aria-label',back.title);
   const identityCard=el('div',undefined,heading,'ness-editor-identity');
   const emblem=button('✦',identityCard,()=>openCharacterIconEditor(document,panel,{
    createDialog:createNessChildDialog,initial:entry.libraryIconData||'',
@@ -805,7 +825,7 @@ async function openLibraryEditor(){
   historyUndo.title='Отменить изменение тегов';historyUndo.setAttribute('aria-label','Отменить изменение тегов');historyUndo.disabled=true;
   const historyRedo=button('↷',toolbar,()=>runRedo(),'quiet ness-editor-history-button');
   historyRedo.title='Повторить изменение тегов';historyRedo.setAttribute('aria-label','Повторить изменение тегов');historyRedo.disabled=true;
-  button('← К списку',toolbar,()=>{if(!tryFlush())return;editor=null;view.resetEditor();renderList();},'quiet ness-editor-back');
+
   const tabs=createNessTabs({el,button},form,'Карточка персонажа');
   const appearance=tabs.add('Внешность');
   const formatStrip=el('div',undefined,appearance,'ness-format-strip');
@@ -852,7 +872,7 @@ async function openLibraryEditor(){
     ranges:normalizeAppearanceRanges(fields.base.value,entry.appearanceRanges),
     selections:normalizeAppearanceSelections(fields.base.value,entry.appearanceSelections)
   };
-  if(appearanceEntry!==entry)el('p','Старые отметины восстановлены в каталогах. Проверь назначения в «Под одеждой» и NSFW; новые теги не включены автоматически. Перенос сохранится при сохранении библиотеки.',appearance,'ness-note');
+  if(appearanceEntry!==entry){const recovery=button('ⓘ',formatStrip,undefined,'icon quiet ness-library-recovery');recovery.setAttribute('aria-label','Восстановленные отметины');const info=view.tip(recovery,'Старые отметины восстановлены в каталогах. Проверь назначения в «Под одеждой» и NSFW; новые теги не включены автоматически. Перенос сохранится при сохранении библиотеки.');recovery.onclick=e=>{e.preventDefault();info.toggle();};}
   const inlineHost=el('div',undefined,appearance,'ness-inline-appearance-editor');
   const inlineBoard=createAppearanceBoard({
     ui:{el,button,clear,input,wheelAlongX:view.wheelAlongX},parent:inlineHost,
@@ -895,7 +915,9 @@ async function openLibraryEditor(){
   inlineBoard.historyHost.append(historyUndo,historyRedo);
   const headingBar=inlineBoard.element.querySelector('.ness-tagboard-header');
   const editorBody=inlineBoard.element.querySelector('.ness-tagboard-body');
-  headingBar.appendChild(formatStrip);
+  const toolBar=inlineBoard.element.querySelector('.ness-tagboard-tools');
+  toolBar.insertBefore(formatStrip,inlineBoard.historyHost);
+  headingBar.hidden=true;
   inlineBoard.element.insertBefore(proseWrap,editorBody.parentElement);
   runUndo=()=>inlineBoard.undo();runRedo=()=>inlineBoard.redo();
   const visibility={
@@ -961,7 +983,7 @@ async function openLibraryEditor(){
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,appearanceFormat,bodyMigration:appearanceEntry,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags,appearanceEdited:()=>appearanceEdited,clearAppearanceEdited:()=>{appearanceEdited=false;}};
   let asked=false;const remove=button('Удалить персонажа',promptTab,()=>{if(!asked){asked=true;remove.textContent='Точно удалить?';return;}editor?.visibility?.closeBoard?.();delete draft[editor.group][id];delete draft.organizer.characters[id];selected.delete(id);editor=null;view.resetEditor();changed(true);renderList();},'danger');
-  view.showEditor();renderList();
+  view.showEditor();renderList();back.focus({preventScroll:true});
  }
  guideOpenFirstRecord = () => {
   if (done || busy) return false;

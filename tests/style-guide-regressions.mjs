@@ -217,5 +217,5 @@ test('Touch-screen library uses one-panel layout even when phone requests deskto
  assert.match(fallback,/\[data-view=editor\] \.ness-library-editorpane\{\s*display:flex;/);
  const ui=read('library-runtime.js');
  assert.match(ui,/panel\.setAttribute\('data-view','list'\)/);
- assert.match(ui,/function showEditor\(\)\{panel\.setAttribute\('data-view','editor'\)/);
+ assert.match(ui,/function showEditor\(\)\{[^\n]*panel\.setAttribute\('data-view','editor'\)/);
 });

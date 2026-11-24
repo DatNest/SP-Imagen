@@ -7,7 +7,7 @@ const board=readFileSync(new URL('../appearance-board.js',import.meta.url),'utf8
 const shared=readFileSync(new URL('../shared-ui-css.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
 
-function virtualListHarness(){
+function virtualListHarness(columns=()=>1){
  const tasks=[];
  let resize;
  const browser={
@@ -35,7 +35,7 @@ function virtualListHarness(){
  const container=createElement();
  container.scrollTop=0;
  container.clientHeight=340;
- const list=createVirtualList(null,container,item=>({id:item}),{rowHeight:68,overscan:2});
+ const list=createVirtualList(null,container,item=>({id:item}),{rowHeight:68,overscan:2,columns});
  return {container,list,get rows(){return container.children[1].children;},get top(){return container.children[0];},
   scrollTo(top){container.scrollTop=top;container.onscroll();this.tick();},
   resize(){resize();this.tick();},
@@ -97,4 +97,32 @@ test('ResizeObserver changes only calculated visible window, not user library da
  assert.doesNotMatch(virtual,/function refresh\(\)\{[^}]*paint\(true\)/);
  assert.doesNotMatch(virtual,/saveMasterLibrary|extensionSettings|writeBaseState|writeNsfwState/);
  assert.match(lib,/virtualList\.setItems\(entries,\{reset\}\)/);
+});
+
+test('Virtual card grid remains bounded and keeps position when the list is hidden',()=>{
+ let cols=3;const ui=virtualListHarness(()=>cols),items=Array.from({length:500},(_,i)=>i);
+ ui.list.setItems(items);ui.scrollTo(68*60);
+ assert.equal(ui.top.style.height,58*68+'px');
+ assert.ok(ui.rows.length<50);
+ assert.equal(ui.rows[0].id,174);
+ ui.container.clientHeight=0;
+ const first=ui.rows[0];ui.list.setItems(items);ui.resize();
+ assert.equal(ui.container.scrollTop,68*60);assert.equal(ui.rows[0],first);
+ ui.container.clientHeight=340;ui.list.setItems(items);
+ assert.equal(ui.rows[0].id,174);
+ cols=1;ui.resize();
+ assert.equal(ui.container.scrollTop,68*180);
+ assert.equal(ui.rows[0].id,178);
+ ui.list.dispose();
+});
+test('Desktop and mobile use one view, avatar data and the original editor draft',()=>{
+ const last=css.slice(css.indexOf('/* Library navigation:'));
+ assert.match(last,/\[data-view=list\] \.ness-library-editorpane,[\s\S]*?\[data-view=editor\] \.ness-library-listpane\{display:none\}/);
+ assert.match(last,/\[data-view=editor\] \.ness-library-editorpane\{display:flex\}/);
+ assert.match(lib,/if\(entry\.libraryIconData\)\{const img=el\('img',undefined,portrait\);img\.src=entry\.libraryIconData/);
+ assert.match(lib,/function showEditor\(\)\{if\(panel\.getAttribute\('data-view'\)!=='editor'\)listScroll=list\.scrollTop/);
+ assert.match(lib,/function resetEditor\(\)\{[^}]*list\.scrollTop=listScroll/);
+ assert.match(lib,/const back=button\('←',heading,\(\)=>\{if\(!tryFlush\(\)\)return;[^}]*view\.resetEditor\(\);renderList\(\);/);
+ assert.match(lib,/toolBar\.insertBefore\(formatStrip,inlineBoard\.historyHost\)/);
+ assert.match(lib,/headingBar\.hidden=true/);
 });
