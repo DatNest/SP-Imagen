@@ -906,18 +906,19 @@ export async function installSpImagenMediaSlots(options) {
     }
     const stage=draft.final?.config?.prompt?'готовый промпт':draft.review?'сцена и персонажи':'сбор сцены';
     if(!view.draftButton){
-      const button=element('button','tool draft-resume');
+      const button=element('button','tool draft-resume','↪');
       button.addEventListener('click',()=>void executeCommand('sp_ness_resume_post',view));
-      view.tools.append(button);view.draftButton=button;
+      view.tools.insertBefore(button,view.toggle);view.draftButton=button;
     }
-    view.draftButton.textContent='↪ Продолжить · '+stage;
-    view.draftButton.title='Продолжить сохранённый черновик без лишней генерации текста';
+    view.draftButton.hidden=guideDemo?.view===view;
+    view.draftButton.title='Продолжить · '+stage+' (без повторной подготовки сохранённых этапов)';
     view.draftButton.setAttribute('aria-label',view.draftButton.title);
     if(!view.discardDraftButton){
       const button=element('button','tool draft-discard','×');
       button.title='Удалить черновик этого RP-поста';
       button.setAttribute('aria-label',button.title);
       button.addEventListener('click',()=>void runAction(async()=>{
+        if(guideDemo?.view===view)return;
         const live=context();
         if(live.chat?.[view.index]!==view.message)return;
         if(!host.confirm('Удалить сохранённый черновик этого поста? Картинки в галерее останутся.'))return;
@@ -926,6 +927,7 @@ export async function installSpImagenMediaSlots(options) {
       }));
       view.tools.append(button);view.discardDraftButton=button;
     }
+    view.discardDraftButton.hidden=guideDemo?.view===view;
   }
 
   function updatePost(view, slots, chatId) {
@@ -1044,8 +1046,11 @@ export async function installSpImagenMediaSlots(options) {
     closeToolsMenu();
     closePromptPopup();
     demo.marker?.remove();
+    demo.resume?.remove();
     demo.result?.remove();
     if (demo.view?.promptButton) demo.view.promptButton.hidden = false;
+    if (demo.view?.draftButton) demo.view.draftButton.hidden = false;
+    if (demo.view?.discardDraftButton) demo.view.discardDraftButton.hidden = false;
     if (demo.extraMount && mounted.get(demo.view.index) === demo.view) {
       unmountPost(demo.view);
       mounted.delete(demo.view.index);
@@ -1078,17 +1083,19 @@ export async function installSpImagenMediaSlots(options) {
     }
     if (!view) return null;
     guideDemo = { view, chat: context().chat, chatId: context().chatId, marker: null,
-      result: null, kind: 'snapshot', clearOnStar: false, extraMount };
+      result: null, resume: null, kind: 'snapshot', clearOnStar: false, extraMount };
     if (view.promptButton) view.promptButton.hidden = true;
+    if (view.draftButton) view.draftButton.hidden = true;
+    if (view.discardDraftButton) view.discardDraftButton.hidden = true;
     return view;
   }
 
   function guideStep(section) {
     const view = currentGuideView();
     if (!view) return null;
+    if(section!=='post-resume'&&guideDemo.resume){guideDemo.resume.remove();guideDemo.resume=null;}
     if (section === 'post-star') {
       closeToolsMenu(); closePromptPopup();
-      view.toggle.scrollIntoView?.({ block: 'center', behavior: 'instant' });
       return view.toggle;
     }
     if (section === 'post-formats' || section === 'post-formats-text') {
@@ -1125,15 +1132,23 @@ export async function installSpImagenMediaSlots(options) {
     }
     if (section === 'post-result') {
       closeToolsMenu(); closePromptPopup();
-      const result = guideResult(view);
-      result.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
-      return result;
+      return guideResult(view);
+    }
+    if(section==='post-resume'){
+      closeToolsMenu();closePromptPopup();
+      if(!guideDemo.resume){
+        const button=element('button','tool draft-resume guide-resume','↪');
+        button.title='Продолжить · учебный пример (без генерации)';
+        button.setAttribute('aria-label',button.title);
+        button.addEventListener('click',()=>showPromptPopup(button,guidePromptSources()[0].text,'Учебный промпт · Snapshot',guidePromptSources()));
+        view.tools.insertBefore(button,view.toggle);guideDemo.resume=button;
+      }
+      return guideDemo.resume;
     }
     if (section === 'post-edit') {
       closeToolsMenu(); closePromptPopup();
       const result = guideResult(view);
       const button = result.querySelector('.prompt-edit:not(:disabled)');
-      button?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
       return button;
     }
     if (section === 'post-editor') {
@@ -1381,7 +1396,7 @@ export async function installSpImagenMediaSlots(options) {
     const current = context();
     const request = view && { chat: current.chat, chatId: current.chatId, index: view.index, message: view.message, kind, includeText };
     if (request && current.chat[request.index] !== request.message) return;
-    if (command === 'sp_ness_generate_at' && typeof guideDemo !== 'undefined' && guideDemo) return;
+    if (guideDemo && ['sp_ness_generate_at','sp_ness_resume_post'].includes(command)) return;
     const extension = getExtension?.();
     if (!extension?.installed || typeof extension.run !== 'function') {
       host.toastr?.error?.('SP Imagen не загружен.', 'SP Imagen');
@@ -1481,7 +1496,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 27,
-    bundleVersion: '2.9.60',
+    bundleVersion: '2.9.61',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},
