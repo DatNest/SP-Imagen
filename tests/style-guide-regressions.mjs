@@ -88,7 +88,7 @@ test('Novice guide uses existing controls, explains new modes, textless comics a
  assert.ok(a.some(step=>/промпт/i.test(step.title)&&/режиссёра/.test(step.text)));
  assert.ok(!a.some(step=>/ness-tagboard-grip|ness-unified-add|ness-edit-toggle/.test(step.selector||'')));
  assert.match(read('media-slots.js'),/collectPostPrompts\(view\.message,draft,saved\)/);
- assert.ok(a.some(step=>/Старые отметины|старых полей|Старую вкладку|Отметины из старых/.test(step.text)));
+ assert.ok(!a.some(step=>/Старые отметины|старых полей|архиве JSON|восстановленные отметины/i.test(step.title+' '+step.text)));
  assert.ok(a.some(step=>/спис|стил/.test(step.text)&&/↻/.test(step.text)));
  assert.ok(a.some(step=>/Anlas/.test(step.text)));
  assert.ok(!a.some(step=>/ness-appearance-(?:presets|pencil|copy)|data-library-body-/.test(step.selector||'')));
@@ -231,7 +231,7 @@ test('Guide follows the current two-screen library, and the footer steps do not 
  assert.match(index,/if\(button\?\.getAttribute\('aria-pressed'\)!=='true'\)button\?\.click/);
  assert.match(library,/ness-library-layout/);
  assert.match(library,/ness-figure-bulb/);
- assert.ok(steps.some(s=>s.text.includes('не назначаются автоматически')));
+ assert.ok(steps.some(s=>s.text.includes('Неназначенные теги остаются в каталоге')));
 });
 test('Guide teaches actual JSON pipeline, exact clothing and real stage selector without requests',()=>{
  const steps=makeGuideSteps(true),gallery=read('media-slots.js'),onboarding=read('onboarding.js');
@@ -242,4 +242,18 @@ test('Guide teaches actual JSON pipeline, exact clothing and real stage selector
  for(const id of ['final','director','parsed'])assert.ok(gallery.includes("id:'"+id+"'"));
  assert.match(gallery,/showPromptPopup\(guideDemo.marker, guidePromptSources\(\)\[0\]\.text, 'Учебный промпт · Snapshot', guidePromptSources\(\)\)/);
  assert.match(onboarding,/if\(!target\?\.isConnected\|\|!target\.getClientRects\(\)\.length\)target=null/);
+});
+
+test('Beginner guide groups repeated library explanations and distinguishes official NovelAI subjects from extension categories',()=>{
+ const steps=makeGuideSteps(true),lib=steps.filter(s=>s.view.startsWith('library'));
+ assert.equal(lib.filter(s=>s.view==='library-appearance'&&s.selector.includes('.ness-format-strip')).length,1);
+ assert.equal(lib.filter(s=>s.view==='library-appearance'&&s.selector.includes('.ness-tagboard-ribbon')).length,1);
+ assert.equal(lib.filter(s=>s.view==='library-skin').length,1);
+ assert.ok(!lib.some(s=>/старых полей|старые отметины|архиве JSON|миграци/i.test(s.title+' '+s.text)));
+ const subject=lib.find(s=>s.title==='Данные для промпта');
+ for(const tag of ['girl','boy','other','cat','dog'])assert.ok(subject.text.includes(tag));
+ assert.match(subject.text,/дополнительные категории расширения, не документированные NovelAI как счётчики/);
+ assert.match(read('shared-data.js'),/не являются официально документированными счётчиками NovelAI/);
+ assert.match(read('library-runtime.js'),/https:\/\/docs\.novelai\.net\/en\/image\/multiplecharacters\//);
+ assert.doesNotMatch(read('library-runtime.js'),/Старые отметины восстановлены в каталогах/);
 });

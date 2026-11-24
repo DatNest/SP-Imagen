@@ -21,7 +21,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.59';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.60';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -560,7 +560,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     backups.style.flexWrap = 'wrap';
     const backupInfo = document.createElement('p'); backupInfo.className = 'spi-status';
     backupInfo.style.flexBasis = '100%';
-    backupInfo.textContent = 'Встроенные JSON-режиссёры принадлежат текущей версии. Экспорт содержит их актуальные инструкции. Ниже — архивные копии прежних инструкций и системных промптов; их обмен не переключает движок генерации. Личные профили сохраняются.';
+    backupInfo.textContent = 'Сохраняй и восстанавливай копии инструкций. Экспорт встроенных профилей содержит их действующие инструкции. Личные профили управляются отдельно.';
     const backupButton = button('◇ Сделать резервную копию промптов', backups, () => {
         try { saveManualPromptBackup(); backupInfo.textContent = 'Копия сохранена. Кнопка обмена меняет старые и текущие промпты местами.'; syncBackupButtons(); }
         catch (error) { backupInfo.textContent = String(error?.message || error); }
@@ -581,7 +581,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         backupInfo.textContent = 'Все встроенные промпты восстановлены. Предыдущую версию можно вернуть через «Моя копия / текущие».';
         syncBackupButtons();
     });
-    resetAll.title = 'Архивные инструкции и системные code-prompts. Не меняет JSON-движок и личные профили.';
+    resetAll.title = 'Восстановить стандартные системные инструкции. Личные профили не изменяются.';
     function syncBackupButtons() {
         const slots = settings().promptBackups || {};
         manualSwap.disabled = !validPromptSnapshot(slots.manual);
@@ -638,7 +638,7 @@ function openCustomProfileEditor(existing=null,refresh=()=>{},template=null){
     button('Взять шаблон выбранного типа',templateActions,()=>{if(field.value.trim()&&!confirm('Заменить введённый текст промпта шаблоном '+PROFILE_KINDS[kind.value]+'?'))return;field.value=getTemplate();});
     button('Начать с чистого листа',templateActions,()=>{if(field.value.trim()&&!confirm('Очистить весь текст собственной инструкции режиссёра?'))return;field.value='';field.focus();});
     form.append(templateActions);
-    formField(form,'Полная инструкция собственного режиссёра',field,'Можно редактировать всё. Сохраняй обязательную JSON-схему. Старые личные HTML-профили сохраняют совместимость.');
+    formField(form,'Полная инструкция собственного режиссёра',field,'Настрой инструкции своего режиссёра. Сохраняй структуру выбранного формата ответа.');
     const visible=document.createElement('input');visible.type='checkbox';visible.checked=seed.visible!==false;
     formField(form,'Показывать по ✧',visible,'Когда галочка выключена, профиль скрыт из меню генерации, но его прежние картинки сохраняются.');
     const advanced=document.createElement('details');advanced.className='spi-profile-advanced';advanced.open=false;
