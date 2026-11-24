@@ -32,7 +32,7 @@ const PAGE=[
  'Create a {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts with expressive artwork and coherent page layout.',
  'Comic: 2–5 complementary views of one established instant. Story Page: 2–5 panels showing 2–4 established beats in reading order.',
  'Keep the shared interaction and participants’ relative positions spatially coherent across panels, including changes in camera and visible background.',
- 'Give the page distinctive visible panel frames through borders, suited to the mood and composition.',
+ 'Give the page distinctive visible panel frames through borders, suited to the mood and composition. For every Comic and Story Page, including pages without lettering, borders is a required non-empty artistic description of the actual panel frames: their silhouettes and irregularities, line weight and ink color or material, gutter width and color, inset edges, page margins, and any scene-appropriate ornaments. Design these together with the panel composition; describe how different panel frames vary when appropriate. Use concrete visual details rather than a generic label such as thin ink frames. Keep this complete frame design in borders, separate from speech balloons and scene staging.',
  '{{TEXT_POLICY}}'
 ].join('\n\n');
 const SNAPSHOT=[
@@ -69,7 +69,7 @@ function pageSample(kind,includeText,maxLines) {
   schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
   opening:story?'2 panels, sequential story page':'2 panels, expressive comic page',
   scene:'Panel 1: large upper chest-up two-shot, Alex on the left facing Rita on the right by a sunlit window; Panel 2: small lower close-up of Rita looking toward Alex',
-  borders:'thin ink panel frames, narrow cream gutters',
+  borders:story?'warm sepia hand-inked frames with gently irregular edges, a broad cream parchment gutter between the two beats, a lower inset outlined with a finer double ink stroke and a softly rounded corner, airy outer margins with tiny hand-drawn sunlight motifs':'warm sepia hand-inked borders with gently irregular strokes, a broad upper frame with slightly rounded corners, a smaller overlapping inset edged like torn cream paper, narrow ivory gutters and generous outer margins, delicate hand-drawn window-light flourishes at the page corners',
   bubbles:first?[
    {panel:1,speaker:'Alex',design:'rounded white balloon in the upper left, thin dark outline, clear dark lettering',words:'Привет!'},
    ...(second?[{panel:2,speaker:'Rita',design:'small oval balloon above Rita, clear dark lettering',words:'Привет.'}]:[])

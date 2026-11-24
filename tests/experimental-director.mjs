@@ -374,3 +374,24 @@ test('Only test Comic and Story Page put the exact final Text block in the Novel
   }
  }finally{globalThis.fetch=oldFetch;}
 });
+
+test('Both test page formats retain expressive and independent frame design with or without lettering',()=>{
+ for(const kind of ['comic','story_page'])for(const includeText of [true,false]){
+  const instructions=experimentalDirectorPrompt(kind,{includeText});
+  assert.match(instructions,/borders is a required non-empty artistic description/);
+  assert.match(instructions,/gutter width and color, inset edges, page margins/);
+  const raw=instructions.match(/SAMPLE \(format only;[^\n]*\):\n([\s\S]*?)\n\n/)?.[1];
+  const data=JSON.parse(raw);
+  assert.match(data.borders,/sepia/);
+  assert.match(data.borders,/gutter/);
+  assert.match(data.borders,/inset/);
+  assert.match(data.borders,/margin/);
+  const prompt=parseExperimentalDirector(raw,{kind,includeText}).config.prompt;
+  const frame='panel borders: '+data.borders;
+  assert.equal(prompt.split(frame).length-1,1);
+  assert.ok(prompt.indexOf(frame)<prompt.indexOf('Panel 1:'));
+  if(includeText)assert.ok(prompt.indexOf(frame)<prompt.indexOf('Speech bubble 1:'));
+  else assert.doesNotMatch(prompt,/Speech bubble|\n\nText:/);
+ }
+ assert.doesNotMatch(experimentalDirectorPrompt('snapshot'),/borders is a required non-empty artistic description/);
+});
