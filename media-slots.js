@@ -1098,7 +1098,7 @@ export async function installSpImagenMediaSlots(options) {
         ? root?.querySelector('.text-mode-toggle') ?? root?.querySelector('.option') ?? null
         : root?.querySelector('.option') ?? null;
     }
-    if (section === 'post-saved' || section === 'post-view') {
+    if (section === 'post-saved' || section === 'post-view' || section === 'post-stages') {
       if (!guideDemo.marker) {
         const marker = element('button', 'tool guide-saved', '▤');
         marker.title = 'Учебный значок сохранённого промпта';
@@ -1108,8 +1108,10 @@ export async function installSpImagenMediaSlots(options) {
         view.tools.append(marker);
         guideDemo.marker = marker;
       }
-      if (section === 'post-view') return promptPopup?.text
-        || showPromptPopup(guideDemo.marker, guidePromptSources()[0].text, 'Учебный промпт · Snapshot', guidePromptSources());
+      if (section === 'post-view' || section === 'post-stages') {
+        const text=promptPopup?.text || showPromptPopup(guideDemo.marker, guidePromptSources()[0].text, 'Учебный промпт · Snapshot', guidePromptSources());
+        return section==='post-stages' ? promptPopup?.node.shadowRoot?.querySelector('.prompt-source-select') || text : text;
+      }
       closePromptPopup();
       return guideDemo.marker;
     }
