@@ -19,7 +19,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.55';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.56';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -1124,7 +1124,10 @@ async function showGuideSection(view) {
     const isLibrary = view === 'library' || view.startsWith('library-');
     const libraryOverlay = document.querySelector('#sp-imagen-review-overlay');
     if (isLibrary && libraryOverlay) {
-        if (view === 'library-first') {
+        if (view === 'library') {
+            // Only the actual Back control may leave a draft editor. Never discard or save it for the guide.
+            libraryOverlay.querySelector('.ness-editor-back')?.click();
+        } else if (view !== 'library-footer') {
             const api = await getLibraryRuntime();
             api.openFirstVisibleRecordForGuide();
         }
@@ -1138,7 +1141,7 @@ async function showGuideSection(view) {
         const tab = tabNames[view];
         if (tab) {
             const element = [...libraryOverlay.querySelectorAll('[role="tab"]')].find(node => node.textContent.trim() === tab);
-            element?.click();
+            if(element?.getAttribute('aria-selected')!=='true')element?.click();
         }
         // The tour changes only which mode is visible. It never saves or
         // mutates the user's selected appearance tags.
@@ -1148,7 +1151,7 @@ async function showGuideSection(view) {
         if(modeLabel){
             const button=[...libraryOverlay.querySelectorAll('.ness-tagboard-modes button')]
               .find(node=>node.textContent.trim()===modeLabel);
-            button?.click();
+            if(button?.getAttribute('aria-pressed')!=='true')button?.click();
         }
         return;
     }
@@ -1178,6 +1181,13 @@ async function showGuideSection(view) {
     else if (isLibrary) {
         const api = await getLibraryRuntime();
         void api.openLibraryEditor().catch(error => console.warn('[SP Imagen] guide library:',error));
+        // Re-enter the requested subpage when navigating backwards from another feature.
+        if(view!=='library'&&view!=='library-footer'){
+            for(let attempt=0;attempt<14;attempt++){
+                if(document.querySelector('#sp-imagen-review-overlay'))return showGuideSection(view);
+                await new Promise(resolve=>setTimeout(resolve,55));
+            }
+        }
     } else if (view === 'generation') {
         if (!context().chatMetadata) return;
         const api = await getRuntime();

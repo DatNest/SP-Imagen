@@ -996,9 +996,19 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   // Guide UI is transient DOM only. No chat metadata, message extras, network calls or real generation.
+  function guidePromptSources() {
+    // A complete, harmless teaching example of the real three-stage pipeline.
+    const parsed='Мира сидит у окна с чашкой чая. На ней голубая рубашка. Свет падает на стол.';
+    const data={schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',opening:'single cinematic illustration',scene:'sunlit cafe, medium shot, Mira sitting at a table beside a window',borders:'',bubbles:[],characters:[{subject:'girl',name:'Mira',appearance:'adult woman, blue eyes',wardrobe:'blue shirt',action:'holding a ceramic cup, looking out the window'}],lettering:[]};
+    return [
+      {id:'final',label:'Итоговый промпт NovelAI',text:'1girl, '+data.opening+'; '+data.scene+' | girl, Mira, adult woman, blue eyes; blue shirt; holding a ceramic cup, looking out the window'},
+      {id:'director',label:'Ответ режиссёра · JSON',text:JSON.stringify(data,null,2)},
+      {id:'parsed',label:'Собранные RP-посты',text:parsed}
+    ];
+  }
   function guideSampleConfig() {
     return {
-      prompt: '1girl, blue eyes, soft lighting, sitting at a table',
+      prompt: guidePromptSources()[0].text,
       aspect_ratio: '2:3',
       image_size: '1K',
       spImagenDirect: { style: { id: '', name: 'Учебный стиль', value: 'warm colors, soft lineart' } },
@@ -1094,13 +1104,12 @@ export async function installSpImagenMediaSlots(options) {
         marker.title = 'Учебный значок сохранённого промпта';
         marker.setAttribute('aria-label', marker.title);
         marker.addEventListener('click', () => showPromptPopup(marker,
-          'Учебный пример (не отправляется в NovelAI):\n\n1girl, blue eyes, soft lighting, sitting at a table',
-          `Учебный промпт · ${LABEL[guideDemo?.kind || 'snapshot']}`));
+          guidePromptSources()[0].text, 'Учебный промпт · Snapshot', guidePromptSources()));
         view.tools.append(marker);
         guideDemo.marker = marker;
       }
       if (section === 'post-view') return promptPopup?.text
-        || showPromptPopup(guideDemo.marker, 'Учебный пример: 1girl, blue eyes, soft lighting', 'Учебный промпт');
+        || showPromptPopup(guideDemo.marker, guidePromptSources()[0].text, 'Учебный промпт · Snapshot', guidePromptSources());
       closePromptPopup();
       return guideDemo.marker;
     }
@@ -1470,7 +1479,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 27,
-    bundleVersion: '2.9.55',
+    bundleVersion: '2.9.56',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},
