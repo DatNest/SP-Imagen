@@ -69,7 +69,7 @@ test('Approved library layout has a single board, no legacy tab or constructor C
  const runtime=readFileSync(new URL('../runtime.js',import.meta.url),'utf8');
  assert.doesNotMatch(library,/tabs\.add\(['"]Старые поля отметин/);
  assert.doesNotMatch(library,/const body=tabs\.add/);
- assert.match(library,/headingBar\.appendChild\(formatStrip\)/);
+ assert.match(library,/toolBar\.insertBefore\(formatStrip,inlineBoard\.historyHost\)/);
  assert.match(library,/inlineBoard\.element\.insertBefore\(proseWrap,editorBody\.parentElement\)/);
  assert.equal((library.match(/const inlineBoard=createAppearanceBoard/g)||[]).length,1);
  assert.doesNotMatch(styles,/ness-fullboard-area|ness-library-constructor/);
