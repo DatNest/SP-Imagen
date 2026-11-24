@@ -1890,3 +1890,34 @@
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-controls{position:relative;top:auto}
  #sp-imagen-review-panel[data-dialog=library] .ness-unified-tagflow{height:180px;max-height:180px}
 }
+
+/* Reorder controls beside the tool modes; transfers have a bounded scrollport. */
+#sp-imagen-review-panel .ness-tagboard-tool-modes>.ness-tagboard-tool-movement{
+ flex:0 1 auto;justify-content:flex-start;padding:0 0 0 5px;border-top:0;
+ border-inline-start:1px solid var(--ness-border);gap:5px;
+}
+#sp-imagen-review-panel .ness-tagboard-tool-movement>.ness-tagboard-move-name{order:1;margin:0;max-width:18ch}
+#sp-imagen-review-panel[data-dialog=library] dialog.ness-tagboard-context-menu{
+ position:fixed;inset:0;margin:auto;box-sizing:border-box;width:min(400px,calc(100vw - 24px));max-width:calc(100vw - 24px);
+ max-height:calc(100dvh - 32px);height:fit-content;overflow:hidden;
+ color:var(--ness-text);background:color-mix(in srgb,var(--ness-library-card) 96%,#18151a);
+ padding:14px;gap:8px;z-index:100;
+}
+#sp-imagen-review-panel dialog.ness-tagboard-context-menu[open]:not([hidden]){display:flex;flex-direction:column}
+#sp-imagen-review-panel dialog.ness-tagboard-context-menu::backdrop{background:rgba(0,0,0,.5)}
+#sp-imagen-review-panel dialog.ness-tagboard-context-menu>.ness-note{margin:0}
+#sp-imagen-review-panel .ness-transfer-active-tag{max-height:4.5em;overflow-y:auto}
+#sp-imagen-review-panel .ness-transfer-targets{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+#sp-imagen-review-panel[data-dialog=library] .ness-transfer-section-buttons{display:grid;grid-template-columns:1fr;gap:5px}
+#sp-imagen-review-panel .ness-transfer-section-buttons>.ness-button{width:100%;white-space:normal;overflow-wrap:anywhere}
+#sp-imagen-review-panel .ness-transfer-actions{display:flex;flex:none;justify-content:space-between;gap:8px;border-top:1px solid var(--ness-border);padding-top:8px}
+#sp-imagen-review-panel .ness-transfer-error{color:var(--ness-accent)}
+@media(pointer:coarse){
+ #sp-imagen-review-panel .ness-transfer-section-buttons>.ness-button,
+ #sp-imagen-review-panel .ness-transfer-actions>.ness-button,
+ #sp-imagen-review-panel .ness-transfer-head>.ness-button{min-height:44px!important}
+}
+@media(max-height:450px){
+ #sp-imagen-review-panel[data-dialog=library] dialog.ness-tagboard-context-menu{padding:8px;gap:5px;max-height:calc(100dvh - 12px)}
+ #sp-imagen-review-panel .ness-transfer-active-tag{max-height:2.5em}
+}
