@@ -1760,3 +1760,15 @@
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-tools .ness-format-strip{margin-inline-start:0!important;flex:1 1 auto}
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-modes>.ness-button{font-size:11px!important;padding:4px 3px!important}
 }
+
+/* Dynamic SP Imagen viewports restore their own offsets after updates.
+   Do not change the native chat's anchoring or intentional gallery navigation. */
+#sp-imagen-review-panel :is([data-review-scroll],[data-library-list],.ness-library-tools,.ness-tab-viewport,.ness-tag-strip,.ness-record-tags,.ness-editor-meta-tags,.ness-tag-choices,.ness-results,.ness-unified-tagflow,.ness-tagboard-chosen-list,.ness-tagboard-ribbon,.ness-tab-strip,.ness-context-tab-strip),
+:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-library){
+ overflow-anchor:none;scroll-behavior:auto!important;
+}
+#sp-imagen-review-panel :is([data-library-list],.ness-tab-viewport,.ness-unified-tagflow,.ness-tagboard-chosen-list,.ness-results,.ness-tag-choices),
+:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-library){
+ scrollbar-gutter:stable;
+}
+#sp-imagen-review-panel .ness-tagboard-ribbon>.ness-button::after{font-variant-numeric:tabular-nums}

@@ -150,3 +150,14 @@ test('Roster updates preserve search position; only explicit search resets it',(
  assert.match(picker,/setTimeout\(\(\)=>renderResults\(true\),140\)/);
  assert.doesNotMatch(picker,/list\.setItems\(\[\]\)/);
 });
+
+test('Dynamic ribbons and settings restore offsets, without redirecting whole chat scroll',()=>{
+ assert.match(board,/ribbon\.scrollLeft=offset/);
+ assert.match(board,/function scrollPositions\(\)/);
+ assert.doesNotMatch(board,/active\?\.scrollIntoView/);
+ assert.match(lib,/view\.bulkTags\.scrollTop=bulkScroll/);
+ assert.match(lib,/recordTagHost\.scrollLeft=scroll/);
+ assert.match(lib,/mountRow:\(row,\{id\}\)/);
+ assert.match(css,/overflow-anchor:none;scroll-behavior:auto!important/);
+ assert.match(css,/scrollbar-gutter:stable/);
+});

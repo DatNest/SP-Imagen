@@ -500,6 +500,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     scroll.append(addActions);
     const renderCustom=()=>{
         const store=normalizeProfileStore(settings());
+        const top=scroll.scrollTop,left=scroll.scrollLeft;
         customList.replaceChildren();rulesList.replaceChildren();
         if(!store.profiles.length){const p=document.createElement('p');p.className='spi-status';p.textContent='Пока нет личных режимов генерации.';customList.append(p);}
         for(const profile of store.profiles){
@@ -535,6 +536,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
             button('Изменить',actions,()=>openExtraRuleEditor(rule,renderCustom)).classList.add('spi-profile-action');
             row.append(head,actions);rulesList.append(row);
         }
+        scroll.scrollTop=top;scroll.scrollLeft=left;
     };
     renderCustom();
     const footer = document.createElement('div');
@@ -972,7 +974,7 @@ function openStyleLibrary({ back = false } = {}) {
         const heading = document.createElement('h3'); heading.textContent = 'Библиотека стилей'; library.append(heading);
         button('+ Новый стиль', library, () => {
             const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '' };
-            novelai.styles.push(style); selectedId = style.id; persist(); renderList(); syncEditor(); name.focus(); name.select();
+            novelai.styles.push(style); selectedId = style.id; persist(); renderList(); syncEditor(); name.focus({preventScroll:true}); name.select();
         }, true);
         button('Импорт из Inline Images', library, () => {
             const source = context().extensionSettings?.inline_image_gen;
