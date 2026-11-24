@@ -516,6 +516,7 @@ test('Wardrobe fidelity is present exactly once in each primary director; transl
 
 test('Dialogue limits select complete lines before assembling bubbles and Text',()=>{
  const data=sample(),b=data.bubbles[0];
+ data.lettering=[];
  data.bubbles=[{...b,words:'Слишком много слов для этой реплики'},{...b,words:'Да!'},{...b,words:'Нет!'},{...b,words:'Третья!'}];
  const raw=JSON.stringify(data),r=parseExperimentalDirector(raw,{maxLines:2,maxWords:1});
  assert.equal(r.repaired,true);
@@ -534,7 +535,7 @@ test('Plural counts are generated from independent actor entries',()=>{
 test('JSON repair preserves quotes and escapes, rejects incomplete or ambiguous syntax',()=>{
  const data=sample();data.scene='Alex says "hello", with a path C:\\temp; then a newline\nsecond line';
  const raw=JSON.stringify(data);
- const malformed=raw.replace('\\nsecond line','\nsecond line').replace(/}$/u,',}');
+ const malformed=raw.replace('\\nsecond line','\nsecond line').replace(/\}$/u,',}');
  const result=parseExperimentalDirector(malformed);
  assert.equal(result.repaired,true);
  assert.ok(result.config.prompt.includes(data.scene));
