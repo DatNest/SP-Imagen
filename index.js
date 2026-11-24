@@ -751,6 +751,8 @@ function openTextApiSettings({ back = false } = {}) {
     const maxTokens = input(draft.maxTokens, 'number'); maxTokens.min = '1000'; maxTokens.max = '100000'; maxTokens.step = '1000'; formField(grid, 'Максимум токенов', maxTokens);
     const streaming=input('','checkbox');streaming.checked=draft.streaming;
     formField(grid,'Streaming · потоковый ответ',streaming,'Режиссёр получает готовый результат после завершения потока.');
+    const jsonMode=input('','checkbox');jsonMode.checked=draft.jsonMode;
+    formField(grid,'JSON Mode · прямой API',jsonMode,'Включай только если модель поддерживает response_format: json_object. Для профилей SillyTavern настройка не применяется.');
     const jailbreak=input('','checkbox');jailbreak.checked=draft.jailbreak;
     formField(grid,'Jailbreak · дополнительная system-инструкция',jailbreak,'Необязательная собственная инструкция. Может повлиять на строгий формат HTML.');
     const jailbreakText=document.createElement('textarea');jailbreakText.className='spi-short-area';jailbreakText.value=draft.jailbreakText;
@@ -766,7 +768,7 @@ function openTextApiSettings({ back = false } = {}) {
     const readDraft = () => normalizeTextApiSettings({
       ...draft,mode:mode.value,profileId:profile.value,endpoint:endpoint.value,apiKey:token.value,
       model:model.value,temperature:Number(temperature.value),maxTokens:Number(maxTokens.value),
-      streaming:streaming.checked,jailbreak:jailbreak.checked,jailbreakText:jailbreakText.value,
+      streaming:streaming.checked,jsonMode:jsonMode.checked,jailbreak:jailbreak.checked,jailbreakText:jailbreakText.value,
       reasoningMode:reasoningMode.value,reasoningProtocol:reasoningProtocol.value,
       reasoningEffort:reasoningEffort.value,reasoningBudget:Number(reasoningBudget.value)
     });

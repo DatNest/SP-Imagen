@@ -17,6 +17,7 @@ export function experimentalProfileFor(id){
 const VISUAL_DENSITY="Use compact, precise tags and short natural-language phrases. Preserve all relevant visual specifics, supplied library markers and exact printed words.";
 const ACTION_TAGS="ACTION TAGS\nEnd each interacting character's action field with applicable NovelAI Action Tags, separated by commas. Use Action Tags exclusively for interactions between living characters. Describe interactions with objects, props and surroundings using regular visual tags or short phrases.\nUse paired source#action and target#action for directional interactions, or mutual#action in both participants' entries for reciprocal interactions.\nExamples: source#hug / target#hug; mutual#hug / mutual#hug.\nMatch tags to established visible interactions, participant roles and physical contact. Specify interaction partners and relevant panels through concise natural-language descriptions. Use each applicable Action Tag once per character. Reserve # exclusively for Action Tag syntax.";
 const WARDROBE_FIDELITY="CURRENT WARDROBE contains authoritative, ready-to-use garment descriptions. Copy every visible English clothing fragment verbatim, preserving wording, order, punctuation, weights and emphasis syntax. Translate Russian or other non-English clothing fragments faithfully into English, preserving every visible detail, order and emphasis syntax. Omit only complete fragments outside the visible crop or concealed by other garments. Describe established changes in garment state and movement in action. Source fidelity takes priority over conciseness.";
+const JSON_SYNTAX='JSON SYNTAX\nReturn one complete valid JSON object. Use double quotes for keys and string delimiters. Escape internal double quotes, backslashes and control characters according to JSON syntax. Keep printed words on one line and preserve their punctuation after decoding. Use standard arrays, objects and numbers. Verify syntax and completeness before returning.';
 const CORE=[
  'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object matching the structure and descriptive approach of the SAMPLE. Maximize distinct visual information per token in all descriptive fields. '+VISUAL_DENSITY,
  'JSON schema:',
@@ -108,7 +109,7 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
   const textRules=includeText?[
    'DIALOGUE AND LETTERING',
    allowBubbles
-    ?'bubbles: select up to '+maxLines+' complete, relevant spoken lines of up to '+maxWords+' words each. Preserve exact words and punctuation. Use one entry per line in reading order; panel: corresponding integer panel number; speaker: exact name from characters; design: enclosed speech balloon near the speaker, with clear comic-appropriate shape, outline, position and readable lettering, clear of faces and actions; words: verbatim line without added quotes or speaker labels. Use [] when no suitable speech exists. Describe speaking actions in the relevant character entries.'
+    ?'bubbles: select up to '+maxLines+' complete, relevant spoken lines of up to '+maxWords+' words each. Both limits apply to the entire page, across all panels combined. Select only complete lines fitting both limits; fewer lines or an empty array are valid. Preserve exact words and punctuation. Use one entry per line in reading order; panel: corresponding integer panel number; speaker: exact name from characters; design: enclosed speech balloon near the speaker, with clear comic-appropriate shape, outline, position and readable lettering, clear of faces and actions; words: verbatim line without added quotes or speaker labels. Use [] when no suitable speech exists. Describe speaking actions in the relevant character entries.'
     :'bubbles: [].',
    'lettering: visible writing on actual objects; panel: corresponding integer panel number; design: object and placement; words: exact inscription. Use [] when absent. Keep all printed words in bubbles or lettering.'
   ].join('\n'):'TEXT DISABLED\nbubbles and lettering MUST both be empty arrays. Use visual acting and composition instead of readable text, captions or speech balloons.';
@@ -119,7 +120,7 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
    .replace('{{BEAT_RULE}}',kind==='story_page'?' Reflect established changes in actions, expressions, positions and surroundings as events progress.':'')
    .replace('{{TEXT_POLICY}}',textRules);
   const legacy=experimentalLegacyIntimacy(kind);
-  return pageRules+(legacy?'\n\n'+legacy:'')+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines,maxWords)+'\n\nReturn one valid JSON object.';
+  return pageRules+(legacy?'\n\n'+legacy:'')+'\n\n'+JSON_SYNTAX+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines,maxWords)+'\n\nReturn one valid JSON object.';
  }
  const choice=SNAPSHOT.replaceAll('{{POST_COUNT}}',String(postCount));
  const core=CORE
@@ -137,7 +138,7 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
   .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
- return core+'\n\n'+choice+intimacy+'\n\nSAMPLE:\n'+snapshotSample(includeText)+'\n\nFINAL: output only one valid JSON object matching the SAMPLE structure. Silently verify artistic consistency, chronology, identities and syntax.';
+ return core+'\n\n'+choice+intimacy+'\n\n'+JSON_SYNTAX+'\n\nSAMPLE:\n'+snapshotSample(includeText)+'\n\nFINAL: output only one valid JSON object matching the SAMPLE structure. Silently verify artistic consistency, chronology, identities and syntax.';
 }
 function stringField(obj,key,{empty=false,max=16000}={}){
  const v=obj?.[key];check(typeof v==='string'&&v.length<=max&&(empty||v.trim()),'Поле '+key+' пусто либо слишком длинное');
@@ -153,7 +154,25 @@ function parseJSON(raw){
   s=s.replace(new RegExp('^'+String.fromCharCode(96,96,96)+'(?:json)?\\s*\\r?\\n','iu'),'');
   s=s.replace(new RegExp('\\r?\\n'+String.fromCharCode(96,96,96)+'\\s*$','u'),'').trim();
  }
- try{return JSON.parse(s);}catch(cause){throw new Error('Режиссёр вернул повреждённый JSON. NovelAI не запускался; исходный ответ сохранён.',{cause});}
+ try{return {data:JSON.parse(s),repaired:false};}catch(cause){
+  // Repair only trailing commas and literal control characters inside strings.
+  let out='',quoted=false,escaped=false;
+  for(let j=0;j<s.length;j++){
+   const ch=s[j];
+   if(quoted){
+    if(escaped){out+=ch;escaped=false;continue;}
+    if(ch==='\\'){out+=ch;escaped=true;continue;}
+    if(ch==='"'){out+=ch;quoted=false;continue;}
+    out+=ch.charCodeAt(0)<32?JSON.stringify(ch).slice(1,-1):ch;
+   }else{
+    if(ch==='"'){quoted=true;out+=ch;continue;}
+    if(ch===','&&/^\s*[}\]]/u.test(s.slice(j+1))&&/[^\s,\[{:]$/u.test(out.trimEnd()))continue;
+    out+=ch;
+   }
+  }
+  if(!quoted&&out!==s)try{return {data:JSON.parse(out),repaired:true};}catch{}
+  throw new Error('Режиссёр вернул повреждённый JSON. NovelAI не запускался; исходный ответ сохранён.',{cause});
+ }
 }
 const boundary=s=>String(s).trim().replace(/[;\s]+$/u,'');
 // Only explicitly numbered panels have a safe insertion boundary. Keep older
@@ -230,7 +249,9 @@ export function normalizeExperimentalDirectorSlots(source){
 export function parseExperimentalDirector(raw,{kind='comic',includeText=true,maxLines=null,maxWords=null}={}){
  const base=EXPERIMENTAL_DIRECTOR_IDS[kind]||kind;
  check(['snapshot','comic','story_page'].includes(base),'Неизвестный профиль');
- const normalized=normalizeExperimentalDirectorSlots(parseJSON(raw));
+ const parsed=parseJSON(raw);
+ const normalized=normalizeExperimentalDirectorSlots(parsed.data);
+ normalized.repaired ||= parsed.repaired;
  const {data}=normalized;
  check(data&&typeof data==='object'&&!Array.isArray(data)&&data.schema==='sp-imagen-slots-v1','Требуется JSON со schema sp-imagen-slots-v1');
  check(RATIOS.has(data.aspect_ratio),'Неверный aspect_ratio');
@@ -242,9 +263,8 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  check(!/\b\d+\s*(?:boys?|girls?|cats?|dogs?|others?)\b/iu.test(opening),'Не пиши количество участников в opening: его посчитает расширение');
  check(Array.isArray(data.characters)&&data.characters.length<=16,'characters должен быть массивом до 16 участников');
  const allowBubbles=base!=='snapshot'&&includeText;
- if(allowBubbles)check(Array.isArray(data.bubbles)&&data.bubbles.length<=8,'bubbles должен быть массивом до 8 записей');
+ if(allowBubbles)check(Array.isArray(data.bubbles),'bubbles должен быть массивом');
  if(includeText)check(Array.isArray(data.lettering)&&data.lettering.length<=16,'lettering должен быть массивом до 16 записей');
- if(allowBubbles&&Number.isInteger(maxLines))check(data.bubbles.length<=maxLines,'Превышен лимит количества реплик');
  const characters=data.characters.map((actor,i)=>{
   check(actor&&typeof actor==='object'&&!Array.isArray(actor),'Некорректный персонаж #'+(i+1));
   check(SUBJECTS.includes(actor.subject),'Неизвестный subject у персонажа #'+(i+1));
@@ -260,10 +280,14 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
   check(Number.isInteger(item.panel)&&item.panel>=1&&item.panel<=10,'Некорректный номер панели '+field+' #'+(i+1));
   const words=stringField(item,'words',{max:1800});
   check(!/[\r\n|]/u.test(words),'words должен содержать одну строку без структурных символов');
-  if(field==='bubbles'&&Number.isInteger(maxWords))check((words.match(/\S+/gu)||[]).length<=maxWords,'Реплика длиннее лимита '+maxWords+' слов');
   return words;
  };
- const bubbles=(allowBubbles?data.bubbles:[]).map((item,i)=>{
+ const limit=Number.isInteger(maxLines)?Math.max(0,Math.min(8,maxLines)):8;
+ const candidates=(allowBubbles?data.bubbles:[]);
+ const eligible=candidates.filter(item=>!Number.isInteger(maxWords)||typeof item?.words!=='string'||(item.words.match(/\S+/gu)||[]).length<=maxWords);
+ const selected=eligible.slice(0,limit);
+ if(selected.length!==candidates.length)normalized.repaired=true;
+ const bubbles=selected.map((item,i)=>{
   const words=readPrinted(item,i,'bubbles'),speaker=stringField(item,'speaker',{max:140}),design=stringField(item,'design');
   noSyntax(speaker,'speaker');noSyntax(design,'bubble.design');
   return {panel:item.panel,speaker,design,words};
@@ -274,7 +298,7 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
   return {panel:item.panel,design,words};
  });
  const count=SUBJECTS.map(subject=>[subject,characters.filter(x=>x.subject===subject).length])
-  .filter(([,n])=>n).map(([subject,n])=>n+subject).join(', ');
+  .filter(([,n])=>n).map(([subject,n])=>n+subject+(n===1?'':'s')).join(', ');
  const printedItems=pagePrintedItems(bubbles,lettering);
  const numbered=base==='snapshot'?null:numberedPanels(scene);
  const panels=numbered?.panels;
