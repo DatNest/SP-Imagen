@@ -1966,7 +1966,7 @@ for(const [id,entry] of Object.entries({...data.personas,...data.characters})){
  if(e.aliases?.length)lines.push('Aliases: '+e.aliases.join(', '));
  if(typeof e.promptName==='string'&&e.promptName.trim())lines.push('Prompt name: '+e.promptName.trim());
  const subject=typeof e.subject==='string'?e.subject.trim().toLowerCase():'';
- if(['girl','boy','cat','other'].includes(subject))lines.push('Subject: '+subject);
+ if(['girl','boy','cat','dog','other'].includes(subject))lines.push('Subject: '+subject);
  lines.push('Fixed appearance format: '+(e.appearanceFormat==='prose'?'prose description':'comma-separated tags'));
  if(hasConfiguredAppearanceViews(e)||hasSkinSelections(e.appearanceSkin)){
   visibility.set(id,{base:e.base,name:e.name,promptName:e.promptName,aliases:e.aliases||[],ranges:e.appearanceRanges||[],selections:e.appearanceSelections||{},appearanceFormat:e.appearanceFormat||'tags',skinTags:e.appearanceSkin||{}});

@@ -43,7 +43,7 @@ test('Original textless Comic and Story Page preserve their output contract and 
 test('Experimental JSON-samples teach scene spatial anchors and character-specific action without changing slot structure',()=>{
  for(const kind of ['snapshot','comic','story_page']){
   const p=experimentalDirectorPrompt(kind,{postCount:3});
-  assert.match(p,kind==='snapshot'?/spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction/:/position on the page, camera and crop, visible setting, named participants and their relative positions, and central shared interaction/);
+  assert.match(p,kind==='snapshot'?/spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction/:/position on the page, camera angle and crop, visible exterior\/interior, named participants and their relative positions to each other, and central shared interaction/);
   assert.match(p,kind==='snapshot'?/panel-specific body poses, expressions, gestures, gaze, hand and prop details/:/panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details/);
   assert.match(p,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
   assert.match(p,/Reference (?:each|the) panel and (?:the )?position established in scene/);

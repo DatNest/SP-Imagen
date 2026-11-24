@@ -221,7 +221,7 @@ test('Panel border design appears visibly near page opening, before scenery, onc
  assert.ok(prompt.indexOf(borderText)>prompt.indexOf('3 panels, expressive comic page'));
  assert.ok(prompt.indexOf(borderText)<prompt.indexOf(data.scene));
  assert.ok(prompt.indexOf(data.scene)<prompt.indexOf('Speech bubble 1:'));
- assert.match(experimentalDirectorPrompt('comic'),/borders: a non-empty description of visible panel silhouettes/);
+ assert.match(experimentalDirectorPrompt('comic'),/borders: a mandatory non-empty description of visible panel silhouettes/);
  assert.match(experimentalDirectorPrompt('story_page'),/neutral decorative page surface outside and between panels/);
  assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
 });
@@ -370,7 +370,7 @@ test('Only test Comic and Story Page put the exact final Text block in the Novel
    assert.equal(request.input,caption.base_caption);
    assert.equal(caption.char_captions.length,2);
    assert.ok(caption.base_caption.startsWith('ink drawing, '));
-   if(profileId==='custom_test_comic'||profileId==='custom_test_story_page'){
+   if(profileId==='custom_test_comic'||profileId==='custom_test_story_page'||profileId==='custom_test_snapshot'){
     assert.ok(caption.base_caption.endsWith('Text: Hi\n\nТы слышишь меня?'));
     assert.ok(caption.char_captions.every(x=>!x.char_caption.includes('Text:')));
     assert.match(caption.char_captions[0].char_caption,/visible speech balloon beside Clark Kent/);
@@ -385,7 +385,7 @@ test('Only test Comic and Story Page put the exact final Text block in the Novel
 test('Both test page formats retain expressive and independent frame design with or without lettering',()=>{
  for(const kind of ['comic','story_page'])for(const includeText of [true,false]){
   const instructions=experimentalDirectorPrompt(kind,{includeText});
-  assert.match(instructions,/borders: a non-empty description/);
+  assert.match(instructions,/borders: a mandatory non-empty description/);
   assert.match(instructions,/inset edges, gutter width and color, outer margins/);
   assert.match(instructions,/neutral decorative page surface outside and between panels/);
   assert.match(instructions,/Match the page design to the composition and mood/);
@@ -396,7 +396,7 @@ test('Both test page formats retain expressive and independent frame design with
   assert.match(data.borders,/gutter/);
   assert.match(data.borders,/inset/);
   assert.match(data.borders,/margin/);
-  assert.match(data.borders,/neutral,.*page background/);
+  assert.match(data.borders,/neutral.*(?:page background|paper beyond panel edges)/i);
   const prompt=parseExperimentalDirector(raw,{kind,includeText}).config.prompt;
   const frame='panel borders: '+data.borders;
   assert.equal(prompt.split(frame).length-1,1);
@@ -448,9 +448,35 @@ test('Page instructions are direct, sectioned and contain no assembly commentary
 test('All test directors prioritize compact visual information while retaining essential details',()=>{
  for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
   const prompt=experimentalDirectorPrompt(kind,{includeText});
-  assert.equal(prompt.split('Maximize distinct visual information per token in all descriptive fields.').length-1,1);
-  assert.ok(prompt.includes('Use compact, precise tags for individual visual traits and short natural-language phrases for composition, spatial relationships and interactions.'));
-  assert.ok(prompt.includes('retaining essential panel and speaker anchors'));
+  assert.equal(prompt.split('Use compact, precise tags and short natural-language phrases.').length-1,1);
+  if(kind!=='snapshot')assert.ok(prompt.includes('retaining essential panel and speaker anchors'));
   assert.ok(prompt.includes('Preserve all relevant visual specifics, supplied library markers and exact printed words.'));
  }
+});
+
+ test('All three SAMPLEs compile with paired action tags and no object tags, retaining panel introductions and text mode',()=>{
+ for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
+  const instructions=experimentalDirectorPrompt(kind,{includeText,maxLines:2,maxWords:1});
+  assert.equal(instructions.split('ACTION TAGS\n').length-1,1);
+  assert.match(instructions,/exclusively for interactions between living characters/);
+  const raw=instructions.match(/SAMPLE:\n([\s\S]*?)\n\n/)?.[1];
+  const data=JSON.parse(raw),prompt=parseExperimentalDirector(raw,{kind,includeText,maxLines:2,maxWords:1}).config.prompt;
+  const actors=prompt.split('\n\nText:')[0].split(' | ').slice(1);
+  const tags=kind==='snapshot'?['mutual#holding hands','mutual#holding hands']:kind==='comic'?['mutual#hug','mutual#hug']:['target#hug','source#hug'];
+  actors.forEach((actor,i)=>assert.ok(actor.endsWith(tags[i]),actor));
+  if(kind!=='snapshot'){
+   const intro=data.scene.split('; Panel 1:')[0];
+   assert.equal(prompt.split(intro).length-1,1);
+   if(includeText){assert.ok(prompt.indexOf('Speech bubble 1:')<prompt.indexOf('Panel 2:'));assert.match(actors[0],/visible speech balloon beside Alex/);}
+  }
+  if(!includeText)assert.doesNotMatch(prompt,/\n\nText:/);
+ }
+});
+test('Dog subject survives the count, section validator and library marker fallback',()=>{
+ const data=sample();data.characters.push({subject:'dog',name:'Rex',appearance:'[[NESS_VIS:rex:full_front]]',wardrobe:'red collar',action:'sitting nearby'});
+ const prompt=parseExperimentalDirector(JSON.stringify(data),{kind:'comic'}).config.prompt;
+ assert.match(prompt,/1dog/);assert.match(prompt,/\| dog, Rex/);
+ assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
+ const result=insertVisibleAppearance(prompt,new Map([['clark',{base:'dark hair'}],['ness',{base:'brown eyes'}],['rex',{base:'golden fur'}]]));
+ assert.match(result,/\| dog, Rex, golden fur/);
 });
