@@ -388,13 +388,15 @@ test('Both test page formats retain expressive and independent frame design with
   assert.match(instructions,/borders is a required non-empty artistic description/);
   assert.match(instructions,/gutter width and color, inset edges, page margins/);
   assert.match(instructions,/visible page background or substrate behind and between the panels/);
+  assert.match(instructions,/neutral, unobtrusive decorative surface that complements the composition and mood/);
+  assert.match(instructions,/Page graphics belong to the page, not the fictional location/);
   const raw=instructions.match(/SAMPLE \(format only;[^\n]*\):\n([\s\S]*?)\n\n/)?.[1];
   const data=JSON.parse(raw);
   assert.match(data.borders,/sepia/);
   assert.match(data.borders,/gutter/);
   assert.match(data.borders,/inset/);
   assert.match(data.borders,/margin/);
-  assert.match(data.borders,/page background/);
+  assert.match(data.borders,/neutral,.*page background/);
   const prompt=parseExperimentalDirector(raw,{kind,includeText}).config.prompt;
   const frame='panel borders: '+data.borders;
   assert.equal(prompt.split(frame).length-1,1);
