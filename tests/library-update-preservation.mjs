@@ -68,7 +68,7 @@ test('Merely opening/loading an updated library does not write settings or migra
  assert.doesNotMatch(open,/restoreLibraryBodyFields\(draft\)/);
  assert.match(source,/if\(editor\.appearanceEdited\(\)\)/);
  assert.match(source,/clearAppearanceEdited:\(\)=>\{appearanceEdited=false;\}/);
- assert.match(source,/if\(typeof expectedRaw==='string'&&expectedRaw===JSON\.stringify\(data\)\)return/);
+ assert.match(source,/if\(typeof expectedRaw==='string'&&expectedRaw===JSON\.stringify\(data\)\)\{if\(libraryStore\)await libraryStore\.commit\(expectedRaw,expectedRaw\);return/);
 });
 
 test('No-op Save is byte-for-byte identical and performs no backend write',async()=>{
