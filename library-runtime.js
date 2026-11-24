@@ -6,8 +6,9 @@ import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanc
 import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, normalizeAppearanceCatalog, parseBaseTags, SKIN_PRESETS, NSFW_PRESETS } from './appearance-board.js';
 import { openCharacterIconEditor } from './character-icon-editor.js';
 import { LEGACY_BODY_FIELDS, prepareBodyAppearance } from './legacy-body-migration.js';
+import { applyCommittedIcon } from './library-persistence.js';
 // Generated from NESS_GEN2_STUDIO/modules.
-export function createSpImagenLibraryRuntime({ getExtension } = {}){
+export function createSpImagenLibraryRuntime({ getExtension, libraryStore } = {}){
 const NESS_RECOVERED_BODY={
   "version": 1,
   "records": {
@@ -465,6 +466,7 @@ function createLibraryView(D){
  ui.tip(importButton,'Импорт библиотеки из JSON: записи, внешность, псевдонимы и теги. Файл загрузится в черновик; действующая библиотека изменится после сохранения.');
  ui.tip(exportButton,'Экспорт всей текущей библиотеки в JSON: записи, внешность, псевдонимы, теги и их цвета.');
  const upload=input('','file');upload.hidden=true;upload.accept='.json,application/json';upload.setAttribute('data-library-import','');footerLeft.appendChild(upload);importButton.onclick=()=>upload.click();
+ const recoveryButton=button('◷',footerLeft,undefined,'icon quiet');recoveryButton.setAttribute('aria-label','Резервные копии библиотеки');ui.tip(recoveryButton,'История сохранений на сервере. Восстановление через черновик.');
  const message=el('p','',actions,'ness-status');message.setAttribute('role','status');message.setAttribute('aria-live','polite');
  const close=button(getExtension?.()?.hubChildOpen?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
  let listScroll=0;
@@ -472,7 +474,7 @@ function createLibraryView(D){
  function showEditor(){if(panel.getAttribute('data-view')!=='editor')listScroll=list.scrollTop;panel.setAttribute('data-view','editor');form.scrollTop=0;}
   function selection(n){count.textContent='Выбрано: '+n;bulk.hidden=n===0;}
  function counts(all,visible){total.textContent=String(all);resultCount.textContent=visible===all?'Персонажей: '+all:'Найдено: '+visible+' из '+all;}
- resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkTags,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton,layoutList,layoutGrid};
+ resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkTags,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton,layoutList,layoutGrid,recoveryButton};
 }
 
 // Module: library_store
@@ -546,7 +548,7 @@ function validateMasterLibrary(input,{copy=true,preserveCurrent=false}={}){
  data.organizer={version:3,tags,characters,filterTagId};
  return data;
 }
-function masterLibraryRaw(){return SillyTavern.getContext()?.extensionSettings?.variables?.global?.[MASTER_LIBRARY_KEY]??'';}
+function masterLibraryRaw(){return libraryStore?libraryStore.raw:(SillyTavern.getContext()?.extensionSettings?.variables?.global?.[MASTER_LIBRARY_KEY]??'');}
 function loadMasterLibrary(){
  const raw=masterLibraryRaw();
  if(!raw)return validateMasterLibrary({version:1,personas:{},characters:{}});
@@ -567,15 +569,17 @@ async function saveMasterLibrary(input,expectedRaw,{preserveUserFields=false}={}
  if(!preserveUserFields)for(const {id,group,entry} of libraryEntries(data))data[group][id]=prepareBodyAppearance(entry);
  if(preserveUserFields)validateMasterLibrary(data,{preserveCurrent:true});
  // A no-op Save must not rewrite metadata or generate a new backup.
- if(typeof expectedRaw==='string'&&expectedRaw===JSON.stringify(data))return {data,raw:expectedRaw};
- data.savedAt=new Date().toISOString();data.catalogRevision=(Number(data.catalogRevision)||0)+1;
+ if(typeof expectedRaw==='string'&&expectedRaw===JSON.stringify(data)){if(libraryStore)await libraryStore.commit(expectedRaw,expectedRaw);return {data,raw:expectedRaw};}
+ const old=expectedRaw?(typeof expectedRaw==='string'?JSON.parse(expectedRaw):expectedRaw):null;
+ data.savedAt=new Date().toISOString();data.catalogRevision=Math.max(Number(data.catalogRevision)||0,Number(old?.catalogRevision)||0)+1;
  st.extensionSettings.variables||={};const global=st.extensionSettings.variables.global||={};
  const keys=[MASTER_LIBRARY_KEY,MASTER_SNAPSHOT_KEY,MASTER_BACKUP_KEY],previous=new Map(keys.map(k=>[k,global[k]]));
  const serialized=JSON.stringify(data);
+ if(libraryStore)await libraryStore.commit(serialized,expectedRaw);
  if(expectedRaw)global[MASTER_BACKUP_KEY]=typeof expectedRaw==='string'?expectedRaw:JSON.stringify(expectedRaw);
  global[MASTER_LIBRARY_KEY]=serialized;global[MASTER_SNAPSHOT_KEY]=librarySnapshot(data);
  try{await st.saveSettingsDebounced();}
- catch(e){if(global[MASTER_LIBRARY_KEY]===serialized)for(const [k,v] of previous){if(v===undefined)delete global[k];else global[k]=v;}throw e;}
+ catch(e){if(libraryStore){console.warn('[SP Imagen] legacy settings mirror:',e);return {data,raw:serialized};}if(global[MASTER_LIBRARY_KEY]===serialized)for(const [k,v] of previous){if(v===undefined)delete global[k];else global[k]=v;}throw e;}
  return {data,raw:serialized};
 }
 function newLibraryId(prefix,existing){
@@ -613,6 +617,7 @@ let guideOpenFirstRecord = () => false;
 async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
+ await libraryStore?.refresh();
  let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
  // Opening a library after an extension update must never write to storage.
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
@@ -770,7 +775,7 @@ async function openLibraryEditor(){
     const backup=SillyTavern.getContext()?.extensionSettings?.variables?.global?.[MASTER_BACKUP_KEY];
     try{
      const previous=typeof backup==='string'?JSON.parse(backup):backup;
-     const candidate=previous?.[group]?.[id]?.libraryIconData||'';
+     const candidate=(libraryStore?.history||[]).map(raw=>{try{const x=JSON.parse(raw);return (x.personas?.[id]||x.characters?.[id])?.libraryIconData;}catch{return '';}}).find(Boolean)||previous?.[group]?.[id]?.libraryIconData||'';
      return typeof candidate==='string'&&/^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(candidate)?candidate:'';
     }catch{return '';}
    })(),
@@ -785,6 +790,7 @@ async function openLibraryEditor(){
      else delete stored[group][id].libraryIconData;
      const result=await saveMasterLibrary(stored,savedRaw,{preserveUserFields:true});
      baseline=result.raw;
+     applyCommittedIcon(draft,id,data,result.data);
      if(data)entry.libraryIconData=data;
      else delete entry.libraryIconData;
      if(editor?.id===id){
@@ -1033,6 +1039,18 @@ async function openLibraryEditor(){
  view.add.onclick=()=>{if(!tryFlush())return;const id=newLibraryId('character',new Set(libraryEntries(draft).map(e=>e.id)));draft.characters[id]={name:'Новый персонаж',aliases:[],base:''};changed(true);editCharacter(id,'characters');};
  const upload=view.upload;
  upload.onchange=async()=>{if(busy||!upload.files?.[0]||!tryFlush())return;setBusy(true);try{const value=validateMasterLibrary(JSON.parse((await upload.files[0].text()).replace(/^\uFEFF/,'')),{preserveCurrent:true});editor?.visibility?.closeBoard?.();draft=value;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Импортировано в черновик. Нажми «Сохранить».');}catch(e){status('Импорт не выполнен: '+e.message);}finally{upload.value='';setBusy(false);}};
+ view.recoveryButton.onclick=async()=>{
+  if(busy||!tryFlush())return;setBusy(true);
+  try{
+   await libraryStore?.refresh();if(libraryStore&&libraryStore.raw!==baseline)throw Error('Библиотека изменилась. Открой редактор заново.');
+   const dialog=createNessChildDialog(document,panel,{title:'Резервные копии библиотеки'}),versions=libraryStore?.history||[];
+   if(!versions.length)el('p','Пока нет предыдущих сохранений.',dialog.body,'ness-note');
+   for(const raw of versions){const data=validateMasterLibrary(JSON.parse(raw),{preserveCurrent:true});const row=el('div',undefined,dialog.body,'ness-row');el('span',(data.savedAt?new Date(data.savedAt).toLocaleString():'Без даты')+' · '+libraryEntries(data).length+' записей · '+libraryEntries(data).filter(x=>x.entry.libraryIconData).length+' иконок',row);
+    button('В черновик',row,()=>{if(dirty&&!window.confirm('Заменить несохранённый черновик этой копией?'))return;editor?.visibility?.closeBoard?.();draft=data;editor=null;selected.clear();view.resetEditor();changed(true);renderTags();renderList();status('Резервная копия в черновике. Нажми «Сохранить» для восстановления.');dialog.finish();});
+   }
+   button('Закрыть',dialog.actions,dialog.finish);
+  }catch(e){status(e.message);}finally{setBusy(false);}
+ };
  view.exportButton.onclick=()=>{if(!tryFlush())return;try{const url=URL.createObjectURL(new Blob([JSON.stringify(validateMasterLibrary(draft,{preserveCurrent:true}),null,2)],{type:'application/json'})),a=el('a');a.href=url;a.download='SP_IMAGEN_LIBRARY.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status(e.message);}};
  search.oninput=()=>{if(searchTimer!==null)clearTimeout(searchTimer);searchTimer=setTimeout(searchNow,140);};search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchNow();}};renderTags();renderList();
  status(libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
@@ -1062,6 +1080,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.58',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.59',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }

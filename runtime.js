@@ -18,7 +18,7 @@ import { normalizeAppearanceRules, normalizeAppearanceRanges, normalizeAppearanc
 import { hasSkinSelections, skinAppearanceInstruction, insertSkinAppearance } from './appearance-board.js';
 import { prepareBodyAppearance } from './legacy-body-migration.js';
 // Single resolver for editable system instructions. Original text lives in code-prompts.js.
-export function createSpImagenRuntime({ getExtension, getMediaSlots } = {}){
+export function createSpImagenRuntime({ getExtension, getMediaSlots, libraryStore } = {}){
 const codePrompt = key => getExtension?.()?.getCodePrompt?.(key) || CODE_PROMPT_DEFAULTS[key] || '';
 async function openLibrary(){return await spImagenExtension().openLibrary();}
 // Module: wardrobe
@@ -1510,7 +1510,7 @@ function validateMasterLibrary(input,{copy=true}={}){
  data.organizer={version:3,tags,characters,filterTagId};
  return data;
 }
-function masterLibraryRaw(){return SillyTavern.getContext()?.extensionSettings?.variables?.global?.[MASTER_LIBRARY_KEY]??'';}
+function masterLibraryRaw(){return libraryStore?libraryStore.raw:(SillyTavern.getContext()?.extensionSettings?.variables?.global?.[MASTER_LIBRARY_KEY]??'');}
 function loadMasterLibrary(){
  const raw=masterLibraryRaw();
  if(!raw)return validateMasterLibrary({version:1,personas:{},characters:{}});
@@ -1520,6 +1520,7 @@ function loadMasterLibrary(){
 // Module: prepare_rp
 const nessGenerationTargets=new WeakMap();
 async function prepareRp(kind,targetIndex=null,includeText=true){
+await libraryStore?.refresh();
 validateKind(kind);
 includeText=pageTextEnabled(kind,includeText);
 
@@ -1672,6 +1673,7 @@ async function reviewScene(providedProgress=null){
  reviewLocks.add(chat);try{return await reviewSceneDialog(providedProgress);}finally{reviewLocks.delete(chat);}
 }
 async function reviewSceneDialog(providedProgress=null){
+ await libraryStore?.refresh();
 
   const st = SillyTavern.getContext();
   if (!st?.chatMetadata || typeof document === 'undefined')
@@ -1966,6 +1968,7 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
 // Module: prepare_library
 const nessPreparedVisibility=new WeakMap();
 async function prepareLibrary(){
+await libraryStore?.refresh();
 
 const st=SillyTavern.getContext(),v=st.chatMetadata.variables;
 if(v.sp_imagen_preview_status!=='approved'||!v.sp_imagen_run_ticket)throw Error('Сначала подтвердите данные');
@@ -2038,6 +2041,7 @@ async function prepareNpc({isActive=()=>true}={}){
  try{return await job.promise;}finally{if(npcJobs.get(st.chat)===job)npcJobs.delete(st.chat);}
 }
 async function runNpcRequest(st,scene,isActive){
+ await libraryStore?.refresh();
  const v=st.chatMetadata.variables||={},chat=st.chat,chatId=st.chatId;
  v.sp_imagen_npc_draft=null;v.sp_imagen_npc_status='';
  const current=()=>SillyTavern.getContext().chat===chat&&SillyTavern.getContext().chatId===chatId&&isActive();
