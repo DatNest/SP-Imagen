@@ -7,7 +7,7 @@ const board=readFileSync(new URL('../appearance-board.js',import.meta.url),'utf8
 const shared=readFileSync(new URL('../shared-ui-css.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
 
-function virtualListHarness(columns=()=>1){
+function virtualListHarness(columns=()=>1,{clampDuringClear=false,source=lib}={}){
  const tasks=[];
  let resize;
  const browser={
@@ -26,12 +26,12 @@ function virtualListHarness(columns=()=>1){
  });
  const createUiKit=()=>({
   el:(tag,content,parent)=>{const node=createElement();parent.appendChild(node);return node;},
-  clear:node=>{node.children.length=0;}
+  clear:node=>{node.children.length=0;if(clampDuringClear)container.scrollTop=0;}
  });
- const start=lib.indexOf('function createVirtualList(');
- const end=lib.indexOf('\n\n// Module: dialogs',start);
+ const start=source.indexOf('function createVirtualList(');
+ const end=source.indexOf('\n}\n',start)+2;
  assert.ok(start>=0&&end>start,'Use the actual virtual list implementation');
- const createVirtualList=new Function('createUiKit','window',lib.slice(start,end)+'\nreturn createVirtualList;')(createUiKit,browser);
+ const createVirtualList=new Function('createUiKit','window',source.slice(start,end)+'\nreturn createVirtualList;')(createUiKit,browser);
  const container=createElement();
  container.scrollTop=0;
  container.clientHeight=340;
@@ -93,8 +93,8 @@ test('Camera ribbon restores its position after buttons and selection count badg
 test('ResizeObserver changes only calculated visible window, not user library data',()=>{
  const start=lib.indexOf('function createVirtualList('),end=lib.indexOf('\n\n// Module: dialogs',start);
  const virtual=lib.slice(start,end);
- assert.match(virtual,/function refresh\(\)\{[^}]*paint\(\);/);
- assert.doesNotMatch(virtual,/function refresh\(\)\{[^}]*paint\(true\)/);
+ assert.match(virtual,/function refresh\(force=false\)/);
+ assert.match(virtual,/new Observer\(\(\)=>refresh\(\)\)/);
  assert.doesNotMatch(virtual,/saveMasterLibrary|extensionSettings|writeBaseState|writeNsfwState/);
  assert.match(lib,/virtualList\.setItems\(entries,\{reset\}\)/);
 });
@@ -125,4 +125,28 @@ test('Desktop and mobile use one view, avatar data and the original editor draft
  assert.match(lib,/const back=button\('←',heading,\(\)=>\{if\(!tryFlush\(\)\)return;[^}]*view\.resetEditor\(\);renderList\(\);/);
  assert.match(lib,/toolBar\.insertBefore\(formatStrip,inlineBoard\.historyHost\)/);
  assert.match(lib,/headingBar\.hidden=true/);
+});
+
+test('Both virtual lists restore the real scroll offset after browser clamps an emptied list',()=>{
+ const runtime=readFileSync(new URL('../runtime.js',import.meta.url),'utf8');
+ for(const source of [lib,runtime]){
+  const ui=virtualListHarness(()=>1,{clampDuringClear:true,source}),items=Array.from({length:500},(_,i)=>i);
+  ui.list.setItems(items);ui.scrollTo(68*200);
+  assert.equal(ui.container.scrollTop,68*200);
+  ui.list.setItems([...items,500,501]);assert.equal(ui.container.scrollTop,68*200);
+  ui.scrollTo(68*350);assert.equal(ui.container.scrollTop,68*350);
+  ui.list.setItems(items.slice(0,220));assert.equal(ui.container.scrollTop,220*68-340);
+  ui.list.setItems(items);assert.equal(ui.container.scrollTop,220*68-340);
+  ui.list.setItems(items,{reset:true});assert.equal(ui.container.scrollTop,0);
+  ui.list.dispose();
+ }
+});
+test('Roster updates preserve search position; only explicit search resets it',()=>{
+ const runtime=readFileSync(new URL('../runtime.js',import.meta.url),'utf8');
+ const picker=runtime.slice(runtime.indexOf('function createChatCastPicker('),runtime.indexOf('function confirmKeepingDraft('));
+ assert.match(picker,/function renderResults\(reset=false\)/);
+ assert.match(picker,/list\.setItems\(available,\{reset\}\)/);
+ assert.match(picker,/addBox\.ontoggle=\(\)=>renderResults\(\)/);
+ assert.match(picker,/setTimeout\(\(\)=>renderResults\(true\),140\)/);
+ assert.doesNotMatch(picker,/list\.setItems\(\[\]\)/);
 });
