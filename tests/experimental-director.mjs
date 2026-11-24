@@ -444,3 +444,13 @@ test('Page instructions are direct, sectioned and contain no assembly commentary
   else assert.match(direct,/bubbles and lettering MUST both be empty arrays/);
  }
 });
+
+test('All test directors prioritize compact visual information while retaining essential details',()=>{
+ for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
+  const prompt=experimentalDirectorPrompt(kind,{includeText});
+  assert.equal(prompt.split('Maximize distinct visual information per token in all descriptive fields.').length-1,1);
+  assert.ok(prompt.includes('Use compact, precise tags for individual visual traits and short natural-language phrases for composition, spatial relationships and interactions.'));
+  assert.ok(prompt.includes('retaining essential panel and speaker anchors'));
+  assert.ok(prompt.includes('Preserve all relevant visual specifics, supplied library markers and exact printed words.'));
+ }
+});
