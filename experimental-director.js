@@ -1,21 +1,22 @@
 import { SP_IMAGEN_PROMPTS } from './official-prompts.js';
-/** Experimental one-call director. JS assembles all final NovelAI section separators. */
+/** Built-in one-call JSON director. JS assembles all final NovelAI section separators. */
 export const EXPERIMENTAL_DIRECTOR_IDS=Object.freeze({custom_test_snapshot:'snapshot',custom_test_comic:'comic',custom_test_story_page:'story_page'});
 const TITLES={snapshot:'Snapshot',comic:'Comic',story_page:'Story Page'};
 const SUBJECTS=['boy','girl','cat','dog','other'];
 const RATIOS=new Set(['1:1','2:3','3:2','9:16']);
-const fail=reason=>{throw new Error('Тестовый режиссёр: '+reason+'. NovelAI не запускался, ответ режиссёра сохранён.');};
+const fail=reason=>{throw new Error('Режиссёр: '+reason+'. NovelAI не запускался, ответ режиссёра сохранён.');};
 const check=(valid,reason)=>{if(!valid)fail(reason);};
 export const isExperimentalDirectorId=id=>Object.hasOwn(EXPERIMENTAL_DIRECTOR_IDS,String(id||''));
 export function experimentalProfileFor(id){
- if(!isExperimentalDirectorId(id))return null;
- const kind=EXPERIMENTAL_DIRECTOR_IDS[id];
- return {id,name:'🧪 '+TITLES[kind],kind,experimental:true,visible:true,parser:{posts:null,instructions:'',options:{
+ if(!isExperimentalDirectorId(id)&&!Object.hasOwn(TITLES,id))return null;
+ const kind=EXPERIMENTAL_DIRECTOR_IDS[id]||id;
+ return {id,name:TITLES[kind],kind,structured:true,visible:true,parser:{posts:null,instructions:'',options:{
   includeScene:true,includeCharacters:true,includeWardrobe:true,includeComposition:true,useDialogueSettings:true,useArtStyle:true,useNegativePrompt:true
  }}};
 }
 const VISUAL_DENSITY="Use compact, precise tags and short natural-language phrases. Preserve all relevant visual specifics, supplied library markers and exact printed words.";
 const ACTION_TAGS="ACTION TAGS\nEnd each interacting character's action field with applicable NovelAI Action Tags, separated by commas. Use Action Tags exclusively for interactions between living characters. Describe interactions with objects, props and surroundings using regular visual tags or short phrases.\nUse paired source#action and target#action for directional interactions, or mutual#action in both participants' entries for reciprocal interactions.\nExamples: source#hug / target#hug; mutual#hug / mutual#hug.\nMatch tags to established visible interactions, participant roles and physical contact. Specify interaction partners and relevant panels through concise natural-language descriptions. Use each applicable Action Tag once per character. Reserve # exclusively for Action Tag syntax.";
+const WARDROBE_FIDELITY="CURRENT WARDROBE contains authoritative, ready-to-use garment descriptions. Copy every visible English clothing fragment verbatim, preserving wording, order, punctuation, weights and emphasis syntax. Translate Russian or other non-English clothing fragments faithfully into English, preserving every visible detail, order and emphasis syntax. Omit only complete fragments outside the visible crop or concealed by other garments. Describe established changes in garment state and movement in action. Source fidelity takes priority over conciseness.";
 const CORE=[
  'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object matching the structure and descriptive approach of the SAMPLE. Maximize distinct visual information per token in all descriptive fields. '+VISUAL_DENSITY,
  'JSON schema:',
@@ -24,7 +25,7 @@ const CORE=[
  'opening: illustration or page format and panel count. The extension calculates subject counts.{{OPENING_RULE}}',
  'scene: stage the complete visual composition. For each panel, establish its place on the page, camera, visible setting, participants’ relative positions, and the central action or interaction connecting them. Keep clear spatial anchors for the characters and their shared interaction.{{PANEL_RULE}}',
  'borders: design the actual visible frames around panels, including the edges, outline weight, ink; add decorative pattern or physical decorations to the border if composition welcomes it, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence. Use one compact sentence for it.',
- 'characters: one entry per physically present participant. subject is boy, girl, cat, dog or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action. Describe visible details rather than poetic surplus.{{CHARACTER_RULE}}',
+ 'characters: one entry per physically present participant. subject is boy, girl, cat, dog or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe: '+WARDROBE_FIDELITY+' action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action. Describe visible details rather than poetic surplus.{{CHARACTER_RULE}}',
  ACTION_TAGS,
  '{{BUBBLE_RULE}}',
  '{{LETTERING_RULE}}',
@@ -36,7 +37,7 @@ const PAGE=[
  'SOURCE AND CONTINUITY\nUse established RP events, current clothing and its visible state, character identities, and composition requests. Preserve continuity of anatomy, contact, props, and relative positions. Write visual descriptions in English and reproduce selected visible text verbatim in its original language.',
  'PAGE AND PANELS\n{{PAGE_RULE}} Compose expressive panels with purposeful crops, clear reading order, varied framing and scene-appropriate lighting. Use close or medium views for expressions and interaction; widen for spatial clarity or established action.\nopening: page type, panel count and relevant scene tags.\nscene: one string, with an overall short informative location, lighting and atmosphere description; then Panel 1:, Panel 2:, and subsequent consecutive labels in reading order, separated by semicolons. For each panel, describe its position on the page, camera angle and crop, visible exterior/interior, named participants and their relative positions to each other, and central shared interaction. Keep scene staging spatially coherent across panels.{{BEAT_RULE}} Keep attention directed toward people, objects or events within the scene. Describe visible details appropriate to the crop rather than poetic surplus.',
  'PAGE DESIGN\nborders: a mandatory non-empty description of visible panel silhouettes, edge irregularities, line weight, ink color or material, inset edges, gutter width and color, outer margins and scene-appropriate ornaments. Describe the neutral decorative page surface outside and between panels, including its color, material and texture. Match the page design to the composition and mood; preserve clear faces, hands, contact points, balloons and reading order. Keep page graphics distinct from the fictional scenery inside the panels. Use one or two short sentences of compact descriptions for borders and space in between them.',
- 'CHARACTERS\ncharacters: one entry per distinct visible participant, in order of first appearance. subject: boy, girl, cat, dog or other. name: exact character or library Prompt name. appearance: use the supplied NESS_VIS and NESS_SKIN markers where applicable; otherwise give established visible identifying traits. wardrobe: current visible clothing and its established state. action: panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details, and named physical interactions. Reference the panel and position established in scene. Keep each character’s details in their own entry.',
+ 'CHARACTERS\ncharacters: one entry per distinct visible participant, in order of first appearance. subject: boy, girl, cat, dog or other. name: exact character or library Prompt name. appearance: use the supplied NESS_VIS and NESS_SKIN markers where applicable; otherwise give established visible identifying traits. wardrobe: '+WARDROBE_FIDELITY+' action: panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details, and named physical interactions. Reference the panel and position established in scene. Keep each character’s details in their own entry.',
  ACTION_TAGS,
  '{{TEXT_POLICY}}',
  'OUTPUT\nUse all SAMPLE fields with their shown JSON types; use empty arrays for absent entries. Keep text and speech bubble tags, cast counts, Text: and pipe separators out of descriptive fields. Return valid JSON only.'
@@ -75,8 +76,8 @@ function snapshotSample(includeText){
   scene:'Cozy cafe interior, sunny afternoon, warm natural window light; eye-level medium two-shot, Alex seated on the left facing Rita on the right, small wooden table between them, holding hands beside two ceramic mugs, handwritten chalkboard menu in the background, soft window reflections',
   borders:'',bubbles:[],
   characters:[
-   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:'blue knitted sweater',action:'leaning forward, relaxed shoulders, gentle smile, eyes on Rita, right hand clasping her left hand on the table, mutual#holding hands'},
-   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream cardigan',action:"slightly tilted head, warm smile, rosy cheeks, looking into Alex's eyes, left hand clasping his right hand, right hand holding a ceramic mug, mutual#holding hands"}
+   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:'blue cable-knit wool sweater, ribbed cuffs, crew neck',action:'leaning forward, relaxed shoulders, gentle smile, eyes on Rita, right hand clasping her left hand on the table, mutual#holding hands'},
+   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream button-front cardigan, scalloped collar, pearl buttons',action:"slightly tilted head, warm smile, rosy cheeks, looking into Alex's eyes, left hand clasping his right hand, right hand holding a ceramic mug, mutual#holding hands"}
   ],
   lettering:includeText?[{panel:1,design:'small handwritten inscription on the background chalkboard, white chalk lettering',words:'Coffee'}]:[]
  },null,2);
@@ -94,14 +95,14 @@ function pageSample(kind,includeText,maxLines,maxWords) {
    ...(second?[{panel:2,speaker:'Rita',design:'small softly rounded cream balloon beside Rita, delicate sepia outline, clear dark lettering',words:maxWords>=2?'Какая прелесть!':'Спасибо!'}]:[])
   ]:[],
   characters:[
-   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:story?'blue knitted sweater':'blue sweater',action:story?'Panel 1: facing Rita, right hand extending the bouquet toward her, gentle slightly nervous smile, eyes on her face; Panel 2: receiving Rita’s embrace, surprised warm smile, relaxed arms, target#hug':'Panel 1: '+(first?'speaking to Rita, ':'')+'gentle smile, eyes on Rita, arms around her waist, mutual#hug'},
-   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream cardigan',action:story?'Panel 1: widened eyes, surprised smile, both hands reaching toward the bouquet; Panel 2: holding the received daisies in her left hand, right arm around Alex’s shoulders, rosy cheeks, delighted smile, source#hug':'Panel 1: facing Alex, attentive expression, arms around his shoulders; Panel 2: smiling toward Alex, mutual#hug'}
+   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:'blue cable-knit wool sweater, ribbed cuffs, crew neck',action:story?'Panel 1: facing Rita, right hand extending the bouquet toward her, gentle slightly nervous smile, eyes on her face; Panel 2: receiving Rita’s embrace, surprised warm smile, relaxed arms, target#hug':'Panel 1: '+(first?'speaking to Rita, ':'')+'gentle smile, eyes on Rita, arms around her waist, mutual#hug'},
+   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream button-front cardigan, scalloped collar, pearl buttons',action:story?'Panel 1: widened eyes, surprised smile, both hands reaching toward the bouquet; Panel 2: holding the received daisies in her left hand, right arm around Alex’s shoulders, rosy cheeks, delighted smile, source#hug':'Panel 1: facing Alex, attentive expression, arms around his shoulders; Panel 2: smiling toward Alex, mutual#hug'}
   ],
   lettering:[]
  },null,2);
 }
 export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,maxLines=2,maxWords=10}={}){
- check(Object.values(EXPERIMENTAL_DIRECTOR_IDS).includes(kind),'Неизвестный тестовый формат');
+ check(Object.values(EXPERIMENTAL_DIRECTOR_IDS).includes(kind),'Неизвестный формат');
  const page=kind!=='snapshot', allowBubbles=page&&includeText&&maxLines>0;
  if(page){
   const textRules=includeText?[
@@ -152,7 +153,7 @@ function parseJSON(raw){
   s=s.replace(new RegExp('^'+String.fromCharCode(96,96,96)+'(?:json)?\\s*\\r?\\n','iu'),'');
   s=s.replace(new RegExp('\\r?\\n'+String.fromCharCode(96,96,96)+'\\s*$','u'),'').trim();
  }
- try{return JSON.parse(s);}catch(cause){throw new Error('Тестовый режиссёр вернул повреждённый JSON. NovelAI не запускался; исходный ответ сохранён.',{cause});}
+ try{return JSON.parse(s);}catch(cause){throw new Error('Режиссёр вернул повреждённый JSON. NovelAI не запускался; исходный ответ сохранён.',{cause});}
 }
 const boundary=s=>String(s).trim().replace(/[;\s]+$/u,'');
 // Only explicitly numbered panels have a safe insertion boundary. Keep older
@@ -228,7 +229,7 @@ export function normalizeExperimentalDirectorSlots(source){
 
 export function parseExperimentalDirector(raw,{kind='comic',includeText=true,maxLines=null,maxWords=null}={}){
  const base=EXPERIMENTAL_DIRECTOR_IDS[kind]||kind;
- check(['snapshot','comic','story_page'].includes(base),'Неизвестный тестовый профиль');
+ check(['snapshot','comic','story_page'].includes(base),'Неизвестный профиль');
  const normalized=normalizeExperimentalDirectorSlots(parseJSON(raw));
  const {data}=normalized;
  check(data&&typeof data==='object'&&!Array.isArray(data)&&data.schema==='sp-imagen-slots-v1','Требуется JSON со schema sp-imagen-slots-v1');

@@ -1,6 +1,6 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
 import { resolveImageStyle } from './image-style-selection.js';
-import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles } from './profiles.js';
+import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles, promoteBuiltInProfiles, primaryProfileId, isStructuredDirectorPrompt } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
 import { eventSource, event_types } from '../../../../script.js';
@@ -10,7 +10,6 @@ import { createSpImagenRuntime } from './runtime.js';
 import { createSpImagenLibraryRuntime } from './library-runtime.js';
 import { installSpImagenMediaSlots } from './media-slots.js';
 import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
-import { SP_IMAGEN_NO_TEXT_DIRECTORS } from './no-text-directors.js';
 import { pageTextEnabled } from './page-text-mode.js';
 import { experimentalProfileFor, experimentalDirectorPrompt } from './experimental-director.js';
 import { decidePromptUpdate } from './update-policy.js';
@@ -20,7 +19,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.44';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.55';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -97,9 +96,9 @@ function settings() {
     value.codePrompts ??= {};
     value.customProfiles ??= [];
     value.activeProfiles ??= {};
-    value.experimentalModeEnabled ??= false;
     const migrated=migrateLegacyProfiles(value);
-    if(migrated)context().saveSettingsDebounced?.();
+    const promoted=promoteBuiltInProfiles(value);
+    if(migrated||promoted)context().saveSettingsDebounced?.();
     return value;
 }
 
@@ -352,7 +351,7 @@ function openPromptJsonTransfer() {
     const toolbar = document.createElement('div');
     toolbar.className = 'spi-dialog-actions spi-transfer-toolbar';
     const pick = button('Выбрать файл .json', toolbar, () => upload.click());
-    button('Экспорт текущих', toolbar, () => downloadPromptJson('SP_IMAGEN_prompts.json', createPromptJson(settings().prompts)));
+    button('Экспорт текущих', toolbar, () => downloadPromptJson('SP_IMAGEN_prompts.json', createPromptJson(builtInDirectorTemplates())));
     button('Шаблон JSON (test)', toolbar, () => downloadPromptJson('SP_IMAGEN_prompts_TEMPLATE.json', createPromptJson({}, { template: true })));
     const label = document.createElement('label');
     label.className = 'spi-json-label';
@@ -407,8 +406,11 @@ function openPromptJsonTransfer() {
     dialog.append(intro, upload, toolbar, label, status, actions);
 }
 
+function builtInDirectorTemplates(){
+    return Object.fromEntries(Object.keys(PROFILE_LABELS).map(key=>[key,experimentalDirectorPrompt(key.replace(/^sp_ness_(snapshot|comic|story_page)_director$/,'$1'))]));
+}
 function openPromptWindow(name) {
-    const prompt = settings().prompts[name] || shippedPrompt(name);
+    const prompt = builtInDirectorTemplates()[name];
     if (!prompt) return toastr.error(`Профиль ${PROFILE_LABELS[name] || name} не найден.`, 'SP Imagen');
     const { dialog, close } = shell(`SP Imagen · ${PROFILE_LABELS[name]} (только чтение)`, 'spi-prompt-window', { back: true });
     const area = document.createElement('textarea');
@@ -466,11 +468,11 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         button('Просмотр',actions,()=>openPromptWindow(key)).classList.add('spi-profile-action');
         const copyHelp=document.createElement('div');actions.append(copyHelp);
         button('Создать копию',copyHelp,()=>openCustomProfileEditor(null,renderCustom,{
-            name:'Копия · '+label,kind,directorPrompt:settings().prompts[key]||shippedPrompt(key),
+            name:'Копия · '+label,kind,directorPrompt:builtInDirectorTemplates()[key],
             visible:true,parser:{posts:null,instructions:'',options:{}},
         }),true).classList.add('spi-profile-action','spi-profile-action-copy');
         helpButton(copyHelp,'Самостоятельная копия '+label,
-            'Создаётся НОВЫЙ независимый профиль, который не заменяет '+label+'. Он получит собственную строку в выборе по звёздочке и отдельную галерею.\n\nИзмени скопированную инструкцию и сохрани. Сразу после сохранения новый профиль доступен для генерации, если включено «Показывать по ✧». Исходный '+label+' продолжает работать без изменений. У копии можно отдельно задать число RP-постов, передаваемые источники и правила разбора.\n\nОбязательные HTML/JSON-маркеры, секции персонажей и Text: лучше сохранять, иначе режиссёр может вернуть непригодный формат.');
+            'Создаётся НОВЫЙ независимый профиль, который не заменяет '+label+'. Он получит собственную строку в выборе по звёздочке и отдельную галерею.\n\nИзмени скопированную инструкцию и сохрани. Сразу после сохранения новый профиль доступен для генерации, если включено «Показывать по ✧». Исходный '+label+' продолжает работать без изменений. У копии можно отдельно задать число RP-постов, передаваемые источники и правила разбора.\n\nСохраняй JSON-схему и её поля: расширение само собирает секции персонажей, бабблы и Text:.');
         row.append(head,actions);list.append(row);
     }
     scroll.append(list);
@@ -552,7 +554,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     backups.style.flexWrap = 'wrap';
     const backupInfo = document.createElement('p'); backupInfo.className = 'spi-status';
     backupInfo.style.flexBasis = '100%';
-    backupInfo.textContent = 'При каждом запуске встроенные инструкции сверяются с текущей версией и восстанавливаются автоматически. Копии доступны для обмена вручную до перезагрузки; личные профили сохраняются.';
+    backupInfo.textContent = 'Встроенные JSON-режиссёры принадлежат текущей версии. Экспорт содержит их актуальные инструкции. Ниже — архивные копии прежних инструкций и системных промптов; их обмен не переключает движок генерации. Личные профили сохраняются.';
     const backupButton = button('◇ Сделать резервную копию промптов', backups, () => {
         try { saveManualPromptBackup(); backupInfo.textContent = 'Копия сохранена. Кнопка обмена меняет старые и текущие промпты местами.'; syncBackupButtons(); }
         catch (error) { backupInfo.textContent = String(error?.message || error); }
@@ -573,7 +575,7 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
         backupInfo.textContent = 'Все встроенные промпты восстановлены. Предыдущую версию можно вернуть через «Моя копия / текущие».';
         syncBackupButtons();
     });
-    resetAll.title = 'Snapshot, Comic, Story Page и все системные code-prompts. Не трогает «Создать профиль».';
+    resetAll.title = 'Архивные инструкции и системные code-prompts. Не меняет JSON-движок и личные профили.';
     function syncBackupButtons() {
         const slots = settings().promptBackups || {};
         manualSwap.disabled = !validPromptSnapshot(slots.manual);
@@ -624,13 +626,13 @@ function openCustomProfileEditor(existing=null,refresh=()=>{},template=null){
     formField(form,'Базовый тип разбора',kind,'Определяет стандартное число постов и доступные настройки Comic/Story Page. Полная инструкция ниже — твоя собственная.');
     const field=document.createElement('textarea');field.className='spi-custom-prompt spi-director-prompt';field.maxLength=100000;field.spellcheck=false;
     field.value=seed.directorPrompt||'';
-    const getTemplate=()=>settings().prompts['sp_ness_'+kind.value+'_director']||shippedPrompt('sp_ness_'+kind.value+'_director');
+    const getTemplate=()=>experimentalDirectorPrompt(kind.value);
     if(!field.value)field.value=getTemplate();
     const templateActions=document.createElement('div');templateActions.className='spi-dialog-actions';
     button('Взять шаблон выбранного типа',templateActions,()=>{if(field.value.trim()&&!confirm('Заменить введённый текст промпта шаблоном '+PROFILE_KINDS[kind.value]+'?'))return;field.value=getTemplate();});
     button('Начать с чистого листа',templateActions,()=>{if(field.value.trim()&&!confirm('Очистить весь текст собственной инструкции режиссёра?'))return;field.value='';field.focus();});
     form.append(templateActions);
-    formField(form,'Полная инструкция собственного режиссёра',field,'Можно редактировать всё. Не удаляй обязательный HTML/JSON-формат, Text: и разделители персонажей, иначе финальный промпт может не обработаться.');
+    formField(form,'Полная инструкция собственного режиссёра',field,'Можно редактировать всё. Сохраняй обязательную JSON-схему. Старые личные HTML-профили сохраняют совместимость.');
     const visible=document.createElement('input');visible.type='checkbox';visible.checked=seed.visible!==false;
     formField(form,'Показывать по ✧',visible,'Когда галочка выключена, профиль скрыт из меню генерации, но его прежние картинки сохраняются.');
     const advanced=document.createElement('details');advanced.className='spi-profile-advanced';advanced.open=false;
@@ -1242,18 +1244,11 @@ function openLastPrompt() {
 }
 
 function getDirector(kind,{includeText=true}={}) {
-    const experiment=experimentalProfileFor(kind);
-    if(experiment)return {name:experiment.name,prompt:experimentalDirectorPrompt(experiment.kind,{includeText}),source:'experimental',baseKind:experiment.kind,structured:true};
+    const builtin=experimentalProfileFor(kind);
+    if(builtin)return {name:builtin.name,prompt:experimentalDirectorPrompt(builtin.kind,{includeText}),source:'bundled',baseKind:builtin.kind,structured:true};
     const personal=profileById(settings(),kind);
-    if(personal)return {name:personal.name,prompt:personal.directorPrompt,source:'custom',baseKind:personal.kind};
-    if(!Object.hasOwn(PROFILE_KINDS,kind))return null;
-    if(!pageTextEnabled(kind,includeText)){
-        const prompt=SP_IMAGEN_NO_TEXT_DIRECTORS[kind];
-        return typeof prompt==='string'&&prompt.trim()?{name:'sp_ness_'+kind+'_no_text_director',prompt,source:'bundled',baseKind:kind}:null;
-    }
-    // Text remains the exact existing editable director, without changes.
-    const name='sp_ness_'+kind+'_director',prompt=settings().prompts[name];
-    return typeof prompt==='string'&&prompt.trim()?{name,prompt,source:'bundled',baseKind:kind}:null;
+    if(personal)return {name:personal.name,prompt:personal.directorPrompt,source:'custom',baseKind:personal.kind,structured:isStructuredDirectorPrompt(personal.directorPrompt)};
+    return null;
 }
 
 async function generateText(_kind, messages, signal) {
@@ -1329,6 +1324,7 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
         settings: requestSettings,
         prompt: config.prompt,
         profileId,
+        baseLettering: config.structuredDirector===true || experimentalProfileFor(profileId)?.id.startsWith('custom_test_') || (!reuseSnapshot && !!experimentalProfileFor(profileId)),
         style: style.value,
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,
@@ -1365,12 +1361,12 @@ async function run(command, kind, request = null) {
         sp_ness_shared_review: () => api.reviewScene(),
         sp_ness_shared_library: () => api.prepareLibrary(),
         sp_ness_npc_prepare: () => api.prepareNpc(),
-        sp_ness_snapshot_scene_parser: () => api.prepareRp('snapshot'),
-        sp_ness_comic_scene_parser: () => api.prepareRp('comic'),
-        sp_ness_story_page_scene_parser: () => api.prepareRp('story_page'),
-        sp_ness_snapshot_render: () => api.renderImage('snapshot'),
-        sp_ness_comic_render: () => api.renderImage('comic'),
-        sp_ness_story_page_render: () => api.renderImage('story_page'),
+        sp_ness_snapshot_scene_parser: () => api.prepareRp(primaryProfileId('snapshot')),
+        sp_ness_comic_scene_parser: () => api.prepareRp(primaryProfileId('comic')),
+        sp_ness_story_page_scene_parser: () => api.prepareRp(primaryProfileId('story_page')),
+        sp_ness_snapshot_render: () => api.renderImage(primaryProfileId('snapshot')),
+        sp_ness_comic_render: () => api.renderImage(primaryProfileId('comic')),
+        sp_ness_story_page_render: () => api.renderImage(primaryProfileId('story_page')),
     };
     const call = calls[command];
     if (!call) throw new Error(`SP Imagen: неизвестная команда ${command}${kind ? ` (${kind})` : ''}.`);
@@ -1437,17 +1433,10 @@ const extensionApi = {
     saveImageStyle,
     getDirector,
     getActiveProfile: kind => experimentalProfileFor(kind)||profileById(settings(),kind),
-    get experimentalModeEnabled(){return settings().experimentalModeEnabled===true;},
-    setExperimentalMode(enabled){
-      settings().experimentalModeEnabled=enabled===true;
-      saveSettings();
-      mediaSlots?.refresh?.();
-      return settings().experimentalModeEnabled;
-    },
     getProfileBaseKind: kind => baseKindFor(settings(),kind),
     getGenerationProfiles: () => generationFormats(settings()),
     getVisibleGenerationProfiles: () => generationFormats(settings(),{visibleOnly:true}),
-    getGenerationProfileLabel: kind => generationFormats(settings()).find(p=>p.id===kind)?.name||'Свой профиль',
+    getGenerationProfileLabel: kind => generationFormats(settings()).find(p=>p.id===kind)?.name||(Object.hasOwn(PROFILE_KINDS,kind)?PROFILE_KINDS[kind]+' · архив':'Свой профиль'),
     getGlobalDirectorRules: () => normalizeProfileStore(settings()).rules.filter(r=>r.enabled),
     getCodePrompt: key => resolveCodePrompt(settings().codePrompts,key),
     generateText,

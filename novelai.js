@@ -107,9 +107,9 @@ function validate(settings, aspectRatio) {
     if (errors.length) throw new Error(errors.join(' '));
 }
 
-function buildParameters(settings, prompt, negativePrompt, aspectRatio, profileId) {
+function buildParameters(settings, prompt, negativePrompt, aspectRatio, profileId, baseLettering) {
     validate(settings, aspectRatio);
-    const positive = splitCharacterPrompts(prompt, profileId === 'custom_test_comic' || profileId === 'custom_test_story_page' || profileId === 'custom_test_snapshot');
+    const positive = splitCharacterPrompts(prompt, baseLettering ?? ['snapshot','comic','story_page','custom_test_snapshot','custom_test_comic','custom_test_story_page'].includes(profileId));
     const medium = settings.model === MEDIUM_MODEL;
     // V5 Full Medium has fixed Undesired Content in NovelAI itself.
     // Do not inject custom/Heavy tags such as 'multiple views' in its payload.
@@ -189,12 +189,12 @@ async function verifyFreeAccess(settings, signal) {
     if (settings.model.startsWith('nai-diffusion-5-') && !regular) throw new Error('Защита Anlas: бесплатный лимит V5 исчерпан или его состояние неизвестно.');
 }
 
-export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', profileId, signal }) {
+export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', profileId, baseLettering, signal }) {
     const settings = resolveRequestSettings(input);
     const fullPrompt = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
     if (!fullPrompt) throw new Error('Промпт изображения пуст.');
     officialNovelAIEndpoint(settings.endpoint);
-    const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio, profileId);
+    const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio, profileId, baseLettering);
     if (settings.neverSpendAnlas) await verifyFreeAccess(settings, signal);
     const response = await fetchWithTimeout(requestUrl(settings), {
         method: 'POST',
