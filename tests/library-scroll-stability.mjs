@@ -71,7 +71,13 @@ test('Virtual row geometry agrees with CSS on desktop and phone, with no margin-
  assert.ok(styledRow,'The original theme-specific row style exists');
  assert.match(styledRow,/\bmargin:0;/);
  assert.doesNotMatch(styledRow,/margin:\s*[1-9]\d*px/, 'Vertical margins must not accumulate across hundreds of rows');
- assert.match(lib,/rowHeight:\(\)=>window\.matchMedia\?\.\('\(max-width:767px\), \(pointer:coarse\)'\)\?\.matches\?80:68/);
+ assert.match(lib,/rowHeight:\(\)=>window\.matchMedia\?\.\('\(max-width:767px\), \(pointer:coarse\)'\)\?\.matches\?96:84/);
+ assert.match(css,/\.ness-library-cell\{box-sizing:border-box;height:84px;min-width:0;padding:0 0 9px/);
+ assert.match(css,/\.ness-library-cell\{height:96px\}/);
+ assert.match(css,/\.ness-library-virtual-rows\{column-gap:10px;row-gap:0/);
+ assert.match(css,/\.ness-library-cell>\.ness-library-item\{[\s\S]*?height:100%!important;min-height:0!important;max-height:100%;[\s\S]*?margin:0!important/);
+ assert.match(lib,/const cell=el\('div',undefined,undefined,'ness-library-cell'\)/);
+ assert.match(lib,/const row=el\('div',undefined,cell,'ness-library-item'\)/);
  assert.match(shared,/#sp-imagen-review-panel \[data-library-list\]\{[^}]*overflow-anchor:none/);
 });
 
