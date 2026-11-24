@@ -601,17 +601,29 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  function addTag(value,insertAt=items().length,sectionId=null){
   const text=String(value||'').trim().replace(/[;,\s]+$/,'').trim();
-  if(!text||readOnly())return false;
+  if(readOnly())return false;
+  if(!norm(text)){warn('Введи название тега.');return false;}
   if(/[,\r\n]/.test(text)){warn('Добавляй по одному тегу.');return false;}
   const existing=items().find(x=>norm(x.text)===norm(text));
   if(existing){warn('Такой тег уже есть в этом режиме.');return false;}
+  const tokens=modeTokens(modeCatalog.modes[mode]);
+  let position;
+  if(sectionId!==null){
+   const start=tokens.findIndex(t=>t.kind==='divider'&&t.id===sectionId);
+   if(start<0){warn('Раздел не найден.');return false;}
+   position=tokens.findIndex((t,i)=>i>start&&t.kind==='divider');
+   if(position<0)position=tokens.length;
+  }else{
+   const index=Math.max(0,Math.min(items().length,insertAt));
+   position=index===items().length?tokens.length:tokens.findIndex(t=>t.kind==='tag'&&t.id===items()[index].id);
+  }
   warn('');record();
   const id='t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-  const tag={id,text},tags=items(),index=Math.max(0,Math.min(tags.length,insertAt));
-  tags.splice(index,0,tag);
-  modeCatalog.modes[mode].sections=sectionsForMode().map(section=>({
-   ...section,before:section.id===sectionId?section.before:section.before>=index?section.before+1:section.before
-  }));
+  const tag={id,text};
+  tokens.splice(position,0,{kind:'tag',...tag});
+  Object.assign(modeCatalog.modes[mode],fromModeTokens(tokens));
+  if(sectionId!==null)collapsed.delete(mode+':'+sectionId);
+  if(filter&&!norm(text).includes(norm(filter)))filter='';
   // Keep the physical source text in the same order as the visible board.
   // Offset-backed camera selections are remapped by reorderBaseTags.
   if(mode==='base'&&appearanceFormat!=='prose'){
@@ -634,11 +646,22 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    if(field){field.focus?.({preventScroll:true});return;}
    field=el('input',undefined,slot,'ness-input ness-tagboard-inline-add-input');
    field.type='text';field.placeholder='Новый тег';field.setAttribute('aria-label','Добавить тег в раздел');
-   field.onkeydown=e=>{
-    if(e.key==='Escape'){e.preventDefault?.();field.remove();plus.hidden=false;plus.focus?.({preventScroll:true});return;}
-    if(e.key==='Enter'){e.preventDefault?.();if(addTag(field.value,indexFor(),sectionId)){field.remove();}}
+   field.setAttribute('enterkeyhint','done');
+   let committed=false;
+   const closeInput=()=>{field.remove();apply.remove();plus.hidden=false;};
+   const commit=()=>{
+    if(committed)return;
+    if(addTag(field.value,indexFor(),sectionId)){committed=true;closeInput();}
+    else field.focus?.({preventScroll:true});
    };
-   field.onblur=()=>{if(!field.value.trim()){field.remove();plus.hidden=false;}};
+   const apply=button('✓',slot,commit,'quiet ness-tagboard-add-confirm');
+   apply.title='Добавить тег';apply.setAttribute('aria-label','Подтвердить добавление тега');
+   field.onkeydown=e=>{
+    if(e.isComposing||e.keyCode===229)return;
+    if(e.key==='Escape'){e.preventDefault?.();e.stopPropagation?.();closeInput();plus.focus?.({preventScroll:true});return;}
+    if(e.key==='Enter'){e.preventDefault?.();e.stopPropagation?.();commit();}
+   };
+   field.onblur=e=>{if(!field.value.trim()&&e?.relatedTarget!==apply)closeInput();};
    plus.hidden=true;field.focus?.({preventScroll:true});
   },'quiet ness-tagboard-add-plus');
   plus.title='Добавить тег здесь';plus.setAttribute('aria-label','Добавить тег здесь');
@@ -1075,7 +1098,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    removeSection.title='Удалить только разделитель';removeSection.setAttribute('aria-label','Удалить разделитель '+token.section.title+', оставить теги');
    const cancelHold=()=>{if(holdTimer!==null){clearTimeout(holdTimer);holdTimer=null;}};
    bar.onpointerdown=e=>{
-    if(e.pointerType==='mouse'||e.target.closest('.ness-section-actions,.ness-tagboard-section-input'))return;
+    if(e.pointerType==='mouse'||e.target.closest('.ness-section-actions,.ness-tagboard-section-input,.ness-tagboard-add-slot'))return;
     held=false;startX=e.clientX;startY=e.clientY;cancelHold();
     holdTimer=setTimeout(()=>{holdTimer=null;held=true;bar.dataset.actionsOpen='true';},520);
    };
