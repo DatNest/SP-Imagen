@@ -707,3 +707,21 @@ test('Hundreds of base tags are indexed once per paint and selection, without re
  assert.equal(rows.find(row=>!row.hidden).dataset.tagId,board.getCatalog().modes.base.tags[249].id);
  assert.equal(board.getCatalog().modes.base.tags.length,250);
 });
+
+test('A previously hidden duplicate skin assignment is shown and can be removed through the actual editor',()=>{
+ const ui=makeUI(),raw={tags:[{id:'first',text:'tiny scar;'},{id:'second',text:'tiny scar'}],selections:{upper_front:['second'],arms:['first']},sections:[]};
+ let state={base,ranges:[],selections:{}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:raw,initialCatalog:{},readBaseState:()=>state,writeBaseState:next=>{state=next;},changed:()=>{},readOnly:()=>false});
+ board.element.querySelectorAll('button').find(b=>b.textContent==='Под одеждой').onclick();
+ const chip=board.element.querySelectorAll('.ness-unified-chip').find(x=>x.textContent.includes('tiny scar'));
+ assert.ok(chip);
+ assert.equal(chip.dataset.highlighted,'true');
+ chip.onclick();
+ const result=board.getSkin();
+ assert.deepEqual(result.selections.upper_front,[]);
+ assert.deepEqual(result.selections.arms,['first']);
+ assert.equal(result.tags.length,1);
+ assert.equal(result.tags[0].text,'tiny scar');
+ board.undo();
+ assert.deepEqual(board.getSkin().selections.upper_front,['first']);
+});

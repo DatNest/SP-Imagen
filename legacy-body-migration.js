@@ -1,16 +1,7 @@
 /**
- * Conservative migration of retired body fields into editable catalogues.
- * Old body text is tokenized into comma/semicolon/newline delimited fragments,
- * preserving their original content and existing skin assignments.
- *
- * Region mapping is intentionally conservative:
- * arms: shoulder/forearm marks
- * legs: thigh/knee/shin marks
- * upper_front: uncovered upper body
- * lower_front: uncovered lower body
- *
- * Do not guess the exact anatomical subregion of arbitrary prose. In particular
- * nudeUpper/nudeLower are NOT automatically put into NSFW chest/genital areas.
+ * Migrate retired body fields into editable, unassigned catalogue entries.
+ * Retain original strings in a non-prompt archive and preserve existing
+ * explicitly selected regions. Never guess visibility of recovered details.
  */
 import { normalizeSkinTags, normalizeAppearanceCatalog } from './appearance-board.js';
 import { NSFW_AREAS } from './appearance-mode-state.js';
