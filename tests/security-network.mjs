@@ -140,3 +140,22 @@ test('Existing gallery version records survive even when previews are blocked',(
  assert.match(source,/frame\.append\(element\('span','external-image-warning'/);
  assert.match(source,/host\.confirm\('Это изображение хранится на внешнем сайте/);
 });
+
+test('Native JSON mode is opt-in and limited to direct structured director calls without retries',async()=>{
+ const previous=globalThis.fetch,calls=[];
+ const input={mode:'direct',endpoint:'https://provider.example/v1',approvedOrigin:'https://provider.example',apiKey:'dummy-test-key',model:'example-model'};
+ const messages=[{role:'system',content:'Return JSON using sp-imagen-slots-v1'},{role:'user',content:'Scene'}];
+ let status=200;
+ globalThis.fetch=async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:status===200,status,json:async()=>({choices:[{message:{content:'{}'}}]})};};
+ try{
+  await generateTextCompletion(input,messages,undefined,null);
+  assert.equal(calls[0].response_format,undefined);
+  await generateTextCompletion({...input,jsonMode:true},messages,undefined,null);
+  assert.deepEqual(calls[1].response_format,{type:'json_object'});
+  await generateTextCompletion({...input,jsonMode:true},[{role:'user',content:'Translate this'}],undefined,null);
+  assert.equal(calls[2].response_format,undefined);
+  status=400;
+  await assert.rejects(generateTextCompletion({...input,jsonMode:true},messages,undefined,null),/HTTP 400/);
+  assert.equal(calls.length,4);
+ }finally{globalThis.fetch=previous;}
+});

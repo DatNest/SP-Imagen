@@ -117,7 +117,7 @@ test('Corrupted, invalid or incomplete model slot JSON is rejected without fabri
  slots=sample();slots.opening='1boy, 1girl, 3 panels';
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots)),/opening/);
  slots=sample();slots.bubbles[0].words='Длинная фраза для ограничения слов';
- assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots),{maxWords:2}),/лимита/);
+ assert.ok(!parseExperimentalDirector(JSON.stringify(slots),{maxWords:2}).config.prompt.includes(slots.bubbles[0].words));
  slots=sample();slots.scene+=' | boy, Fake';
  assert.throws(()=>parseExperimentalDirector(JSON.stringify(slots)),/служебные маркеры/);
  slots=sample();slots.characters.push({...slots.characters[0]});
@@ -512,4 +512,51 @@ test('Wardrobe fidelity is present exactly once in each primary director; transl
  const data=sample();data.characters[0].wardrobe='{{blue cable-knit wool sweater}}, ribbed cuffs, 2::crew neck::';
  const result=parseExperimentalDirector(JSON.stringify(data),{kind:'comic'});
  assert.ok(result.config.prompt.includes(data.characters[0].wardrobe));
+});
+
+test('Dialogue limits select complete lines before assembling bubbles and Text',()=>{
+ const data=sample(),b=data.bubbles[0];
+ data.lettering=[];
+ data.bubbles=[{...b,words:'Слишком много слов для этой реплики'},{...b,words:'Да!'},{...b,words:'Нет!'},{...b,words:'Третья!'}];
+ const raw=JSON.stringify(data),r=parseExperimentalDirector(raw,{maxLines:2,maxWords:1});
+ assert.equal(r.repaired,true);
+ assert.match(r.config.prompt,/\n\nText: Да!\n\nНет!$/);
+ assert.doesNotMatch(r.config.prompt,/Третья!|Слишком много слов|Speech bubble 3:/);
+ assert.equal(JSON.parse(raw).bubbles.length,4);
+ assert.doesNotMatch(parseExperimentalDirector(raw,{maxLines:0}).config.prompt,/Speech bubble \d+:|Text:/);
+});
+test('Plural counts are generated from independent actor entries',()=>{
+ const data=sample(),actor=data.characters.find(x=>x.subject==='boy');
+ data.characters.push({...actor,name:'Another man'});
+ const result=parseExperimentalDirector(JSON.stringify(data)).config.prompt;
+ assert.match(result,/^2boys, 1girl,/);
+ assert.equal((result.match(/\| boy,/g)||[]).length,2);
+});
+test('JSON repair preserves quotes and escapes, rejects incomplete or ambiguous syntax',()=>{
+ const data=sample();data.scene='Alex says "hello", with a path C:\\temp; then a newline\nsecond line';
+ const raw=JSON.stringify(data);
+ const malformed=raw.replace('\\nsecond line','\nsecond line').replace(/\}$/u,',}');
+ const result=parseExperimentalDirector(malformed);
+ assert.equal(result.repaired,true);
+ assert.ok(result.config.prompt.includes(data.scene));
+ assert.throws(()=>parseExperimentalDirector(raw.slice(0,-1)),/JSON/);
+ assert.throws(()=>parseExperimentalDirector(raw.replace('\\"hello\\"','"hello"')),/JSON/);
+ assert.throws(()=>parseExperimentalDirector(raw.replace('"bubbles":[','"bubbles":[,')),/JSON/);
+ for(const kind of ['snapshot','comic','story_page'])assert.match(experimentalDirectorPrompt(kind),/JSON SYNTAX/);
+ assert.match(experimentalDirectorPrompt('comic'),/entire page, across all panels combined/);
+});
+
+test('Page-specific dialogue settings are passed unchanged to director and compiler',()=>{
+ const runtime=read('runtime.js');
+ assert.match(runtime,/const maxLines=baseKind==='comic'\?runtimeSettings\.dialogue\.comicLines:runtimeSettings\.dialogue\.storyLines/);
+ assert.match(runtime,/const maxWords=baseKind==='comic'\?runtimeSettings\.dialogue\.comicWords:runtimeSettings\.dialogue\.storyWords/);
+ assert.match(runtime,/maxLines:useDialogueSettings\?maxLines:8,maxWords:useDialogueSettings\?maxWords:40/);
+ assert.match(runtime,/parseExperimentalDirector\(raw,\{kind:baseKind,includeText,maxLines:useDialogueSettings\?maxLines:null,maxWords:useDialogueSettings\?maxWords:null\}/);
+ for(const kind of ['comic','story_page']){
+  const data=sample();data.lettering=[];data.bubbles=Array.from({length:8},(_,i)=>({...data.bubbles[0],words:'Line '+i}));
+  for(const maxLines of [0,1,3,8]){
+   const result=parseExperimentalDirector(JSON.stringify(data),{kind,maxLines,maxWords:2});
+   assert.equal((result.config.prompt.match(/Speech bubble \d+:/g)||[]).length,maxLines);
+  }
+ }
 });

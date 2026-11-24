@@ -1,7 +1,7 @@
 import { directTextOrigin, requireTrustedDirectEndpoint, credentialRequestOptions } from './security-network.js';
 
 export function defaultTextApiSettings() {
-    return { mode: 'st', profileId: '', endpoint: '', approvedOrigin: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000, streaming: false, jailbreak: false, jailbreakText: '', reasoningMode: 'inherit', reasoningProtocol: 'auto', reasoningEffort: 'medium', reasoningBudget: 4096 };
+    return { mode: 'st', profileId: '', endpoint: '', approvedOrigin: '', apiKey: '', model: '', temperature: 0.2, maxTokens: 16000, streaming: false, jsonMode: false, jailbreak: false, jailbreakText: '', reasoningMode: 'inherit', reasoningProtocol: 'auto', reasoningEffort: 'medium', reasoningBudget: 4096 };
 }
 
 export function normalizeTextApiSettings(value) {
@@ -18,6 +18,7 @@ export function normalizeTextApiSettings(value) {
     if (!Number.isFinite(settings.temperature) || settings.temperature < 0 || settings.temperature > 2) settings.temperature = 0.2;
     if (!Number.isInteger(settings.maxTokens) || settings.maxTokens < 1000 || settings.maxTokens > 100000) settings.maxTokens = 16000;
     settings.streaming = settings.streaming === true;
+    settings.jsonMode = settings.jsonMode === true;
     settings.jailbreak = settings.jailbreak === true;
     settings.jailbreakText = String(settings.jailbreakText || '').slice(0, 10000);
     if (!['inherit','off','effort','budget'].includes(settings.reasoningMode)) settings.reasoningMode = 'inherit';
@@ -209,6 +210,8 @@ export async function generateTextCompletion(input, messages, signal, context = 
     // Reasoning models may reject temperature even when it is supported by
     // their non-thinking sibling. Only send it without a manual reasoning override.
     if(settings.reasoningMode==='inherit')payload.temperature=settings.temperature;
+    // Explicit opt-in for compatible direct Chat Completions endpoints only.
+    if(settings.jsonMode&&messages.some(m=>m.role==='system'&&String(m.content).includes('sp-imagen-slots-v1')))payload.response_format={type:'json_object'};
     const url=chatUrl(settings.endpoint);
     requireTrustedDirectEndpoint(settings.endpoint, settings.approvedOrigin);
     const optionsFetch={
