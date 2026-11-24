@@ -1772,3 +1772,49 @@
  scrollbar-gutter:stable;
 }
 #sp-imagen-review-panel .ness-tagboard-ribbon>.ness-button::after{font-variant-numeric:tabular-nums}
+
+/* Library cards: spacing is inside a fixed-pitch cell, never a virtual-row margin.
+   JS rowHeight and these two pitches must agree, including on touch screens. */
+#sp-imagen-review-panel[data-dialog=library] .ness-library-virtual-rows{column-gap:10px;row-gap:0;min-width:0}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-cell{box-sizing:border-box;height:84px;min-width:0;padding:0 0 9px;overflow:hidden}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-cell>.ness-library-item{
+ box-sizing:border-box;height:100%!important;min-height:0!important;max-height:100%;
+ margin:0!important;padding:7px 10px;gap:10px;
+ border:1px solid color-mix(in srgb,var(--ness-library-line) 40%,transparent)!important;
+ background:color-mix(in srgb,var(--ness-library-card) 72%,var(--ness-bg));
+ border-radius:13px;transition:background-color .12s,border-color .12s;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-cell>.ness-library-item:hover,
+#sp-imagen-review-panel[data-dialog=library] .ness-library-cell>.ness-library-item:focus-within{
+ background:color-mix(in srgb,var(--ness-library-rose) 13%,var(--ness-library-card));
+ border-color:color-mix(in srgb,var(--ness-library-line) 80%,transparent)!important;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-cell>.ness-library-item[data-active=true]{
+ background:color-mix(in srgb,var(--ness-library-rose) 19%,var(--ness-bg));border-color:var(--ness-library-gold)!important;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-row-icon{
+ flex:0 0 50px;width:50px;height:50px;border-radius:10px;
+ border-color:color-mix(in srgb,var(--ness-library-line) 45%,transparent);
+ background:color-mix(in srgb,var(--ness-library-card) 65%,var(--ness-bg));
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-record-title{gap:6px;line-height:1.25}
+#sp-imagen-review-panel[data-dialog=library] .ness-record-name{font-size:16px}
+#sp-imagen-review-panel[data-dialog=library] .ness-record-type{font-family:system-ui,sans-serif;font-size:10px;opacity:.85}
+#sp-imagen-review-panel[data-dialog=library] .ness-record-content{gap:5px}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-count{padding:8px 14px 7px}
+#sp-imagen-review-panel[data-dialog=library] [data-library-list]{padding:0 13px 0}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-tools{padding:8px 13px;gap:6px}
+#sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip{
+ order:1;flex:1 1 160px;width:auto;height:auto;min-height:29px;max-height:59px!important;
+}
+#sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-appearance-rules-trigger{order:2;margin-inline-start:0}
+#sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-editor{order:3}
+#sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-button{min-height:30px;padding:4px 9px}
+@media(max-width:767px),(pointer:coarse){
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-cell{height:96px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-cell>.ness-library-item{padding:6px 8px;gap:7px}
+}
+@container spi-library (max-width:560px){
+ #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip{flex-basis:100%;order:2}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-appearance-rules-trigger{order:1;margin-inline-start:auto}
+}

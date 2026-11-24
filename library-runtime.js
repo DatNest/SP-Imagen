@@ -358,7 +358,7 @@ function createAliasTags(D,values,onChange){
 // Module: virtual_list
 // Keep only the visible rows plus a small scroll buffer in the DOM.
 function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1,mountRow=()=>{}}={}){
- const ui=createUiKit(D),top=ui.el('div',undefined,container),rows=ui.el('div',undefined,container),bottom=ui.el('div',undefined,container);
+ const ui=createUiKit(D),top=ui.el('div',undefined,container),rows=ui.el('div',undefined,container,'ness-library-virtual-rows'),bottom=ui.el('div',undefined,container);
  top.setAttribute('aria-hidden','true');bottom.setAttribute('aria-hidden','true');
  let items=[],start=-1,end=-1,frame=null,disposed=false,previousColumns=1,previousHeight=0,pendingReset=false,forceNext=false;
  const request=typeof window.requestAnimationFrame==='function'?fn=>window.requestAnimationFrame(fn):fn=>setTimeout(fn,16);
@@ -734,7 +734,8 @@ async function openLibraryEditor(){
  }
  const recordTagScroll=new Map();
  function renderLibraryRow({id,group,entry}){
-  const row=el('div',undefined,undefined,'ness-library-item');row.setAttribute('data-active',String(editor?.id===id));
+  const cell=el('div',undefined,undefined,'ness-library-cell');
+  const row=el('div',undefined,cell,'ness-library-item');row.setAttribute('data-active',String(editor?.id===id));
   const cb=el('input',undefined,row);cb.type='checkbox';cb.checked=selected.has(id);cb.disabled=busy;cb.setAttribute('data-library-id',id);cb.setAttribute('aria-label','Выбрать '+entry.name+' для действий');cb.onclick=e=>e?.stopPropagation?.();
   cb.onchange=()=>{if(cb.checked)selected.add(id);else selected.delete(id);view.selection(selected.size);renderBulkTags();};
   const portrait=el('span',undefined,row,'ness-library-row-icon');portrait.setAttribute('aria-hidden','true');
@@ -747,11 +748,11 @@ async function openLibraryEditor(){
   tags.addEventListener('scroll',()=>{if(tags.isConnected&&tags.clientWidth)recordTagScroll.set(id,tags.scrollLeft);},{passive:true});
   const add=el('button','+',tags,'ness-tag-add');add.type='button';add.disabled=busy;add.setAttribute('aria-label','Назначить теги: '+entry.name);add.setAttribute('data-row-tags',id);add.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,add);};
   for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){const chip=el('button',tag.name,tags,'ness-tag-badge');chip.type='button';chip.style.setProperty('--ness-tag-color',tag.color);chip.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,chip);};}
-  return row;
+  return cell;
  }
  let listLayout='grid';try{if(window.localStorage?.getItem('sp-imagen-library-layout')==='list')listLayout='list';}catch{}
  const updateListLayout=()=>{view.layoutList.setAttribute('aria-pressed',String(listLayout==='list'));view.layoutGrid.setAttribute('aria-pressed',String(listLayout==='grid'));};
- const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:68,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
+ const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?96:84,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
  const selectListLayout=next=>{if(listLayout===next)return;closeTagPicker();listLayout=next;updateListLayout();try{window.localStorage?.setItem('sp-imagen-library-layout',next);}catch{}virtualList.refresh();};
  view.layoutList.onclick=()=>selectListLayout('list');view.layoutGrid.onclick=()=>selectListLayout('grid');updateListLayout();
  let searchTimer=null;
@@ -1061,6 +1062,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.56',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.57',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
