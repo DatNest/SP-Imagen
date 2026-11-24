@@ -147,7 +147,7 @@ test('Independent custom profiles and global director rules preserve their meani
   const store = {customProfiles:[user],visibleBuiltIns:{comic:false},
     extraPrompts:[{id:'rule_abc123',name:'Camera',prompt:'Framing: use a close shot.',enabled:true}]};
   assert.ok(generationFormats(store,{visibleOnly:true}).some(x=>x.id===user.id));
-  assert.ok(!generationFormats(store,{visibleOnly:true}).some(x=>x.id==='comic'));
+  assert.ok(!generationFormats(store,{visibleOnly:true}).some(x=>x.baseKind==='comic'&&x.builtIn));
   const filtered = filterProfileSources({'RP POSTS':'scene','CURRENT WARDROBE':'coat'},user);
   assert.equal(filtered['RP POSTS'],'scene');
   assert.equal(filtered['CURRENT WARDROBE'],'');

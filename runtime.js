@@ -2187,7 +2187,7 @@ const maxWords=baseKind==='comic'?runtimeSettings.dialogue.comicWords:runtimeSet
 const experimentalRules=sharedRules.filter(rule=>rule?.enabled!==false&&String(rule?.prompt||'').trim())
  .map(rule=>String(rule.prompt)).join('\n\n');
 const systemPrompt=experimental
- ? experimentalDirectorPrompt(baseKind,{includeText,postCount:directorSettings.posts[baseKind],maxLines:useDialogueSettings?maxLines:8,maxWords:useDialogueSettings?maxWords:40})
+ ? (director.source==='custom'?director.prompt+'\n\nCURRENT GENERATION SETTINGS (override any example/default limits): Use the last '+directorSettings.posts[baseKind]+' RP posts. '+(includeText?'Maximum '+(useDialogueSettings?maxLines:8)+' speech lines, '+(useDialogueSettings?maxWords:40)+' words per line.':'bubbles and lettering must both be empty arrays.')+(profile?.parser?.instructions?.trim()?'\n\nCUSTOM PROFILE — SCENE PARSING INSTRUCTIONS\n'+profile.parser.instructions:''):experimentalDirectorPrompt(baseKind,{includeText,postCount:directorSettings.posts[baseKind],maxLines:useDialogueSettings?maxLines:8,maxWords:useDialogueSettings?maxWords:40}))
    +appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))
    +skinAppearanceInstruction(visibility)
    +(npcLanguage?'\n\nNPC DESCRIPTIONS: keep names, bodies, and outfits in descriptive JSON fields in English.'+(includeText?' Keep in-image words in the source language.':''):'')
@@ -2209,7 +2209,7 @@ if(directorPostIndex>=0){
 let parsedTransport;
 try{
  parsedTransport=experimental
-  ?parseExperimentalDirector(raw,{kind,includeText,maxLines:useDialogueSettings?maxLines:null,maxWords:useDialogueSettings?maxWords:null})
+  ?parseExperimentalDirector(raw,{kind:baseKind,includeText,maxLines:useDialogueSettings?maxLines:null,maxWords:useDialogueSettings?maxWords:null})
   :parseImageHtml(raw);
  delete v.sp_imagen_last_director_error;
 }catch(error){
@@ -2218,7 +2218,7 @@ try{
  const reasoningOnly=!experimental&&/(?:final one.line prompt|deliver HTML|JSON escaping|reasoning|write final prompt)/i.test(raw)
     && !/<(?:naicom|image_lite)\b/i.test(raw);
  if(reasoningOnly)throw new Error('Текстовая модель вернула рассуждения/черновик вместо готового HTML/JSON. NovelAI не запускался. Проверь режим reasoning и профиль подключения модели; исходный ответ сохранён в sp_imagen_last_director_raw.',{cause:error});
- throw new Error((experimental?'Тестовый режиссёр вернул неверную структуру JSON-слотов.':'Режиссёр вернул неподходящий формат.')+' NovelAI не запускался. Исходный ответ сохранён в sp_imagen_last_director_raw: '+v.sp_imagen_last_director_error,{cause:error});
+ throw new Error((experimental?'Режиссёр вернул неверную структуру JSON-слотов.':'Режиссёр вернул неподходящий формат.')+' NovelAI не запускался. Исходный ответ сохранён в sp_imagen_last_director_raw: '+v.sp_imagen_last_director_error,{cause:error});
 }
 progress.set('Проверка промпта', 'Проверяю формат, подставляю внешность и применяю настройки.');
 await saveNessGenerationMetadata(st,'получен ответ режиссёра');
@@ -2246,6 +2246,7 @@ if(useDialogueSettings&&!experimental)config.prompt=limitComicDialogue(config.pr
 validateImagePromptLayout(config.prompt,baseKind);
 verifyTextlessImagePrompt(config.prompt,baseKind,includeText);
 config.kind=kind;
+if(experimental)config.structuredDirector=true;
 config.profileName=getExtension?.()?.getGenerationProfileLabel?.(kind)||kind;
 const snapshot=spImagenExtension().snapshotGenerationConfig?.(config,kind);
 if(snapshot?.spImagenDirect)config.spImagenDirect=snapshot.spImagenDirect;

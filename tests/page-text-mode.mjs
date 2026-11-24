@@ -98,7 +98,7 @@ test('Per-click star switch is local UI state; runtime freezes it into the post 
   assert.match(runtime,/kind,includeText,stage:'parsed'/);
   assert.match(runtime,/v\.sp_imagen_page_text_enabled=pageTextEnabled\(draft\.kind,draft\.includeText\)/);
   assert.match(runtime,/getNessDirector\(kind,includeText\)/);
-  assert.match(index,/SP_IMAGEN_NO_TEXT_DIRECTORS\[kind\]/);
+  assert.match(index,/experimentalDirectorPrompt\(builtin.kind,\{includeText\}\)/);
 });
 
 test('No text path omits dialogue-limit integration, printed-text parsing and auto-retries',()=>{
