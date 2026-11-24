@@ -715,7 +715,7 @@ test('A previously hidden duplicate skin assignment is shown and can be removed 
  board.element.querySelectorAll('button').find(b=>b.textContent==='Под одеждой').onclick();
  const chip=board.element.querySelectorAll('.ness-unified-chip').find(x=>x.textContent.includes('tiny scar'));
  assert.ok(chip);
- assert.equal(chip.dataset.highlighted,'true');
+ assert.equal(chip.attributes['data-highlighted'],'true');
  chip.onclick();
  const result=board.getSkin();
  assert.deepEqual(result.selections.upper_front,[]);
