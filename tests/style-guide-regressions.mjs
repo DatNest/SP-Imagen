@@ -257,3 +257,30 @@ test('Beginner guide groups repeated library explanations and distinguishes offi
  assert.match(read('library-runtime.js'),/https:\/\/docs\.novelai\.net\/en\/image\/multiplecharacters\//);
  assert.doesNotMatch(read('library-runtime.js'),/Старые отметины восстановлены в каталогах/);
 });
+
+test('Guide step navigation alone scrolls to its target; the scroll listener only fits the spotlight',()=>{
+ const guide=read('onboarding.js'),gallery=read('media-slots.js');
+ const go=guide.slice(guide.indexOf('async function go(i)'),guide.indexOf("next.addEventListener('click'"));
+ assert.match(go,/if\(!abort&&mine===requestId&&target\?\.isConnected\)\{[\s\S]*?target\.scrollIntoView\?\.\(\{block:'center',inline:'nearest',behavior:'instant'\}\)/);
+ assert.match(go,/if\(abort\|\|mine!==requestId\)return;\s*\}\s*fit\(\)/);
+ assert.match(guide,/const onPosition=\(\)=>\{[^\n]*fit\(\)/);
+ assert.equal((guide.match(/scrollIntoView/g)||[]).length,1);
+ const tour=gallery.slice(gallery.indexOf('function guideStep(section)'),gallery.indexOf('async function publish('));
+ assert.doesNotMatch(tour,/scrollIntoView/);
+});
+test('Resume is a distinct arrow left of the star, and the tour shows a non-generating demo',()=>{
+ const gallery=read('media-slots.js'),steps=makeGuideSteps(true);
+ assert.ok(steps.some(s=>s.view==='post-resume'&&s.title==='Если генерация прервалась'));
+ const controls=gallery.slice(gallery.indexOf('function updatePostDraftControls'),gallery.indexOf('function updatePost(view'));
+ assert.match(controls,/if\(!draft\)\{[\s\S]*?view\.draftButton\?\.remove/);
+ assert.match(controls,/element\('button','tool draft-resume','↪'\)/);
+ assert.match(controls,/executeCommand\('sp_ness_resume_post',view\)/);
+ assert.match(controls,/view\.tools\.insertBefore\(button,view\.toggle\)/);
+ const demo=gallery.slice(gallery.indexOf("if(section==='post-resume')"),gallery.indexOf("if (section === 'post-edit')"));
+ assert.match(demo,/element\('button','tool draft-resume guide-resume','↪'\)/);
+ assert.match(demo,/view\.tools\.insertBefore\(button,view\.toggle\)/);
+ assert.match(demo,/return guideDemo\.resume/);
+ assert.doesNotMatch(demo,/executeCommand|savePostDraft|discardPostDraft|generateImage/);
+ assert.match(gallery,/demo\.resume\?\.remove\(\)/);
+ assert.match(gallery,/if \(guideDemo && \['sp_ness_generate_at','sp_ness_resume_post'\]\.includes\(command\)\) return/);
+});

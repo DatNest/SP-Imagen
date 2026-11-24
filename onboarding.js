@@ -209,7 +209,7 @@ export function makeGuideSteps(hasCharacters = false) {
   {view:'post-stages',selector:'.prompt-source-select',title:'Три этапа промпта под ▤',text:'Выбери в выпадающем списке один из трёх этапов: собранные RP-посты, JSON-ответ режиссёра или готовый промпт NovelAI. Расширение само собирает поля JSON, рамки, панельные бабблы и единый Text: в конце. Если JSON повреждён, платный запрос не запускается.'},
   {view:'post-view',selector:'[data-spi-post-demo]',title:'Читаем промпт',text:'Проверь одежду, видимые детали и состав персонажей. В готовом промпте отдельные секции разделены |, Action Tags стоят в конце секций взаимодействующих персонажей, а точные реплики — в Text:. Проверка сохранённых этапов не требует повторного запроса.'},
   {view:'post-result',selector:'[data-spi-post-demo]',title:'Галерея под постом',text:'Нажми на картинку для полноэкранного просмотра прямо в SillyTavern. ← и → листают версии, ↻ повторяет, ↓ скачивает, 🗑 удаляет с подтверждением. Важные картинки лучше сохранять на устройстве.'},
-  {view:'post-result',selector:'[data-spi-post-demo]',title:'Если генерация прервалась',text:'↪ Продолжить означает, что у этого поста есть незавершённый черновик. Значок ▤ позволяет прочитать уже сохранённые этапы. Успешная генерация убирает кнопку продолжения, а × удаляет только черновик.'},
+  {view:'post-resume',selector:'[data-spi-post-demo]',title:'Если генерация прервалась',text:'Стрелочка ↪ слева от ✧ продолжает сохранённый черновик. Если итоговый промпт уже готов, режиссёр повторно не вызывается. ▤ открывает сохранённые этапы, а × удаляет только черновик. После успешной генерации стрелочка исчезает. Сейчас показан учебный пример.'},
   {view:'post-edit',selector:'[data-spi-post-demo]',title:'Исправим готовую картинку?',text:'Если ошиблась деталь, не нравится стиль или хочется другой ракурс, нажми 📝 на картинке.',click:'native',requireClick:true},
   {view:'post-editor',selector:'[data-spi-post-demo]',title:'Редактирование и перегенерация',text:'Здесь можно исправить сам промпт и выбрать стиль только для этой картинки. Затем нажми «Перегенерировать»: запрос сразу уйдёт в NovelAI, без повторной работы текстового режиссёра. Токены текстовой модели не тратятся, но NovelAI может списать Anlas. Новая версия сохранится рядом с прежней.'},
   {view:'finish',selector:null,title:'Готово',text:'Теперь ты знаешь, как хранить внешность, пользоваться инструментами тегов и запускать встроенные или собственные профили. При необходимости нажимай «?» рядом с настройками; промпты конкретного RP-поста открываются через ▤.'}
@@ -303,6 +303,12 @@ export function startQuickGuide({navigate,steps=GUIDE_STEPS,onExit=()=>{}}={}) {
         if(step.click&&target){handleClick=event=>{if(step.click !== 'native'){event.preventDefault();event.stopImmediatePropagation();}if(step.requireClick)next.disabled=false;const nextIndex=index+1,visit=requestId;setTimeout(()=>{if(!abort&&visit===requestId)void go(nextIndex);},0);};clickTargets=step.clickGroup ? [...target.getRootNode().querySelectorAll(step.clickGroup)] : [target];for(const node of clickTargets)node.addEventListener('click',handleClick,true);}
         if(step.requireClick && target){next.disabled=true; next.title='Сначала нажми выделенную кнопку или прерви обучение';}
         else {next.disabled=false; next.title='';}
+        // Only step navigation scrolls; ordinary scroll/resize merely repositions the spotlight.
+        if(!abort&&mine===requestId&&target?.isConnected){
+            target.scrollIntoView?.({block:'center',inline:'nearest',behavior:'instant'});
+            await new Promise(resolve=>requestAnimationFrame(resolve));
+            if(abort||mine!==requestId)return;
+        }
         fit();
         // Do not steal focus from a highlighted clickable control when a mobile keyboard is open.
         next.focus({preventScroll:true});
