@@ -167,3 +167,15 @@ test('Dynamic ribbons and settings restore offsets, without redirecting whole ch
  assert.match(css,/overflow-anchor:none;scroll-behavior:auto!important/);
  assert.match(css,/scrollbar-gutter:stable/);
 });
+
+test('Responsive identity reserves a separate pencil track and type selector width',()=>{
+ const responsive=css.slice(css.indexOf('/* The identity row reserves'));
+ assert.match(responsive,/\.ness-editor-identity-fields\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) minmax\(106px,128px\)/);
+ assert.match(responsive,/\.ness-editor-name-row\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) 18px/);
+ assert.match(responsive,/input\.ness-editor-name-input\{[\s\S]*?min-width:0!important;width:100%!important/);
+ assert.match(responsive,/select\.ness-editor-type-select\{[\s\S]*?width:100%!important;min-width:0!important/);
+ assert.match(responsive,/@container spi-library \(max-width:560px\)\{[\s\S]*?\.ness-editor-identity-fields\{[\s\S]*?grid-template-columns:minmax\(0,1fr\)/);
+ assert.match(responsive,/@container spi-library \(max-width:760px\)\{[\s\S]*?\.ness-tagboard-columns\{display:flex;flex-direction:column/);
+ assert.match(responsive,/@media\(pointer:coarse\)\{[\s\S]*?\.ness-editor-back\{[^}]*min-height:44px!important/);
+ assert.match(responsive,/@media\(max-height:500px\)\{[\s\S]*?\.ness-tagboard-controls\{position:relative;top:auto/);
+});
