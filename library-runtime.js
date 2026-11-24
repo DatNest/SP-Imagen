@@ -894,7 +894,6 @@ async function openLibraryEditor(){
     ranges:normalizeAppearanceRanges(fields.base.value,entry.appearanceRanges),
     selections:normalizeAppearanceSelections(fields.base.value,entry.appearanceSelections)
   };
-  if(appearanceEntry!==entry){const recovery=button('ⓘ',formatStrip,undefined,'icon quiet ness-library-recovery');recovery.setAttribute('aria-label','Восстановленные отметины');const info=view.tip(recovery,'Старые отметины восстановлены в каталогах. Проверь назначения в «Под одеждой» и NSFW; новые теги не включены автоматически. Перенос сохранится при сохранении библиотеки.');recovery.onclick=e=>{e.preventDefault();info.toggle();};}
   const inlineHost=el('div',undefined,appearance,'ness-inline-appearance-editor');
   const inlineBoard=createAppearanceBoard({
     ui:{el,button,clear,input,wheelAlongX:view.wheelAlongX},parent:inlineHost,
@@ -999,8 +998,10 @@ async function openLibraryEditor(){
   const aliasesTab=tabs.add('Другие имена'),aliases=createAliasTags(document,entry.aliases||[],()=>changed(true));aliasesTab.appendChild(aliases.element);
   const promptTab=tabs.add('Данные для промпта'),promptGrid=el('div',undefined,promptTab,'ness-grid');
   fields.promptName=field(promptGrid,labels.promptName,input(entry.promptName||''));fields.promptName.placeholder='Kian';
-  fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='boy';
-  el('p','Например, Kian и boy дают начало записи «| boy, Kian, …» и учитываются в общем теге количества, например 1boy.',promptTab,'ness-note');
+  fields.subject=field(promptGrid,labels.subject,input(entry.subject||''));fields.subject.placeholder='girl / boy / other';
+  el('p','NovelAI V5: girl — женский персонаж, boy — мужской персонаж, other — другая или неопределённая категория. SP Imagen дополнительно поддерживает cat и dog для животных.',promptTab,'ness-note');
+  el('p','Указывай категорию без числа. Например, boy и Kian дают «| boy, Kian, …», а количество 1boy добавляется автоматически. Поля необязательны.',promptTab,'ness-note');
+  const subjectDocs=el('a','Документация NovelAI: категории персонажей',promptTab,'ness-note');subjectDocs.href='https://docs.novelai.net/en/image/multiplecharacters/';subjectDocs.target='_blank';subjectDocs.rel='noopener noreferrer';
   const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&key!=='libraryIconData'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,appearanceFormat,bodyMigration:appearanceEntry,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags,appearanceEdited:()=>appearanceEdited,clearAppearanceEdited:()=>{appearanceEdited=false;}};
@@ -1080,6 +1081,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.59',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.60',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
