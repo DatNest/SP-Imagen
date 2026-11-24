@@ -29,11 +29,13 @@ const CORE=[
  'The extension assembles subject counts, separators and the final image prompt from these fields.{{ASSEMBLY_RULE}} Output the JSON object.'
 ].join('\n\n');
 const PAGE=[
- 'Create a {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts with expressive artwork and coherent page layout.',
- 'Comic: 2–5 complementary views of one established instant. Story Page: 2–5 panels showing 2–4 established beats in reading order.',
- 'Keep the shared interaction and participants’ relative positions spatially coherent across panels, including changes in camera and visible background.',
- 'Give the page distinctive visible panel frames through borders, suited to the mood and composition. For every Comic and Story Page, including pages without lettering, borders is a required non-empty artistic description of the actual panel frames: their silhouettes and irregularities, line weight and ink color or material, gutter width and color, inset edges, page margins, and any scene-appropriate ornaments. Explicitly describe the visible page background or substrate behind and between the panels, its color, material, texture and decorative treatment. Choose a neutral, unobtrusive decorative surface that complements the composition and mood, including the negative space outside the panel edges. Page graphics belong to the page, not the fictional location: keep this surface distinct from the scenery inside the panels and keep faces, hands, contacts, balloons and reading order clear. Design these together with the panel composition; describe how different panel frames vary when appropriate. Use concrete visual details rather than a generic label such as thin ink frames. Keep this complete frame design in borders, separate from speech balloons and scene staging.',
- '{{TEXT_POLICY}}'
+ 'Create one {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts. Return one JSON object matching the SAMPLE.',
+ 'SOURCE AND CONTINUITY\nUse established RP events, current clothing and its visible state, character identities, and composition requests. Preserve continuity of anatomy, contact, props, and relative positions. Write visual descriptions in English and reproduce selected visible text verbatim in its original language.',
+ 'PAGE AND PANELS\n{{PAGE_RULE}} Compose expressive panels with purposeful crops, clear reading order, varied framing and scene-appropriate lighting. Use close or medium views for expressions and interaction; widen for spatial clarity or established action.\nopening: page type, panel count and relevant scene tags.\nscene: one string, with Panel 1:, Panel 2:, and subsequent consecutive labels in reading order, separated by semicolons. For each panel, describe its position on the page, camera and crop, visible setting, named participants and their relative positions, and central shared interaction. Keep scene staging spatially coherent across panels. Keep attention directed toward people, objects or events within the scene. Describe visible details appropriate to the crop.',
+ 'PAGE DESIGN\nborders: a non-empty description of visible panel silhouettes, edge irregularities, line weight, ink color or material, inset edges, gutter width and color, outer margins and scene-appropriate ornaments. Describe the neutral decorative page surface outside and between panels, including its color, material and texture. Match the page design to the composition and mood; preserve clear faces, hands, contact points, balloons and reading order. Keep page graphics distinct from the fictional scenery inside the panels.',
+ 'CHARACTERS\ncharacters: one entry per distinct visible participant, in order of first appearance. subject: boy, girl, cat or other. name: exact character or library Prompt name. appearance: use the supplied NESS_VIS and NESS_SKIN markers where applicable; otherwise give established visible identifying traits. wardrobe: current visible clothing and its established state. action: panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details, and named physical interactions. Reference the panel and position established in scene. Keep each character’s details in their own entry.',
+ '{{TEXT_POLICY}}',
+ 'OUTPUT\nUse all SAMPLE fields with their shown JSON types; use empty arrays for absent entries. Keep text and speech bubble tags, cast counts, Text: and pipe separators out of descriptive fields. Return valid JSON only.'
 ].join('\n\n');
 const SNAPSHOT=[
  'Create one cinematic still near the latest established state from the last {{POST_COUNT}} RP posts. Keep the visible setting, camera, lighting and participants’ relative positions clear in scene, with a central shared interaction. Use the character actions for precise poses, expressions, gaze and gestures within that single instant.',
@@ -84,33 +86,39 @@ function pageSample(kind,includeText,maxLines) {
 export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,maxLines=2,maxWords=10}={}){
  check(Object.values(EXPERIMENTAL_DIRECTOR_IDS).includes(kind),'Неизвестный тестовый формат');
  const page=kind!=='snapshot', allowBubbles=page&&includeText&&maxLines>0;
- const textPolicy=includeText
-  ?'Select up to {{MAX_LINES}} relevant complete spoken lines, each at most {{MAX_WORDS}} words. Limits are ceilings, not quotas. Put each selected line in bubbles for the panel that shows its speaker. If the limit is zero or no suitable spoken line exists, use an empty bubbles array. Use lettering only for visible writing on actual objects in the selected RP beat. Reproduce original speech and lettering verbatim.'
-  :'TEXT DISABLED: bubbles and lettering MUST both be empty arrays; no speech bubbles, readable writing or captions in the scene.';
- let choice=kind==='snapshot'?SNAPSHOT:PAGE
-  .replaceAll('{{PAGE_KIND}}',kind==='comic'?'comic page':'sequential story page')
-  .replaceAll('{{TEXT_POLICY}}',textPolicy)
-  .replaceAll('{{MAX_LINES}}',String(maxLines))
-  .replaceAll('{{MAX_WORDS}}',String(maxWords));
- choice=choice.replaceAll('{{POST_COUNT}}',String(postCount));
+ if(page){
+  const textRules=includeText?[
+   'DIALOGUE AND LETTERING',
+   allowBubbles
+    ?'bubbles: select up to '+maxLines+' complete, relevant spoken lines of up to '+maxWords+' words each. Preserve exact words and punctuation. Use one entry per line in reading order; panel: corresponding integer panel number; speaker: exact name from characters; design: enclosed speech balloon near the speaker, with clear shape, outline, position and readable lettering, clear of faces and actions; words: verbatim line without added quotes or speaker labels. Use [] when no suitable speech exists. Describe speaking actions in the relevant character entries.'
+    :'bubbles: [].',
+   'lettering: visible writing on actual objects; panel: corresponding integer panel number; design: object and placement; words: exact inscription. Use [] when absent. Keep all printed words in bubbles or lettering.'
+  ].join('\n'):'TEXT DISABLED\nbubbles and lettering MUST both be empty arrays. Use visual acting and composition instead of readable text, captions or speech balloons.';
+  const pageRules=PAGE
+   .replace('{{PAGE_KIND}}',kind==='comic'?'comic page':'sequential story page')
+   .replace('{{POST_COUNT}}',String(postCount))
+   .replace('{{PAGE_RULE}}',kind==='comic'?'Show 2–5 complementary views of one established instant.':'Show 2–5 panels covering 2–4 established beats in chronological reading order.')
+   .replace('{{TEXT_POLICY}}',textRules);
+  const legacy=experimentalLegacyIntimacy(kind);
+  return pageRules+(legacy?'\n\n'+legacy:'')+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines)+'\n\nReturn one valid JSON object.';
+ }
+ const choice=SNAPSHOT.replaceAll('{{POST_COUNT}}',String(postCount));
  const core=CORE
-  .replace('{{OPENING_RULE}}',page?' Leave text and speech bubble tags to the extension.':'')
-  .replace('{{PANEL_RULE}}',page?' Use exactly one numbered Panel N: label for each panel, starting at Panel 1: and continuing in reading order; separate the panel descriptions with semicolon and space. Keep scene a single JSON string. Put all visual staging in these descriptions, without a separate introduction or repeated panel labels.':'')
-  .replace('{{CHARACTER_RULE}}',page?' For a speaker, describe the actual speaking action in the correct panel. Keep balloon design and printable words exclusively in the dedicated fields, not in character descriptions.':'')
-  .replace('{{ASSEMBLY_RULE}}',page?' The extension inserts each printed item inside its own panel and binds the balloon visually to its speaker; it creates one final Text: block in reading order. Never write Text: or pipe separators in any field.':'')
-  .replace('{{BUBBLES_EXAMPLE}}',allowBubbles
-   ?'[{"panel":1,"speaker":"Alex","design":"rounded white balloon above Alex, thin ink outline, clear dark lettering","words":"Привет!"}]':'[]')
+  .replace('{{OPENING_RULE}}','')
+  .replace('{{PANEL_RULE}}','')
+  .replace('{{CHARACTER_RULE}}','')
+  .replace('{{ASSEMBLY_RULE}}','')
+  .replace('{{BUBBLES_EXAMPLE}}','[]')
   .replace('{{LETTERING_EXAMPLE}}',includeText
    ?'[{"panel":1,"design":"visible note, sign or screen location","words":"exact visible inscription"}]':'[]')
-  .replace('{{BUBBLE_RULE}}',allowBubbles
-   ?'bubbles: one object per selected spoken line, in page reading order. panel is the exact integer N from the corresponding Panel N: in scene. speaker must exactly match the visible character name in characters. design describes a visibly enclosed comic speech balloon, its position near the speaker, shape, outline and readable lettering; the extension adds the tail toward the speaker and the words. Put only the exact spoken line in words, without additional quotation marks or speaker labels. Keep bubbles clear of faces and actions; silent panels have no bubble entry.':'')
+  .replace('{{BUBBLE_RULE}}','')
   .replace('{{LETTERING_RULE}}',includeText
-   ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.'+ (page?' Match panel to the numbered scene panel; put the visual placement in design and the exact inscription only in words.':''):'')
+   ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.':'')
   .replace('{{PRINTED_WORD_RULE}}',includeText?'Keep visible written words in their original language.':'')
   .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
- return core+'\n\n'+choice+(page?'\n\nSAMPLE (format only; use the actual RP, never the example cast or dialogue):\n'+pageSample(kind,includeText,maxLines):'')+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities'+(allowBubbles?', bubble tail direction':'')+' and syntax.';
+ return core+'\n\n'+choice+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities and syntax.';
 }
 function stringField(obj,key,{empty=false,max=16000}={}){
  const v=obj?.[key];check(typeof v==='string'&&v.length<=max&&(empty||v.trim()),'Поле '+key+' пусто либо слишком длинное');

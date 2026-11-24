@@ -82,8 +82,8 @@ test('Library visibility injection remains compatible with test character sectio
 test('Textless Comic and Story Page request empty printed fields and omit unexpected text',()=>{
  for(const kind of ['comic','story_page']){
   const prompt=experimentalDirectorPrompt(kind,{includeText:false,maxLines:2,maxWords:10});
-  assert.match(prompt,/"bubbles":\[\]/);
-  assert.match(prompt,/"lettering":\[\]/);
+  assert.match(prompt,/"bubbles":\s*\[\]/);
+  assert.match(prompt,/"lettering":\s*\[\]/);
   assert.doesNotMatch(prompt,/Select up to|speaker name|balloon shape, position|bubble tail direction/);
   assert.match(prompt,/TEXT DISABLED/);
   const slots=sample(),raw=JSON.stringify(slots);
@@ -117,7 +117,7 @@ test('Corrupted, invalid or incomplete model slot JSON is rejected without fabri
 
 test('Snapshot schema never requests speech and ignores a model-supplied balloon',()=>{
  const rules=experimentalDirectorPrompt('snapshot',{includeText:true,postCount:3});
- assert.match(rules,/"bubbles":\[\]/);
+ assert.match(rules,/"bubbles":\s*\[\]/);
  assert.doesNotMatch(rules,/Select up to|speaker name|bubble tail direction|bubbles: give each spoken line/);
  const data=sample();data.bubbles=[{panel:1,speaker:'Ness',design:'oval',words:'Не нужно показывать'}];
  const result=parseExperimentalDirector(JSON.stringify(data),{kind:'custom_test_snapshot',includeText:true,maxLines:0,maxWords:0});
@@ -163,7 +163,7 @@ test('Art director asks for expressive natural panel prose without numbered-list
  const result=parseExperimentalDirector(JSON.stringify(slots),{kind:'story_page'});
  assert.match(result.config.prompt,/first panel: Large establishing panel/);
  assert.doesNotMatch(result.config.prompt,/(?:^|;\s*)\d+\)\s/u);
- assert.match(experimentalDirectorPrompt('comic'),/participants’ relative positions spatially coherent across panels/);
+ assert.match(experimentalDirectorPrompt('comic'),/spatially coherent across panels/);
  assert.match(experimentalDirectorPrompt('story_page'),/spatially coherent across panels/);
 });
 
@@ -180,7 +180,7 @@ test('All original explicit intimacy guidelines are included verbatim in test mo
  const unmodified=read('official-prompts.js');
  assert.equal(unmodified,defaults,'Original prompts remain unchanged');
  const original=experimentalDirectorPrompt('comic');
- assert.match(original,/For established adult intimacy, use these original scene and character guidelines/);
+ assert.ok(original.includes(experimentalLegacyIntimacy('comic')));
 });
 
 
@@ -189,14 +189,14 @@ test('All test formats keep spatial scene staging and fine character details in 
  const preciseAction='Panel 1: Aang blushes, his fingers gripping his staff while his gaze stays on Ji; the folds of his robe shift as he leans forward.';
  for(const kind of ['snapshot','comic','story_page']){
   const instructions=experimentalDirectorPrompt(kind,{postCount:4});
-  assert.match(instructions,/scene: stage the complete visual composition/);
-  assert.match(instructions,/participants’ relative positions/);
-  assert.match(instructions,/central action or interaction connecting them/);
-  assert.match(instructions,/action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/);
+  assert.match(instructions,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
+  assert.match(instructions,/participants[’']? (?:and their )?relative positions/);
+  assert.match(instructions,kind==='snapshot'?/central action or interaction connecting them/:/central shared interaction/);
+  assert.match(instructions,kind==='snapshot'?/action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/:/action: panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details/);
   assert.doesNotMatch(instructions,/two focused sentences|roughly two purposeful sentences|a few focused sentences|Keep one short phrase per panel/);
   if(kind==='snapshot')assert.match(instructions,/participants’ relative positions clear in scene/);
-  else assert.match(instructions,/participants’ relative positions spatially coherent across panels/);
-   assert.match(instructions,/Reference each panel and the position established in scene/);
+  else assert.match(instructions,/spatially coherent across panels/);
+   assert.match(instructions,/Reference (?:each|the) panel and (?:the )?position established in scene/);
   const data=sample();
   data.scene=stagedScene;
   if(kind==='snapshot')data.bubbles=[];
@@ -221,8 +221,8 @@ test('Panel border design appears visibly near page opening, before scenery, onc
  assert.ok(prompt.indexOf(borderText)>prompt.indexOf('3 panels, expressive comic page'));
  assert.ok(prompt.indexOf(borderText)<prompt.indexOf(data.scene));
  assert.ok(prompt.indexOf(data.scene)<prompt.indexOf('Speech bubble 1:'));
- assert.match(experimentalDirectorPrompt('comic'),/Give the page distinctive visible panel frames through borders/);
- assert.match(experimentalDirectorPrompt('story_page'),/Give the borders a recognizable visual presence/);
+ assert.match(experimentalDirectorPrompt('comic'),/borders: a non-empty description of visible panel silhouettes/);
+ assert.match(experimentalDirectorPrompt('story_page'),/neutral decorative page surface outside and between panels/);
  assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
 });
 
@@ -342,7 +342,7 @@ test('Numbered page scenes interleave each balloon and inscription with its own 
 test('Every new page SAMPLE is real valid JSON, obeys active limits and compiles through the same assembler',()=>{
  for(const kind of ['comic','story_page'])for(const [includeText,maxLines] of [[true,2],[true,1],[true,0],[false,0]]){
   const instructions=experimentalDirectorPrompt(kind,{includeText,maxLines,maxWords:1});
-  const raw=instructions.match(/SAMPLE \(format only;[^\n]*\):\n([\s\S]*?)\n\n/)?.[1];
+  const raw=instructions.match(/SAMPLE:\n([\s\S]*?)\n\n/)?.[1];
   assert.ok(raw);
   const data=JSON.parse(raw);
   const result=parseExperimentalDirector(raw,{kind,includeText,maxLines,maxWords:1});
@@ -385,12 +385,12 @@ test('Only test Comic and Story Page put the exact final Text block in the Novel
 test('Both test page formats retain expressive and independent frame design with or without lettering',()=>{
  for(const kind of ['comic','story_page'])for(const includeText of [true,false]){
   const instructions=experimentalDirectorPrompt(kind,{includeText});
-  assert.match(instructions,/borders is a required non-empty artistic description/);
-  assert.match(instructions,/gutter width and color, inset edges, page margins/);
-  assert.match(instructions,/visible page background or substrate behind and between the panels/);
-  assert.match(instructions,/neutral, unobtrusive decorative surface that complements the composition and mood/);
-  assert.match(instructions,/Page graphics belong to the page, not the fictional location/);
-  const raw=instructions.match(/SAMPLE \(format only;[^\n]*\):\n([\s\S]*?)\n\n/)?.[1];
+  assert.match(instructions,/borders: a non-empty description/);
+  assert.match(instructions,/inset edges, gutter width and color, outer margins/);
+  assert.match(instructions,/neutral decorative page surface outside and between panels/);
+  assert.match(instructions,/Match the page design to the composition and mood/);
+  assert.match(instructions,/Keep page graphics distinct from the fictional scenery inside the panels/);
+  const raw=instructions.match(/SAMPLE:\n([\s\S]*?)\n\n/)?.[1];
   const data=JSON.parse(raw);
   assert.match(data.borders,/sepia/);
   assert.match(data.borders,/gutter/);
@@ -430,4 +430,17 @@ test('A fresh test Comic or Story Page cannot compile without frame and page bac
  }
  const snapshot=sample();snapshot.borders='';
  assert.doesNotThrow(()=>parseExperimentalDirector(JSON.stringify(snapshot),{kind:'snapshot'}));
+});
+
+test('Page instructions are direct, sectioned and contain no assembly commentary',()=>{
+ for(const kind of ['comic','story_page'])for(const includeText of [true,false]){
+  const p=experimentalDirectorPrompt(kind,{includeText,postCount:4,maxLines:2,maxWords:7});
+  for(const heading of ['SOURCE AND CONTINUITY','PAGE AND PANELS','PAGE DESIGN','CHARACTERS','OUTPUT','SAMPLE:'])
+   assert.ok(p.includes(heading));
+  const direct=p.slice(0,p.indexOf('NSFW / INTIMACY CONTINUITY:'));
+  assert.doesNotMatch(direct,/the extension|original scene and character guidelines|format only|silently verify/i);
+  assert.match(direct,/neutral decorative page surface outside and between panels/);
+  if(includeText)assert.match(direct,/select up to 2 complete, relevant spoken lines of up to 7 words each/);
+  else assert.match(direct,/bubbles and lettering MUST both be empty arrays/);
+ }
 });
