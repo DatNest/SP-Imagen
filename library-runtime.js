@@ -366,11 +366,11 @@ function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyT
   if(disposed||!container.clientHeight)return;
   const cols=Math.max(1,Math.floor(columns())||1),rowHeight=getRowHeight(),height=container.clientHeight;
   const totalRows=Math.ceil(items.length/cols);
-  if(cols!==previousColumns){
-   const anchor=Math.floor((container.scrollTop||0)/rowHeight)*previousColumns;
-   container.scrollTop=Math.min(Math.floor(anchor/cols)*rowHeight,Math.max(0,totalRows*rowHeight-height));
-  }
-  const from=Math.max(0,Math.floor((container.scrollTop||0)/rowHeight)-overscan),to=Math.min(totalRows,from+Math.ceil(height/rowHeight)+overscan*2);
+  const reflow=cols!==previousColumns;
+  const scroll=container.scrollTop||0;
+  const anchor=Math.floor(scroll/rowHeight)*previousColumns;
+  const wanted=reflow?Math.min(Math.floor(anchor/cols)*rowHeight,Math.max(0,totalRows*rowHeight-height)):scroll;
+  const from=Math.max(0,Math.floor(wanted/rowHeight)-overscan),to=Math.min(totalRows,from+Math.ceil(height/rowHeight)+overscan*2);
   if(!force&&cols===previousColumns&&from===start&&to===end)return;
   start=from;end=to;previousColumns=cols;
   top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';ui.clear(rows);
@@ -378,6 +378,8 @@ function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyT
   rows.style.gridTemplateColumns=cols>1?'repeat('+cols+',minmax(0,1fr))':'';
   if(!items.length){ui.el('p',emptyText,rows,'ness-note');return;}
   for(let i=from*cols;i<Math.min(items.length,to*cols);i++)rows.appendChild(renderRow(items[i]));
+  // Restore after DOM geometry changes, so browsers cannot clamp to the previous grid height.
+  if(reflow)container.scrollTop=wanted;
  }
  function refresh(){if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});}
  container.onscroll=()=>{if(disposed||frame!==null)return;frame=request(()=>{frame=null;paint();});};
