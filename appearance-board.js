@@ -178,6 +178,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let mode=['base','skin','nsfw'].includes(initialMode)?initialMode:'base';
  let preset=initialPreset||(mode==='skin'?'upper_front':mode==='nsfw'?'nsfwChest':'face');
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
+ const filterByMode={base:'',skin:'',nsfw:''};
  const layouts={base:'board',skin:'board',nsfw:'board'};
  let textDraft=null,renderedMode='',renderedPreset='';
  // Scrolling is UI state, not character data. Keep each mode's ribbon and
@@ -189,10 +190,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  frame.setAttribute('aria-label','Редактор тегов внешности');
  const header=el('div',undefined,frame,'ness-tagboard-header');
  el('strong','Внешность',header);
- const modes=el('div',undefined,frame,'ness-tagboard-modes');
- frame.insertBefore(modes,header); // The three appearance modes sit directly under the editor tabs.
- const tools=el('div',undefined,frame,'ness-tagboard-tools');
- frame.insertBefore(tools,modes);
+ const controls=el('div',undefined,frame,'ness-tagboard-controls');
+ frame.insertBefore(controls,header);
+ const tools=el('div',undefined,controls,'ness-tagboard-tools');
+ const modes=el('div',undefined,controls,'ness-tagboard-modes');
  tools.setAttribute('role','toolbar');tools.setAttribute('aria-label','Инструменты тегов внешности');
  const toolModes=el('div',undefined,tools,'ness-tagboard-tool-modes');
  const toolButtons={};
@@ -234,28 +235,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
- const basic=button('Ракурсы',modes,()=>{if(!flushModeText())return;mode='base';layout=layouts.base;preset='face';checked.clear();closeTransfer();render();},'quiet');
- const marks=button('Под одеждой',modes,()=>{if(!flushModeText())return;mode='skin';layout=layouts.skin;preset='upper_front';checked.clear();closeTransfer();render();},'quiet');
- const nsfw=button('NSFW',modes,()=>{if(!flushModeText())return;mode='nsfw';layout=layouts.nsfw;preset='nsfwChest';checked.clear();closeTransfer();render();},'quiet');
+ const basic=button('Ракурсы',modes,()=>{if(!flushModeText())return;filterByMode[mode]=filter;mode='base';layout=layouts.base;filter=filterByMode[mode];preset='face';checked.clear();closeTransfer();render();},'quiet');
+ const marks=button('Под одеждой',modes,()=>{if(!flushModeText())return;filterByMode[mode]=filter;mode='skin';layout=layouts.skin;filter=filterByMode[mode];preset='upper_front';checked.clear();closeTransfer();render();},'quiet');
+ const nsfw=button('NSFW',modes,()=>{if(!flushModeText())return;filterByMode[mode]=filter;mode='nsfw';layout=layouts.nsfw;filter=filterByMode[mode];preset='nsfwChest';checked.clear();closeTransfer();render();},'quiet');
  const helpLayout=el('div',undefined,frame,'ness-appearance-main');
  const content=el('div',undefined,helpLayout,'ness-tagboard-body');
  const figure=createAppearanceFigure(ui,helpLayout,()=>setHintPinned(false));
- function activeRibbon(){
-  return figure.pickerHost.querySelector?.('.ness-tagboard-ribbon')||content.querySelector?.('.ness-tagboard-ribbon');
- }
- function positionAppearancePickers(ribbon=activeRibbon()){
-  // Moving the real ribbon between the normal toolbar and the help card can
-  // also reset its scroll in browsers. Keep its scroll position during reparent.
-  const ribbonLeft=ribbon?.scrollLeft??0;
-  if(helpPinned){
-   figure.pickerHost.appendChild(modes);
-   if(ribbon)figure.pickerHost.appendChild(ribbon);
-  }else{
-   frame.insertBefore(modes,header);
-   if(ribbon)content.insertBefore(ribbon,content.firstChild||null);
-  }
-  if(ribbon)ribbon.scrollLeft=ribbonLeft;
- }
+ function activeRibbon(){return controls.querySelector('.ness-tagboard-ribbon');}
  function refreshHelp(){
   const open=helpPinned||helpPeek;
   figure.element.hidden=!open;
@@ -267,7 +253,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function setHintPinned(value){
   helpPinned=Boolean(value);
   helpPeek=false;
-  positionAppearancePickers();
   refreshHelp();
  }
  function toggleHintPeek(){
@@ -285,7 +270,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   skin=normalizeSkinTags(s.skin);
   catalog=normalizeAppearanceCatalog(s.catalog,s.base.base,skin,s.nsfw);
    modeCatalog=normalizeAppearanceModeCatalog(s.catalog,s.base.base,skin,s.nsfw);
-  if(s.editor){mode=s.editor.mode;preset=s.editor.preset;focusTagId=s.editor.focusTagId||'';layout=layouts[mode]||'board';}
+  if(s.editor){filterByMode[mode]=filter;mode=s.editor.mode;filter=filterByMode[mode];preset=s.editor.preset;focusTagId=s.editor.focusTagId||'';layout=layouts[mode]||'board';}
   followMovedTag=!!focusTagId;
   changed();render();historyState();
  }
@@ -572,7 +557,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     }
    }else if(mode==='nsfw')writeNsfwState(cleanNsfwTags(readNsfwState(),tag.text));
   }
-  transferTagId='';focusTagId=movedId;mode=target;layout=layouts[mode];preset=target==='base'?'face':target==='skin'?'upper_front':'nsfwChest';checked.clear();toolMode='move';
+  transferTagId='';focusTagId=movedId;filterByMode[mode]=filter;mode=target;filter=filterByMode[mode];layout=layouts[mode];preset=target==='base'?'face':target==='skin'?'upper_front':'nsfwChest';checked.clear();toolMode='move';
   if(targetSectionId)collapsed.delete(target+':'+targetSectionId);
   followMovedTag=true;
    warn((remove?'Перенесено':'Скопировано')+' в «'+(target==='base'?'Ракурсы':target==='skin'?'Под одеждой':'NSFW')+'». Назначь тег нужной области.');after();
@@ -948,10 +933,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
-  figure.pickerHost.querySelector?.('.ness-tagboard-ribbon')?.remove?.();
+  activeRibbon()?.remove?.();
   clear(content);textDraft=null;
-  const headings=availablePresets(),ribbon=el('div',undefined,content,'ness-tagboard-ribbon');
-  positionAppearancePickers(ribbon);
+  const headings=availablePresets(),ribbon=el('div',undefined,controls,'ness-tagboard-ribbon');
   refreshHelp();
   ui.wheelAlongX?.(ribbon);
   for(const [id,label] of Object.entries(headings)){
