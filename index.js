@@ -1313,7 +1313,8 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
     const saved = settings().novelai;
     if (!saved.enabled) throw new Error('Прямое подключение NovelAI выключено в SP Imagen.');
     const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
-    const profile = profileById(settings(),config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot');
+    const profileId = config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot';
+    const profile = profileById(settings(),profileId);
     const style = resolveImageStyle({
         activeStyle:activeStyle(saved),
         snapshotStyle:snapshot?.style,
@@ -1325,6 +1326,7 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
     const result = await generateNovelAI({
         settings: requestSettings,
         prompt: config.prompt,
+        profileId,
         style: style.value,
         aspectRatio: config.aspect_ratio || requestSettings.novelaiAspectRatio || '2:3',
         signal,

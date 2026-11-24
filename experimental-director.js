@@ -19,14 +19,14 @@ const CORE=[
  'JSON schema:',
  '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":{{BUBBLES_EXAMPLE}},"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"panel-specific body poses, expressions, gestures, gaze, hand and prop details, clothing/hair movement and individual action"}],"lettering":{{LETTERING_EXAMPLE}}}',
  'Use the supplied schema and standard JSON strings. Include every field and use empty arrays where appropriate.',
- 'opening: illustration or page format and panel count. The extension calculates subject counts.',
- 'scene: stage the complete visual composition. For each panel, establish its place on the page, camera, visible setting, participants’ relative positions, and the central action or interaction connecting them. Keep clear spatial anchors for the characters and their shared interaction.',
+ 'opening: illustration or page format and panel count. The extension calculates subject counts.{{OPENING_RULE}}',
+ 'scene: stage the complete visual composition. For each panel, establish its place on the page, camera, visible setting, participants’ relative positions, and the central action or interaction connecting them. Keep clear spatial anchors for the characters and their shared interaction.{{PANEL_RULE}}',
  'borders: design the actual visible frames around panels, including the edges, outline weight, ink or decorative pattern, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence.',
- 'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action.',
+ 'characters: one entry per physically present participant. subject is boy, girl, cat or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe follows the current outfit. action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action.{{CHARACTER_RULE}}',
  '{{BUBBLE_RULE}}',
  '{{LETTERING_RULE}}',
  'Follow the RP chronology, current scene and composition wishes. Keep all visual descriptions in English. {{PRINTED_WORD_RULE}}',
- 'The extension assembles subject counts, separators and the final image prompt from these fields. Output the JSON object.'
+ 'The extension assembles subject counts, separators and the final image prompt from these fields.{{ASSEMBLY_RULE}} Output the JSON object.'
 ].join('\n\n');
 const PAGE=[
  'Create a {{PAGE_KIND}} from the last {{POST_COUNT}} RP posts with expressive artwork and coherent page layout.',
@@ -61,11 +61,31 @@ export function normalizeExperimentalSceneLabels(text){
  return String(text).replace(/(^|;\s*|\n+)(\d{1,2})[.)]\s+(?=\S)/gu,
   (full,prefix,index)=>prefix+(ORDINALS[Number(index)-1]||'another')+' panel: ');
 }
+// A complete page example uses the same schema and active text policy as the director.
+function pageSample(kind,includeText,maxLines) {
+ const first=includeText&&maxLines>0, second=first&&kind==='story_page'&&maxLines>1;
+ const story=kind==='story_page';
+ return JSON.stringify({
+  schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
+  opening:story?'2 panels, sequential story page':'2 panels, expressive comic page',
+  scene:'Panel 1: large upper chest-up two-shot, Alex on the left facing Rita on the right by a sunlit window; Panel 2: small lower close-up of Rita looking toward Alex',
+  borders:'thin ink panel frames, narrow cream gutters',
+  bubbles:first?[
+   {panel:1,speaker:'Alex',design:'rounded white balloon in the upper left, thin dark outline, clear dark lettering',words:'Привет!'},
+   ...(second?[{panel:2,speaker:'Rita',design:'small oval balloon above Rita, clear dark lettering',words:'Привет.'}]:[])
+  ]:[],
+  characters:[
+   {subject:'boy',name:'Alex',appearance:'adult man, dark hair, brown eyes',wardrobe:'blue sweater',action:'Panel 1: '+(first?'speaking to Rita, ':'')+'gentle smile, eyes on Rita'},
+   {subject:'girl',name:'Rita',appearance:'adult woman, short brown hair, round glasses',wardrobe:'cream cardigan',action:'Panel 1: facing Alex, attentive expression; Panel 2: '+(second?'answering Alex, ':'')+'smiling toward Alex'}
+  ],
+  lettering:[]
+ },null,2);
+}
 export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,maxLines=2,maxWords=10}={}){
  check(Object.values(EXPERIMENTAL_DIRECTOR_IDS).includes(kind),'Неизвестный тестовый формат');
- const allowBubbles=kind!=='snapshot'&&includeText;
+ const page=kind!=='snapshot', allowBubbles=page&&includeText&&maxLines>0;
  const textPolicy=includeText
-  ?'Select up to {{MAX_LINES}} relevant complete spoken lines, each at most {{MAX_WORDS}} words. Place each balloon in the appropriate panel. Use lettering only if spoken or visibly written in the selected RP beat. Reproduce original speech and lettering verbatim.'
+  ?'Select up to {{MAX_LINES}} relevant complete spoken lines, each at most {{MAX_WORDS}} words. Limits are ceilings, not quotas. Put each selected line in bubbles for the panel that shows its speaker. If the limit is zero or no suitable spoken line exists, use an empty bubbles array. Use lettering only for visible writing on actual objects in the selected RP beat. Reproduce original speech and lettering verbatim.'
   :'TEXT DISABLED: bubbles and lettering MUST both be empty arrays; no speech bubbles, readable writing or captions in the scene.';
  let choice=kind==='snapshot'?SNAPSHOT:PAGE
   .replaceAll('{{PAGE_KIND}}',kind==='comic'?'comic page':'sequential story page')
@@ -74,19 +94,23 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
   .replaceAll('{{MAX_WORDS}}',String(maxWords));
  choice=choice.replaceAll('{{POST_COUNT}}',String(postCount));
  const core=CORE
+  .replace('{{OPENING_RULE}}',page?' Leave text and speech bubble tags to the extension.':'')
+  .replace('{{PANEL_RULE}}',page?' Use exactly one numbered Panel N: label for each panel, starting at Panel 1: and continuing in reading order; separate the panel descriptions with semicolon and space. Keep scene a single JSON string. Put all visual staging in these descriptions, without a separate introduction or repeated panel labels.':'')
+  .replace('{{CHARACTER_RULE}}',page?' For a speaker, describe the actual speaking action in the correct panel. Keep balloon design and printable words exclusively in the dedicated fields, not in character descriptions.':'')
+  .replace('{{ASSEMBLY_RULE}}',page?' The extension inserts each printed item inside its own panel and binds the balloon visually to its speaker; it creates one final Text: block in reading order. Never write Text: or pipe separators in any field.':'')
   .replace('{{BUBBLES_EXAMPLE}}',allowBubbles
-   ?'[{"panel":1,"speaker":"speaker name","design":"balloon shape, position, border and tail","words":"exact spoken line"}]':'[]')
+   ?'[{"panel":1,"speaker":"Alex","design":"rounded white balloon above Alex, thin ink outline, clear dark lettering","words":"Привет!"}]':'[]')
   .replace('{{LETTERING_EXAMPLE}}',includeText
    ?'[{"panel":1,"design":"visible note, sign or screen location","words":"exact visible inscription"}]':'[]')
   .replace('{{BUBBLE_RULE}}',allowBubbles
-   ?'bubbles: give each spoken line a visible comic speech balloon in the correct panel, with its shape, ink outline, position beside the speaker, pointed tail and exact quoted words inside.':'')
+   ?'bubbles: one object per selected spoken line, in page reading order. panel is the exact integer N from the corresponding Panel N: in scene. speaker must exactly match the visible character name in characters. design describes a visibly enclosed comic speech balloon, its position near the speaker, shape, outline and readable lettering; the extension adds the tail toward the speaker and the words. Put only the exact spoken line in words, without additional quotation marks or speaker labels. Keep bubbles clear of faces and actions; silent panels have no bubble entry.':'')
   .replace('{{LETTERING_RULE}}',includeText
-   ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.':'')
+   ?'lettering: exact visible words on a physical object. Preserve original wording and punctuation.'+ (page?' Match panel to the numbered scene panel; put the visual placement in design and the exact inscription only in words.':''):'')
   .replace('{{PRINTED_WORD_RULE}}',includeText?'Keep visible written words in their original language.':'')
   .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
- return core+'\n\n'+choice+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities'+(allowBubbles?', bubble tail direction':'')+' and syntax.';
+ return core+'\n\n'+choice+(page?'\n\nSAMPLE (format only; use the actual RP, never the example cast or dialogue):\n'+pageSample(kind,includeText,maxLines):'')+intimacy+'\n\nFINAL: output only one valid JSON object. Silently verify artistic consistency, chronology, identities'+(allowBubbles?', bubble tail direction':'')+' and syntax.';
 }
 function stringField(obj,key,{empty=false,max=16000}={}){
  const v=obj?.[key];check(typeof v==='string'&&v.length<=max&&(empty||v.trim()),'Поле '+key+' пусто либо слишком длинное');
@@ -105,6 +129,25 @@ function parseJSON(raw){
  try{return JSON.parse(s);}catch(cause){throw new Error('Тестовый режиссёр вернул повреждённый JSON. NovelAI не запускался; исходный ответ сохранён.',{cause});}
 }
 const boundary=s=>String(s).trim().replace(/[;\s]+$/u,'');
+// Only explicitly numbered panels have a safe insertion boundary. Keep older
+// free-form scenes intact rather than guessing where a panel begins or ends.
+function numberedPanels(scene) {
+ const marks=[...scene.matchAll(/(?:^|;\s*|\n+)Panel\s+(\d{1,2}):\s*/giu)];
+ if(!marks.length||marks[0].index!==0||marks.some((m,i)=>Number(m[1])!==i+1))return null;
+ const panels=marks.map((m,i)=>({
+  panel:i+1,
+  description:boundary(scene.slice(m.index+m[0].length,marks[i+1]?.index??scene.length))
+ }));
+ return panels.every(p=>p.description)?panels:null;
+}
+function pagePrintedItems(bubbles,lettering) {
+ let bubbleNumber=0,letterNumber=0;
+ return [
+  ...lettering.map(x=>({...x,type:'lettering'})),
+  ...bubbles.map(x=>({...x,type:'bubble'}))
+ ].sort((a,b)=>a.panel-b.panel||Number(a.type==='bubble')-Number(b.type==='bubble'))
+  .map(x=>({...x,number:x.type==='bubble'?++bubbleNumber:++letterNumber}));
+}
 
 /**
  * Deterministic recovery for unambiguous slot-schema mistakes.
@@ -201,17 +244,40 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  });
  const count=SUBJECTS.map(subject=>[subject,characters.filter(x=>x.subject===subject).length])
   .filter(([,n])=>n).map(([subject,n])=>n+subject).join(', ');
- const baseText=[[count,opening].filter(Boolean).join(', '),borders?'panel borders: '+borders:'',scene,
-  ...lettering.map((x,i)=>'Lettering '+(i+1)+': within panel '+x.panel+', on the actual object, '+boundary(x.design)+', saying '+JSON.stringify(x.words)),
-  ...bubbles.map((x,i)=>'Speech bubble '+(i+1)+': In panel '+x.panel+', a visible, outlined comic speech bubble beside '+boundary(x.speaker)+'\'s face containing '+JSON.stringify(x.words)+'; '+boundary(x.design)+'; the attached tail points to '+boundary(x.speaker)+'\'s mouth')
- ].map(boundary).filter(Boolean).join('; ');
- const sections=characters.map(x=>'| '+x.subject+', '+x.name
-  +(x.appearance?', '+boundary(x.appearance):'')
-  +(x.wardrobe?'; '+boundary(x.wardrobe):'')
-  +(x.action?'; '+boundary(x.action):''));
- // Preserve exact words. Only order copied Text: fragments by panel reading order.
- const printed=[...lettering.map(x=>({...x,sourceOrder:0})),...bubbles.map(x=>({...x,sourceOrder:1}))]
-  .sort((a,b)=>a.panel-b.panel||a.sourceOrder-b.sourceOrder).map(x=>x.words);
+ const printedItems=pagePrintedItems(bubbles,lettering);
+ const panels=base==='snapshot'?null:numberedPanels(scene);
+ const panelLocal=panels&&printedItems.every(x=>x.panel<=panels.length);
+ const prefix=[[count,opening].filter(Boolean).join(', ')];
+ if(panelLocal&&printedItems.length) {
+  const tags=bubbles.length?['text','speech bubble']:['text'];
+  const openingTags=new Set(opening.split(/[,;]/u).map(x=>x.trim().toLowerCase()));
+  const missing=tags.filter(tag=>!openingTags.has(tag)&&!(tag==='speech bubble'&&openingTags.has('speech bubbles')));
+  if(missing.length)prefix.push(missing.join(', '));
+ }
+ if(borders)prefix.push('panel borders: '+borders);
+ const letterText=(x,i)=>'Lettering '+i+': within panel '+x.panel+', on the actual object, '+boundary(x.design)+', saying '+JSON.stringify(x.words);
+ const legacyBubble=(x,i)=>'Speech bubble '+i+': In panel '+x.panel+', a visible, outlined comic speech bubble beside '+boundary(x.speaker)+"'s face containing "+JSON.stringify(x.words)+'; '+boundary(x.design)+"; the attached tail points to "+boundary(x.speaker)+"'s mouth";
+ const panelBubble=x=>'Speech bubble '+x.number+': In panel '+x.panel+', '+boundary(x.design)+", tail pointing toward "+boundary(x.speaker)+"'s mouth, saying "+JSON.stringify(x.words);
+ const baseText=(panelLocal
+  ?[...prefix,...panels.map(p=>[
+   'Panel '+p.panel+': '+p.description,
+   ...printedItems.filter(x=>x.panel===p.panel).map(x=>x.type==='bubble'?panelBubble(x):letterText(x,x.number))
+  ].join('; '))]
+  :[...prefix,scene,...lettering.map((x,i)=>letterText(x,i+1)),...bubbles.map((x,i)=>legacyBubble(x,i+1))]
+ ).map(boundary).filter(Boolean).join('; ');
+ const sameName=(a,b)=>a.trim().toLocaleLowerCase()===b.trim().toLocaleLowerCase();
+ const sections=characters.map(x=>{
+  const unique=characters.filter(a=>sameName(a.name,x.name)).length===1;
+  const spokenPanels=panelLocal&&unique?[...new Set(printedItems.filter(b=>b.type==='bubble'&&sameName(b.speaker,x.name)).map(b=>b.panel))]:[];
+  const cues=spokenPanels.map(n=>'Panel '+n+': visible speech balloon beside '+x.name+", tail pointing toward "+x.name+"'s mouth");
+  return '| '+x.subject+', '+x.name
+   +(x.appearance?', '+boundary(x.appearance):'')
+   +(x.wardrobe?'; '+boundary(x.wardrobe):'')
+   +(x.action?'; '+boundary(x.action):'')
+   +(cues.length?'; '+cues.join('; '):'');
+ });
+ // Exact words are copied once, in the same panel reading order as the visual items.
+ const printed=printedItems.map(x=>x.words);
  const prompt=[baseText,...sections].filter(Boolean).join(' ')+(printed.length?'\n\nText: '+printed.join('\n\n'):'');
  check(prompt.length<=45000,'Собранный промпт длиннее 45 000 символов');
  return {config:{prompt,aspect_ratio:data.aspect_ratio,image_size:'1K'},repaired:normalized.repaired,experimental:true};
