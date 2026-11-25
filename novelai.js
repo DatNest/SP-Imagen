@@ -26,7 +26,7 @@ const DIMENSIONS = Object.freeze({
 
 export function defaultNovelAISettings() {
     return {
-        enabled: true;
+        enabled: true,
         endpoint: OFFICIAL_NOVELAI_ORIGIN,
         apiKey: '',
         model: 'nai-diffusion-5-full',

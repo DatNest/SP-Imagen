@@ -287,7 +287,9 @@ test('Resume is a distinct arrow left of the star, and the tour shows a non-gene
 test('Mobile library uses one compact action bar, collapsible search and shared bulk tags',()=>{
  const lib=read('library-runtime.js'),css=read('style.css'),index=read('index.js'),guide=makeGuideSteps(true);
  assert.match(lib,/function saveState\(state\)/);
- assert.match(lib,/view\.saveState\(value\?'busy':dirty\?'dirty':'saved'\)/);
+ assert.match(lib,/view\.saveState\(saving\?'busy':dirty\|\|saveFailed\?'dirty':'saved'\)/);
+ assert.match(lib,/if\(target===filters\)\{if\(actions.parentNode!==filters\)filters.appendChild\(actions\)/);
+ assert.match(lib,/deleteLibraryRecords\(draft,chosen\)/);
  assert.match(lib,/chip\.dataset\.assignment=all\?'all':partial\?'partial':'none'/);
  assert.match(lib,/assignSelectedTag\(id,!all\)/);
  assert.match(lib,/function confirmDeleteRecords\(ids\)/);

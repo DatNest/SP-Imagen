@@ -1914,7 +1914,7 @@
    The overlay itself still prevents scroll leaking into the RP chat. */
 #sp-imagen-review-panel :is([data-review-scroll],[data-library-list],.ness-library-tools,.ness-tab-viewport,.ness-tag-strip,.ness-record-tags,.ness-editor-meta-tags,.ness-tag-choices,.ness-results,.ness-unified-tagflow,.ness-tagboard-chosen-list,.ness-tagboard-ribbon,.ness-child-body,.ness-transfer-targets,textarea){overscroll-behavior:auto!important}
 :is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-library,.spi-prompt-window>textarea){overscroll-behavior:auto!important}
-@media(max-width:767px){
+@media(max-width:767px),(pointer:coarse){
  #sp-imagen-review-overlay:not([data-minimized=true]) #sp-imagen-review-panel[data-dialog=library]{border-radius:12px!important}
  #sp-imagen-review-panel[data-dialog=library] .ness-header{order:0;gap:4px;padding:5px 8px!important;flex-wrap:nowrap}
  #sp-imagen-review-panel[data-dialog=library] .ness-header h3{font-size:16px!important;white-space:nowrap}
@@ -1965,4 +1965,16 @@
  #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-tools .ness-format-strip{flex:0 1 auto;gap:3px}
  #sp-imagen-review-panel[data-dialog=library] .ness-format-strip .ness-button{min-height:36px!important;padding:3px 6px!important;font-size:11px!important}
  #sp-imagen-review-panel[data-dialog=library] .ness-tab-content{padding:3px 0 6px}
+}
+
+@media(max-width:767px),(pointer:coarse){
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library{order:0;flex:0 1 auto;display:flex;margin-inline-start:auto!important;padding:0!important;gap:3px;border:0;background:transparent}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library>.ness-status:not([data-compact=true]){position:static;flex-basis:100%}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library>.ness-footer-left{gap:3px;margin:0}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library .ness-button{min-width:34px!important;width:34px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-library-add{font-size:12px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip{touch-action:pan-x pan-y}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading .ness-editor-identity{display:grid}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading:not([data-expanded=true]) .ness-editor-identity-fields{display:block}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading:not([data-expanded=true]) .ness-editor-identity>.ness-help-toggle{display:none}
 }

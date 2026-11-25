@@ -7,6 +7,7 @@ import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, 
 import { openCharacterIconEditor } from './character-icon-editor.js';
 import { LEGACY_BODY_FIELDS, prepareBodyAppearance } from './legacy-body-migration.js';
 import { applyCommittedIcon } from './library-persistence.js';
+import { bulkTagState, setBulkTag, deleteLibraryRecords } from './library-bulk-actions.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension, libraryStore } = {}){
 const NESS_RECOVERED_BODY={
@@ -470,7 +471,7 @@ function createLibraryView(D){
  const setSearchOpen=open=>{filters.dataset.searchOpen=String(open);searchToggle.setAttribute('aria-expanded',String(open));if(open)search.focus({preventScroll:true});};
  searchToggle.onclick=()=>setSearchOpen(filters.dataset.searchOpen!=='true');
  // A pointer elsewhere folds the search field, but keeps its query.
- panel.addEventListener('pointerdown',e=>{if(!filters.contains(e.target)&&!search.parentNode.contains(e.target))setSearchOpen(false);});
+ panel.addEventListener('pointerdown',e=>{if(!searchToggle.contains(e.target)&&!search.parentNode.contains(e.target))setSearchOpen(false);});
  search.addEventListener('keydown',e=>{if(e.key==='Escape'&&filters.dataset.searchOpen==='true'){e.stopPropagation();setSearchOpen(false);}});
  search.addEventListener('input',()=>searchToggle.dataset.hasQuery=String(!!search.value));
  const add=button('+ Персонаж',filters,undefined,'primary ness-library-add');add.setAttribute('data-library-add','');
@@ -500,12 +501,20 @@ function createLibraryView(D){
  const close=button(getExtension?.()?.hubChildOpen?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
  function saveState(state){save.dataset.saveState=state;libraryIcon(save,state==='busy'?'loading':state==='saved'?'saved':'save',state==='busy'?'Сохранение…':state==='saved'?'Все изменения сохранены':'Сохранить',true);save.disabled=state==='busy';}
  saveState('saved');
+ const mobile=window.matchMedia?.('(max-width:767px), (pointer:coarse)');
+ function mountActions(){
+  const target=mobile?.matches&&panel.getAttribute('data-view')==='list'?filters:panel;
+  if(target===filters){if(actions.parentNode!==filters)filters.appendChild(actions);}
+  else if(actions.parentNode!==panel){panel.appendChild(actions);}
+ }
+ const onMobile=()=>mountActions();
+ mobile?.addEventListener?.('change',onMobile);
  let listScroll=0;
- function resetEditor(){ui.clear(form);panel.setAttribute('data-view','list');list.scrollTop=listScroll;}
- function showEditor(){if(panel.getAttribute('data-view')!=='editor')listScroll=list.scrollTop;panel.setAttribute('data-view','editor');form.scrollTop=0;}
+ function resetEditor(){ui.clear(form);panel.setAttribute('data-view','list');mountActions();list.scrollTop=listScroll;}
+ function showEditor(){if(panel.getAttribute('data-view')!=='editor')listScroll=list.scrollTop;setSearchOpen(false);panel.setAttribute('data-view','editor');mountActions();form.scrollTop=0;}
   function selection(n){bulk.hidden=n===0;tagTools.dataset.bulk=String(n>0);bulkDelete.title='Удалить выбранных: '+n;bulkDelete.setAttribute('aria-label',bulkDelete.title);}
  function counts(all,visible){total.textContent=String(all);resultCount.textContent=visible===all?'Персонажей: '+all:'Найдено: '+visible+' из '+all;}
- resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkDelete,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,saveState,addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton,layoutList,layoutGrid,recoveryButton};
+ resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkDelete,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,saveState,disposeView:()=>mobile?.removeEventListener?.('change',onMobile),addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton,layoutList,layoutGrid,recoveryButton};
 }
 
 // Module: library_store
@@ -649,19 +658,26 @@ async function openLibraryEditor(){
  if(typeof document==='undefined')throw Error('Редактор доступен только внутри SillyTavern.');
  if(document.querySelector('#sp-imagen-review-overlay'))throw Error('Сначала закрой уже открытое окно.');
  await libraryStore?.refresh();
- let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
+ let baseline=masterLibraryRaw(),draft=loadMasterLibrary(),dirty=false,busy=false,saving=false,saveFailed=false,done=false,editor=null,discardAsked=false,editingTag=null,closeTagPicker=()=>{};
  // Opening a library after an extension update must never write to storage.
  const origin=SillyTavern.getContext(),originChat=origin.chat,originId=origin.chatId,selected=new Set();
  let appearanceHintPinned=false;
  try{appearanceHintPinned=window.localStorage?.getItem('sp-imagen-figure-pinned')==='1';}catch{}
  const view=createLibraryView(document);
  const {overlay,panel,el,clear,input,area,field,button,choice,section,search,bulkActions,list,form,message,save,close}=view;
+ view.tools.addEventListener('wheel',event=>{
+  if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.shiftKey||Math.abs(event.deltaY)<=Math.abs(event.deltaX))return;
+  let node=event.target;while(node&&view.tools.contains(node)){if(node.scrollHeight>node.clientHeight+1&&((event.deltaY>0&&node.scrollTop<node.scrollHeight-node.clientHeight-1)||(event.deltaY<0&&node.scrollTop>1)))return;if(node===view.tools)break;node=node.parentElement;}
+  const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?list.clientHeight:1);
+  const next=Math.max(0,Math.min(list.scrollHeight-list.clientHeight,list.scrollTop+delta));
+  if(next!==list.scrollTop){list.scrollTop=next;event.preventDefault();}
+ },{passive:false});
  const labels={name:'Имя',base:'Постоянная внешность',promptName:'Имя для промпта',subject:'Тип персонажа для промпта'};
  const norm=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
  const status=text=>{if(message.textContent!==text)message.textContent=text;message.dataset.compact=String(['Все изменения сохранены','Не сохранено','Библиотека SP Imagen сохранена.','Разметка сохранена.'].includes(text));};
  let revision=0,indexedRevision=-1,searchIndex=[],currentVisibleRecords=[];
- const changed=(indexChanged=false)=>{if(indexChanged===true)revision++;dirty=true;discardAsked=false;if(!busy)view.saveState('dirty');status('Не сохранено');};
- const setBusy=value=>{busy=value;for(const tag of ['input','textarea','select','button'])for(const e of panel.querySelectorAll(tag))e.disabled=value;view.saveState(value?'busy':dirty?'dirty':'saved');editor?.visibility?.syncHistory?.();};
+ const changed=(indexChanged=false)=>{if(indexChanged===true)revision++;dirty=true;saveFailed=false;discardAsked=false;if(!busy)view.saveState('dirty');status('Не сохранено');};
+ const setBusy=value=>{busy=value;for(const tag of ['input','textarea','select','button'])for(const e of panel.querySelectorAll(tag))e.disabled=value;view.saveState(saving?'busy':dirty||saveFailed?'dirty':'saved');save.disabled=value;editor?.visibility?.syncHistory?.();};
  function flushEditor(){
   if(!editor)return;
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
@@ -692,7 +708,7 @@ async function openLibraryEditor(){
   editor.original=cloneLibrary(entry);
  }
  function tryFlush(){try{flushEditor();return true;}catch(e){status(e.message);return false;}}
- let rulesDialog=null;
+ let rulesDialog=null,deleteDialog=null;
  const rulesButton=button('◈',view.addTag.parentNode,()=>{
   if(busy||done||rulesDialog||!tryFlush())return;
   closeTagPicker();
@@ -720,15 +736,16 @@ async function openLibraryEditor(){
  let filterScroll=0;
  function renderTags(){
   if(!view.tagStrip.hidden&&view.tagStrip.clientHeight)filterScroll=view.tagStrip.scrollTop;
-  const stripScroll=filterScroll;
+  const stripScroll=filterScroll,left=view.tagStrip.scrollLeft;
+  const active=document.activeElement?.getAttribute?.('data-tag-filter');
   view.tagStrip.hidden=!view.tagEditor.hidden;
   clear(view.tagStrip);
   const selectedTag=draft.organizer.filterTagId;
   const bulkMode=selected.size>0;
   const addFilter=(id,name,color)=>{
-   const assignable=bulkMode&&!!color;
-   const assigned=assignable?[...selected].filter(actor=>draft.organizer.characters[actor]?.tagIds?.includes(id)).length:0;
-   const all=assignable&&assigned===selected.size,partial=assignable&&assigned>0&&!all;
+   const assignable=bulkMode&&id!=='*'&&id!=='';
+   const assignment=assignable?bulkTagState(draft,selected,id):'none';
+   const all=assignment==='all',partial=assignment==='partial';
    const chip=el('button',assignable?(all?'✓ ':partial?'− ':'+ ')+name:name,view.tagStrip,'ness-tag-filter');chip.type='button';chip.setAttribute('data-tag-filter',id);
    chip.setAttribute('aria-pressed',String(assignable?all:selectedTag===id));
    if(assignable){chip.dataset.assignment=all?'all':partial?'partial':'none';chip.title=all?'Убрать у всех выбранных': 'Назначить всем выбранным';}
@@ -737,13 +754,14 @@ async function openLibraryEditor(){
     if(busy)return;
     if(assignable){assignSelectedTag(id,!all);return;}
     if(bulkMode||draft.organizer.filterTagId===id)return;
-    draft.organizer.filterTagId=id;changed();renderTags();searchNow();
+    draft.organizer.filterTagId=id;changed();searchNow();
    };
   };
   if(!bulkMode){addFilter('*','Все');addFilter('','Без тегов');}
   for(const tag of draft.organizer.tags)addFilter(tag.id,tag.name,tag.color);
   view.editTag.hidden=bulkMode||!view.tagEditor.hidden||!draft.organizer.tags.some(t=>t.id===selectedTag);
-  if(!view.tagStrip.hidden)view.tagStrip.scrollTop=stripScroll;
+  if(!view.tagStrip.hidden){view.tagStrip.scrollTop=stripScroll;view.tagStrip.scrollLeft=left;}
+  if(active!==null&&active!==undefined)[...view.tagStrip.querySelectorAll('[data-tag-filter]')].find(node=>node.getAttribute('data-tag-filter')===active)?.focus?.({preventScroll:true});
  }
  function renderList(reset=false){
   const q=norm(search.value);
@@ -797,7 +815,7 @@ async function openLibraryEditor(){
  }
  let listLayout='grid';try{if(window.localStorage?.getItem('sp-imagen-library-layout')==='list')listLayout='list';}catch{}
  const updateListLayout=()=>{view.layoutList.setAttribute('aria-pressed',String(listLayout==='list'));view.layoutGrid.setAttribute('aria-pressed',String(listLayout==='grid'));};
- const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?96:84,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>!window.matchMedia?.('(max-width:767px)')?.matches&&listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
+ const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?96:84,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches&&listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
  const selectListLayout=next=>{if(listLayout===next)return;closeTagPicker();listLayout=next;updateListLayout();try{window.localStorage?.setItem('sp-imagen-library-layout',next);}catch{}virtualList.refresh();};
  view.layoutList.onclick=()=>selectListLayout('list');view.layoutGrid.onclick=()=>selectListLayout('grid');updateListLayout();
  let searchTimer=null;
@@ -1070,12 +1088,12 @@ async function openLibraryEditor(){
  }
  view.addTag.onclick=()=>showTagEditor();view.editTag.onclick=()=>showTagEditor(draft.organizer.filterTagId);view.applyTag.onclick=applyTag;view.tagName.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();applyTag();}};view.cancelTag.onclick=()=>{view.tagEditor.hidden=true;editingTag=null;renderTags();};
  let deleteTagAsked=false;view.deleteTag.onclick=()=>{if(!deleteTagAsked){deleteTagAsked=true;view.deleteTag.textContent='Удалить у всех?';return;}draft.organizer.tags=draft.organizer.tags.filter(t=>t.id!==editingTag);for(const meta of Object.values(draft.organizer.characters))meta.tagIds=(meta.tagIds||[]).filter(t=>t!==editingTag);editor?.tagIds.delete(editingTag);if(draft.organizer.filterTagId===editingTag)draft.organizer.filterTagId='*';view.tagEditor.hidden=true;editingTag=null;deleteTagAsked=false;view.deleteTag.textContent='Удалить';changed();renderTags();renderList();};
- function assignSelectedTag(id,add){if(busy||!selected.size||!tryFlush())return;for(const actor of selected){const meta=draft.organizer.characters[actor]||{},tags=new Set(meta.tagIds||[]);if(add)tags.add(id);else tags.delete(id);draft.organizer.characters[actor]={...meta,tagIds:[...tags]};if(editor?.id===actor)editor.tagIds=new Set(tags);}changed();renderList();}
+ function assignSelectedTag(id,add){if(busy||!selected.size||!tryFlush())return;if(!setBulkTag(draft,selected,id,add))return;if(editor&&selected.has(editor.id))editor.tagIds=new Set(draft.organizer.characters[editor.id]?.tagIds||[]);changed();renderList();}
  function confirmDeleteRecords(ids){
   if(busy||done||!ids.length||panel.querySelector('[data-ness-child-dialog]'))return;
   const chosen=new Set(ids),records=libraryEntries(draft).filter(record=>chosen.has(record.id));
   if(!records.length)return;
-  const dialog=createNessChildDialog(document,panel,{title:records.length===1?'Удалить персонажа?':'Удалить выбранных персонажей?'});
+  const dialog=createNessChildDialog(document,panel,{title:records.length===1?'Удалить персонажа?':'Удалить выбранных персонажей?',onClose:()=>{deleteDialog=null;}});deleteDialog=dialog;
   el('p',records.length===1?'Удалить «'+records[0].entry.name+'» из библиотеки навсегда?':'Удалить выбранных персонажей ('+records.length+') из библиотеки навсегда?',dialog.body,'ness-note');
   el('p','Удаление вступит в силу после сохранения библиотеки.',dialog.body,'ness-note');
   button('Отмена',dialog.actions,dialog.finish);
@@ -1084,8 +1102,10 @@ async function openLibraryEditor(){
    if(editor&&!chosen.has(editor.id)&&!tryFlush())return;
    closeTagPicker();closeNessTooltip();
    if(editor&&chosen.has(editor.id)){editor.visibility?.closeBoard?.();editor=null;}
-   for(const {id,group} of records){delete draft[group][id];delete draft.organizer.characters[id];selected.delete(id);recordTagScroll.delete(id);}
+   deleteLibraryRecords(draft,chosen);
+   for(const {id} of records){selected.delete(id);recordTagScroll.delete(id);}
    dialog.finish();if(!editor)view.resetEditor();changed(true);renderList();
+   if(!editor)view.add.focus({preventScroll:true});
    status('Удалено: '+records.length+'. Сохрани библиотеку.');
   },'danger');
  }
@@ -1119,7 +1139,7 @@ async function openLibraryEditor(){
  const previousFocus=document.activeElement,stopViewport=mountDialog(overlay,()=>onChatSwitch());virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
  async function publishDraft(keepEditor=false){
   if(busy||done||!tryFlush())return false;
-  closeTagPicker();setBusy(true);
+  closeTagPicker();saving=true;saveFailed=false;setBusy(true);
   try{
    const result=await saveMasterLibrary(draft,baseline);draft=result.data;baseline=result.raw;
    if(!keepEditor){editor?.visibility?.closeBoard?.();editor=null;view.resetEditor();}
@@ -1127,11 +1147,11 @@ async function openLibraryEditor(){
    try{await activateNessProfile('images');status(keepEditor?'Разметка сохранена.':'Библиотека SP Imagen сохранена.');}
    catch(e){status('Библиотека сохранена. Вернуться в Images не удалось: '+e.message);}
    return true;
-  }catch(e){status('Не удалось сохранить: '+e.message);return false;}
-  finally{setBusy(false);renderList();}
+  }catch(e){saveFailed=true;status('Не удалось сохранить: '+e.message);return false;}
+  finally{saving=false;setBusy(false);renderList();}
  }
  return await new Promise(resolve=>{
-  const finish=()=>{if(done)return;done=true;editor?.visibility?.closeBoard?.();guideOpenFirstRecord=()=>false;rulesDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
+  const finish=()=>{if(done)return;done=true;editor?.visibility?.closeBoard?.();guideOpenFirstRecord=()=>false;rulesDialog?.finish();deleteDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();view.disposeView();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
   onChatSwitch=()=>finish(); // Discard stale modal state when the chat changes.
   close.onclick=()=>{if(busy)return;if(dirty&&!discardAsked){discardAsked=true;status('Сохрани изменения или нажми «Закрыть» ещё раз, чтобы отменить их.');return;}finish();};
   panel.querySelector('.ness-close-dialog').onclick=()=>close.click();
