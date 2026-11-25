@@ -33,8 +33,9 @@ export function tagSimilarity(a,b){
  if(x===y)return 'exact';
  const aa=words(x),bb=words(y);
  let common=0;for(const word of aa)if(bb.has(word))common++;
- if(common<2)return '';
  const smaller=Math.min(aa.size,bb.size),larger=Math.max(aa.size,bb.size);
+ if(common===1&&smaller===1&&larger<=3)return 'partial';
+ if(common<2)return '';
  return common===smaller&&common/larger>=0.5?'partial':common/(aa.size+bb.size-common)>=0.7?'partial':'';
 }
 export function findTagConflicts(text,target,assignments){
