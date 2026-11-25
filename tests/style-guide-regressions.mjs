@@ -288,7 +288,7 @@ test('Mobile library uses one compact action bar, collapsible search and shared 
  const lib=read('library-runtime.js'),css=read('style.css'),index=read('index.js'),guide=makeGuideSteps(true);
  assert.match(lib,/function saveState\(state\)/);
  assert.match(lib,/view\.saveState\(saving\?'busy':dirty\|\|saveFailed\?'dirty':'saved'\)/);
- assert.match(lib,/if\(target===filters\)\{if\(actions.parentNode!==filters\)filters.appendChild\(actions\)/);
+ assert.match(lib,/if\(actions.parentNode!==target\)target.appendChild\(actions\)/);
  assert.match(lib,/deleteLibraryRecords\(draft,chosen\)/);
  assert.match(lib,/chip\.dataset\.assignment=all\?'all':partial\?'partial':'none'/);
  assert.match(lib,/assignSelectedTag\(id,!all\)/);
@@ -296,10 +296,23 @@ test('Mobile library uses one compact action bar, collapsible search and shared 
  assert.match(lib,/dialog\.finish\(\);if\(!editor\)view\.resetEditor\(\);changed\(true\);renderList\(\)/);
  assert.doesNotMatch(lib,/button\('Удалить персонажа',promptTab/);
  assert.match(css,/\.ness-library-layout\{display:none!important\}/);
- assert.match(css,/\.ness-footer-library\{order:1;display:flex/);
+ assert.match(css,/\.ness-footer-library\{display:flex;flex:0 0 auto/);
  assert.match(css,/\.ness-library-workspace\{order:2/);
  assert.match(css,/overscroll-behavior:auto!important/);
  assert.doesNotMatch(index,/formField\(grid, 'Генерировать напрямую через NovelAI'/);
  assert.match(index,/function directGenerationEnabled\(\) \{\s*return Boolean\(settings\(\)\.novelai\.apiKey\)/);
  assert.ok(guide.some(s=>s.text.includes('SillyImages не используется')));
+});
+
+test('Mobile drawers reuse controls and the guide reveals their targets',()=>{
+ const lib=read('library-runtime.js'),board=read('appearance-board.js'),guide=read('onboarding.js');
+ assert.match(lib,/searchField\.hidden=Boolean\(mobile\?\.matches&&!searchOpen\)/);
+ assert.match(lib,/navDrawer\.append\(tabs\.bar,controls\);toolsDrawer\.prepend\(toolBar\)/);
+ assert.match(lib,/navDrawer\.hidden=drawer!=='nav';toolsDrawer\.hidden=drawer!=='tools'/);
+ assert.match(lib,/else\{form\.insertBefore\(tabs\.bar,tabs\.viewport\)/);
+ assert.match(board,/search\.dataset\.open=String\(tagSearchOpen\)/);
+ assert.match(guide,/new CustomEvent\('spi-guide-reveal'/);
+ assert.match(lib,/if\(dirty&&!document\.querySelector\('\[data-spi-tour\]'\)\)return await publishDraft\(false\)/);
+ assert.match(lib,/if\(dirty&&!\(await publishDraft\(true\)\)\)return;\s*finish\(\)/);
+ assert.match(lib,/if\(editor\.visibility\.flushPending\?\.\(\)===false\)throw Error/);
 });

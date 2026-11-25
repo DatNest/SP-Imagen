@@ -187,7 +187,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const filterByMode={base:'',skin:'',nsfw:''};
  const layouts={base:'board',skin:'board',nsfw:'board'};
- let textDraft=null,renderedMode='',renderedPreset='';
+ let textDraft=null,renderedMode='',renderedPreset='',tagSearchOpen=false;
+ const mobile=()=>Boolean(globalThis.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches);
  // Scrolling is UI state, not character data. Keep each mode's ribbon and
  // catalogue position across editor rebuilds, with per-preset chosen offsets.
  const viewportByMode={base:{ribbon:0,tags:0},skin:{ribbon:0,tags:0},nsfw:{ribbon:0,tags:0}};
@@ -382,7 +383,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const state=viewportByMode[renderedMode];
   const ribbon=activeRibbon(),tagFlow=content.querySelector('.ness-unified-tagflow');
   const chosen=content.querySelector('.ness-tagboard-chosen-list');
-  if(ribbon)state.ribbon=ribbon.scrollLeft;
+  if(ribbon&&(!mobile()||ribbon.clientWidth>0))state.ribbon=ribbon.scrollLeft;
   if(tagFlow)state.tags=tagFlow.scrollTop;
   if(chosen)chosenScrollByPreset.set(renderedMode+':'+renderedPreset,chosen.scrollTop);
  }
@@ -1017,11 +1018,16 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const renameMode=toolMode==='edit';
   const search=el('input',undefined,left,'ness-input ness-tagboard-search');
   search.type='search';search.placeholder='Найти тег...';search.value=filter;
+  const searchToggle=button('⌕',header,undefined,'quiet ness-tag-search-toggle');searchToggle.title='Найти тег';searchToggle.setAttribute('aria-label','Найти тег');
+  const setTagSearch=(open,focus=false)=>{tagSearchOpen=Boolean(open);search.dataset.open=String(tagSearchOpen);searchToggle.setAttribute('aria-expanded',String(tagSearchOpen));searchToggle.dataset.hasQuery=String(!!filter);if(open&&focus)search.focus?.({preventScroll:true});};
+  searchToggle.onclick=()=>setTagSearch(!tagSearchOpen,true);setTagSearch(tagSearchOpen);
+  search.onblur=e=>{if(mobile()&&e.relatedTarget!==searchToggle)setTagSearch(false);};
+  search.onkeydown=e=>{if(e.key==='Escape'&&mobile()){e.preventDefault();e.stopPropagation();setTagSearch(false);searchToggle.focus?.({preventScroll:true});}};
   const scene=el('div',undefined,left,'ness-unified-highlight-list');
   const tagFlow=el('div',undefined,scene,'ness-unified-tagflow');
   const searchTexts=new Map(items().map(tag=>[tag.id,norm(tag.text)]));
   search.oninput=()=>{
-   filter=search.value;
+   filter=search.value;searchToggle.dataset.hasQuery=String(!!filter);
    const query=norm(filter);
    for(const row of tagFlow.querySelectorAll('.ness-unified-tag-row'))
     row.hidden=!!query&&!String(searchTexts.get(row.dataset.tagId)||'').includes(query);
@@ -1151,7 +1157,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   else if((key==='y'||key==='z'&&e.shiftKey)&&redo.length){e.preventDefault();redoAction();}
  });
  render();
- return {element:frame,historyHost:toolHistory,getHintPinned:()=>helpPinned,isHintPeek:()=>helpPeek,setHintPinned,toggleHintPeek,getToolMode:()=>toolMode,syncTools:updateToolBar,undo:undoAction,redo:redoAction,canUndo:()=>undo.length>0,canRedo:()=>redo.length>0,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:()=>{modeCatalog=normalizeAppearanceModeCatalog(getCatalog(),readBaseState().base,skin,readNsfwState(),initialSections);render();},getMode:()=>mode,setModeLayout(value){if(!flushModeText())return false;layouts[mode]=value==='prose'?'text':'board';layout=layouts[mode];render();return true;},setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';layouts.base=appearanceFormat==='prose'?'text':'board';if(mode==='base')layout=layouts.base;render();}};
+ return {element:frame,historyHost:toolHistory,flushPending:flushModeText,rememberRibbon:rememberViewport,restoreRibbon:()=>{const ribbon=activeRibbon();if(ribbon)ribbon.scrollLeft=viewportByMode[mode].ribbon;},getHintPinned:()=>helpPinned,isHintPeek:()=>helpPeek,setHintPinned,toggleHintPeek,getToolMode:()=>toolMode,syncTools:updateToolBar,undo:undoAction,redo:redoAction,canUndo:()=>undo.length>0,canRedo:()=>redo.length>0,getSkin:()=>normalizeSkinTags(skin),getSections:()=>normalizeAppearanceSections(modeCatalog.modes.base.sections,readBaseState().base),getCatalog,refresh:()=>{modeCatalog=normalizeAppearanceModeCatalog(getCatalog(),readBaseState().base,skin,readNsfwState(),initialSections);render();},getMode:()=>mode,setModeLayout(value){if(!flushModeText())return false;layouts[mode]=value==='prose'?'text':'board';layout=layouts[mode];render();return true;},setAvailableFormat(value){appearanceFormat=value==='prose'?'prose':'tags';layouts.base=appearanceFormat==='prose'?'text':'board';if(mode==='base')layout=layouts.base;render();}};
 }
 /** One additional marker in the existing director call; no extra model requests. */
 export function skinAppearanceInstruction(records){

@@ -281,7 +281,7 @@ function createUiKit(D){
  return {el,clear,input,area,field,button,choice,checkbox,section,row,note,help,tip,wheelAlongX};
 }
 
-function createNessTabs(ui,parent,label){
+function createNessTabs(ui,parent,label,onSelect=()=>{}){
  const {el,button}=ui,bar=el('div',undefined,parent,'ness-tab-strip'),tabs=[];
  ui.wheelAlongX?.(bar);
  bar.setAttribute('role','tablist');bar.setAttribute('aria-label',label);
@@ -291,9 +291,10 @@ function createNessTabs(ui,parent,label){
    const active=i===index;
    tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;content.hidden=!active;
   }
+  onSelect(index);
   if(focus)tabs[index].tab.focus();
  }
- return {add(title){
+ return {bar,viewport,add(title){
   const index=tabs.length,id='ness-tab-'+(++nessHelpSequence);
   const tab=button(title,bar,()=>select(index),'ness-tab');tab.id=id;tab.setAttribute('role','tab');tab.setAttribute('aria-controls',id+'-panel');
   const content=el('div',undefined,viewport,'ness-tab-content');content.id=id+'-panel';content.setAttribute('role','tabpanel');content.setAttribute('aria-labelledby',id);content.tabIndex=0;
@@ -444,6 +445,8 @@ async function previewFinalPrompt(config, origin) {
 // Fixed, theme-neutral line icons. No external font or image dependencies.
 const LIBRARY_ICONS={
  search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
+ compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5z"/>',
+ tools:'<path d="M14 6a5 5 0 0 0-6 6L3 17l4 4 5-5a5 5 0 0 0 6-6l-4 3-3-3z"/>',
  import:'<path d="M13 3H5v18h14v-9M13 3l6 6h-6zM12 10v7m-3-3 3 3 3-3"/>',
  export:'<path d="M13 3H5v18h14v-9M13 3l6 6h-6zM12 18v-7m-3 3 3-3 3 3"/>',
  save:'<path d="M4 3h14l3 3v15H3V3zM7 3v6h10V3M7 21v-8h10v8"/>',
@@ -467,8 +470,12 @@ function createLibraryView(D){
  const {badge:total}=createNessHeader(D,panel,'Библиотека','Персонажи и постоянные образы','SP Imagen');
  const tools=el('div',undefined,panel,'ness-library-tools'),filters=el('div',undefined,tools,'ness-library-filters');
  const search=field(filters,'⌕ Поиск',input('','search'));search.placeholder='Найти персонажа…';search.setAttribute('data-library-search','');search.setAttribute('aria-label','Поиск персонажей');
+ const mobile=window.matchMedia?.('(max-width:767px), (pointer:coarse)');
+ const searchField=search.parentElement;searchField.classList.add('ness-library-search-field');
  const searchToggle=button('',filters,undefined,'icon quiet ness-library-search-toggle');libraryIcon(searchToggle,'search','Поиск персонажей');searchToggle.setAttribute('aria-expanded','false');
- const setSearchOpen=open=>{filters.dataset.searchOpen=String(open);searchToggle.setAttribute('aria-expanded',String(open));if(open)search.focus({preventScroll:true});};
+ let searchOpen=false;
+ const setSearchOpen=(open,focus=true)=>{searchOpen=Boolean(open);filters.dataset.searchOpen=String(searchOpen);searchField.hidden=Boolean(mobile?.matches&&!searchOpen);searchToggle.setAttribute('aria-expanded',String(searchOpen));if(searchOpen&&focus)search.focus({preventScroll:true});};
+ setSearchOpen(false,false);
  searchToggle.onclick=()=>setSearchOpen(filters.dataset.searchOpen!=='true');
  // A pointer elsewhere folds the search field, but keeps its query.
  panel.addEventListener('pointerdown',e=>{if(!searchToggle.contains(e.target)&&!search.parentNode.contains(e.target))setSearchOpen(false);});
@@ -501,20 +508,22 @@ function createLibraryView(D){
  const close=button(getExtension?.()?.hubChildOpen?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
  function saveState(state){save.dataset.saveState=state;libraryIcon(save,state==='busy'?'loading':state==='saved'?'saved':'save',state==='busy'?'Сохранение…':state==='saved'?'Все изменения сохранены':'Сохранить',true);save.disabled=state==='busy';}
  saveState('saved');
- const mobile=window.matchMedia?.('(max-width:767px), (pointer:coarse)');
+ let editorDrawers=null;
  function mountActions(){
-  const target=mobile?.matches&&panel.getAttribute('data-view')==='list'?filters:panel;
-  if(target===filters){if(actions.parentNode!==filters)filters.appendChild(actions);}
-  else if(actions.parentNode!==panel){panel.appendChild(actions);}
+  const target=mobile?.matches?(panel.getAttribute('data-view')==='list'?filters:editorDrawers?.tools||panel):panel;
+  if(actions.parentNode!==target)target.appendChild(actions);
  }
- const onMobile=()=>mountActions();
+ const onMobile=()=>{setSearchOpen(searchOpen,false);editorDrawers?.sync();mountActions();};
  mobile?.addEventListener?.('change',onMobile);
  let listScroll=0;
- function resetEditor(){ui.clear(form);panel.setAttribute('data-view','list');mountActions();list.scrollTop=listScroll;}
- function showEditor(){if(panel.getAttribute('data-view')!=='editor')listScroll=list.scrollTop;setSearchOpen(false);panel.setAttribute('data-view','editor');mountActions();form.scrollTop=0;}
+ function resetEditor(){editorDrawers?.dispose();editorDrawers=null;panel.setAttribute('data-view','list');mountActions();ui.clear(form);list.scrollTop=listScroll;}
+ function showEditor(drawers){if(panel.getAttribute('data-view')!=='editor')listScroll=list.scrollTop;editorDrawers?.dispose();editorDrawers=drawers;setSearchOpen(false,false);panel.setAttribute('data-view','editor');editorDrawers?.sync();mountActions();form.scrollTop=0;}
+ const revealGuide=event=>{const target=event.detail?.target;if(!target)return;if(searchField.contains(target))setSearchOpen(true,false);editorDrawers?.reveal(target);};
+ panel.addEventListener('spi-guide-reveal',revealGuide);
+ const closeDrawers=()=>{editorDrawers?.close();setSearchOpen(false,false);};panel.addEventListener('spi-guide-fold',closeDrawers);
   function selection(n){bulk.hidden=n===0;tagTools.dataset.bulk=String(n>0);bulkDelete.title='Удалить выбранных: '+n;bulkDelete.setAttribute('aria-label',bulkDelete.title);}
  function counts(all,visible){total.textContent=String(all);resultCount.textContent=visible===all?'Персонажей: '+all:'Найдено: '+visible+' из '+all;}
- resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkDelete,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,saveState,disposeView:()=>mobile?.removeEventListener?.('change',onMobile),addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton,layoutList,layoutGrid,recoveryButton};
+ resetEditor();return {...ui,overlay,panel,search,tools,tagStrip,bulk,bulkActions,bulkDelete,list,form,message,add,save,close,resetEditor,showEditor,selection,counts,saveState,isMobile:()=>Boolean(mobile?.matches),searchIsOpen:()=>searchOpen,closeSearch:()=>setSearchOpen(false,false),revealActions:()=>editorDrawers?.reveal(actions),disposeView:()=>{editorDrawers?.dispose();mobile?.removeEventListener?.('change',onMobile);panel.removeEventListener('spi-guide-reveal',revealGuide);panel.removeEventListener('spi-guide-fold',closeDrawers);},addTag,editTag,tagEditor,tagName,tagColor,applyTag,deleteTag,cancelTag,upload,importButton,exportButton,layoutList,layoutGrid,recoveryButton};
 }
 
 // Module: library_store
@@ -680,6 +689,7 @@ async function openLibraryEditor(){
  const setBusy=value=>{busy=value;for(const tag of ['input','textarea','select','button'])for(const e of panel.querySelectorAll(tag))e.disabled=value;view.saveState(saving?'busy':dirty||saveFailed?'dirty':'saved');save.disabled=value;editor?.visibility?.syncHistory?.();};
  function flushEditor(){
   if(!editor)return;
+  if(editor.visibility.flushPending?.()===false)throw Error('Исправь текст тегов перед сохранением.');
   const {id,group,fields,aliases,kind,tagIds,visibility,appearanceFormat}=editor,entry=cloneLibrary(draft[group][id]);
   if(appearanceFormat.value!==(entry.appearanceFormat||'tags'))entry.appearanceFormat=appearanceFormat.value;
   for(const [key,e] of Object.entries(fields)){const value=key==='base'?visibility.base:e.value;if(value!==''||Object.hasOwn(entry,key))entry[key]=value;}
@@ -824,7 +834,7 @@ async function openLibraryEditor(){
  function editCharacter(id,group){
   if(!tryFlush())return;editor?.visibility?.closeBoard?.();closeTagPicker();clear(form);let entry=draft[group][id];const fields={};
   const heading=el('div',undefined,form,'ness-editor-heading');
-  const back=button('←',heading,()=>{if(!tryFlush())return;closeTagPicker();closeNessTooltip();editor?.visibility?.closeBoard?.();editor=null;view.resetEditor();renderList();},'quiet ness-editor-back');back.title='К списку персонажей';back.setAttribute('aria-label',back.title);
+  const back=button('←',heading,()=>void leaveEditor(),'quiet ness-editor-back');back.title='К списку персонажей';back.setAttribute('aria-label',back.title);
   const identityCard=el('div',undefined,heading,'ness-editor-identity');
   const emblem=button('✦',identityCard,()=>openCharacterIconEditor(document,panel,{
    createDialog:createNessChildDialog,initial:entry.libraryIconData||'',
@@ -908,7 +918,8 @@ async function openLibraryEditor(){
   const historyRedo=button('↷',toolbar,()=>runRedo(),'quiet ness-editor-history-button');
   historyRedo.title='Повторить изменение тегов';historyRedo.setAttribute('aria-label','Повторить изменение тегов');historyRedo.disabled=true;
 
-  const tabs=createNessTabs({el,button},form,'Карточка персонажа');
+  let syncDrawerTab=()=>{};
+  const tabs=createNessTabs({el,button},form,'Карточка персонажа',index=>syncDrawerTab(index));
   const appearance=tabs.add('Внешность');
   const formatStrip=el('div',undefined,appearance,'ness-format-strip');
   el('span','Формат',formatStrip,'ness-label');
@@ -998,6 +1009,33 @@ async function openLibraryEditor(){
   const editorBody=inlineBoard.element.querySelector('.ness-tagboard-body');
   const toolBar=inlineBoard.element.querySelector('.ness-tagboard-tools');
   toolBar.insertBefore(formatStrip,inlineBoard.historyHost);
+  const controls=toolBar.parentElement;
+  const bookmarks=el('div',undefined,undefined,'ness-editor-bookmarks');heading.after(bookmarks);
+  const navToggle=button('',bookmarks,undefined,'quiet ness-editor-bookmark');libraryIcon(navToggle,'compass','Разделы, режимы и ракурсы');
+  const toolsToggle=button('',bookmarks,undefined,'quiet ness-editor-bookmark');libraryIcon(toolsToggle,'tools','Инструменты и сохранение');
+  const navDrawer=el('div',undefined,undefined,'ness-editor-drawer ness-editor-drawer-nav');bookmarks.after(navDrawer);
+  const toolsDrawer=el('div',undefined,undefined,'ness-editor-drawer ness-editor-drawer-tools');navDrawer.after(toolsDrawer);
+  navDrawer.id='spi-editor-navigation';toolsDrawer.id='spi-editor-tools';
+  navToggle.setAttribute('aria-controls',navDrawer.id);toolsToggle.setAttribute('aria-controls',toolsDrawer.id);
+  let drawer='',appearanceActive=true;
+  function setDrawer(next){
+   if(drawer==='nav')inlineBoard.rememberRibbon();
+   drawer=view.isMobile()?next:'';
+   navDrawer.hidden=drawer!=='nav';toolsDrawer.hidden=drawer!=='tools';
+   navToggle.setAttribute('aria-expanded',String(drawer==='nav'));toolsToggle.setAttribute('aria-expanded',String(drawer==='tools'));
+   if(drawer==='nav')inlineBoard.restoreRibbon();
+  }
+  navToggle.onclick=()=>setDrawer(drawer==='nav'?'':'nav');toolsToggle.onclick=()=>setDrawer(drawer==='tools'?'':'tools');
+  syncDrawerTab=index=>{appearanceActive=index===0;controls.hidden=view.isMobile()&&!appearanceActive;toolBar.hidden=view.isMobile()&&!appearanceActive;};
+  const syncDrawers=()=>{
+   const mobile=view.isMobile();bookmarks.hidden=!mobile;
+   if(mobile){navDrawer.append(tabs.bar,controls);toolsDrawer.prepend(toolBar);}
+   else{form.insertBefore(tabs.bar,tabs.viewport);inlineBoard.element.insertBefore(controls,headingBar);controls.prepend(toolBar);}
+   syncDrawerTab(appearanceActive?0:1);setDrawer('');
+  };
+  const outside=e=>{if(!drawer||bookmarks.contains(e.target)||navDrawer.contains(e.target)||toolsDrawer.contains(e.target)||e.target.closest?.('dialog,[data-ness-child-dialog]'))return;setDrawer('');};
+  panel.addEventListener('pointerdown',outside);
+  const drawers={tools:toolsDrawer,sync:syncDrawers,close:()=>setDrawer(''),reveal:target=>{if(!view.isMobile())return;if(navDrawer.contains(target))setDrawer('nav');else if(toolsDrawer.contains(target))setDrawer('tools');else setDrawer('');},dispose:()=>panel.removeEventListener('pointerdown',outside)};
   headingBar.hidden=true;
   inlineBoard.element.insertBefore(proseWrap,editorBody.parentElement);
   runUndo=()=>inlineBoard.undo();runRedo=()=>inlineBoard.redo();
@@ -1017,7 +1055,7 @@ async function openLibraryEditor(){
       skin:inlineBoard.getSkin(),sections:inlineBoard.getSections(),
       catalog:inlineBoard.getCatalog(),nsfw:nsfwState
     };},
-    closeBoard:()=>{},refresh:()=>inlineBoard.refresh()
+    flushPending:()=>inlineBoard.flushPending(),closeBoard:()=>drawers.dispose(),refresh:()=>inlineBoard.refresh()
   };
   fields.base.oninput=()=>{
     const newBase=fields.base.value,oldBase=appearanceState.base;
@@ -1065,7 +1103,7 @@ async function openLibraryEditor(){
   const extra=Object.entries(entry).filter(([key,v])=>!fields[key]&&!Object.hasOwn(NSFW_PRESETS,key)&&!Object.hasOwn(LEGACY_BODY_FIELDS,key)&&key!=='aliases'&&key!=='appearanceFormat'&&key!=='libraryIconData'&&typeof v==='string');if(extra.length){const box=tabs.add('Дополнительно');for(const [key,value] of extra)fields[key]=field(box,key,area(value));}
   for(const e of Object.values(fields))if(e!==fields.base)e.oninput=changed;fields.name.oninput=()=>changed(true);
   editor={id,group,fields,kind,aliases,visibility,appearanceFormat,bodyMigration:appearanceEntry,tagIds:new Set(draft.organizer.characters[id]?.tagIds||[]),original:cloneLibrary(entry),refreshMetaTags:renderHeaderTags,appearanceEdited:()=>appearanceEdited,clearAppearanceEdited:()=>{appearanceEdited=false;}};
-  view.showEditor();renderList();back.focus({preventScroll:true});
+  view.showEditor(drawers);renderList();back.focus({preventScroll:true});
  }
  guideOpenFirstRecord = () => {
   if (done || busy) return false;
@@ -1137,6 +1175,11 @@ async function openLibraryEditor(){
  status(libraryEntries(draft).length?'Все изменения сохранены':'Библиотека пуста. Добавь персонажей или импортируй JSON.');
  let onChatSwitch=()=>{};
  const previousFocus=document.activeElement,stopViewport=mountDialog(overlay,()=>onChatSwitch());virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
+ async function leaveEditor(){
+  if(busy||done||!tryFlush())return false;
+  if(dirty&&!document.querySelector('[data-spi-tour]'))return await publishDraft(false);
+  closeTagPicker();closeNessTooltip();editor?.visibility?.closeBoard?.();editor=null;view.resetEditor();renderList();return true;
+ }
  async function publishDraft(keepEditor=false){
   if(busy||done||!tryFlush())return false;
   closeTagPicker();saving=true;saveFailed=false;setBusy(true);
@@ -1147,20 +1190,25 @@ async function openLibraryEditor(){
    try{await activateNessProfile('images');status(keepEditor?'Разметка сохранена.':'Библиотека SP Imagen сохранена.');}
    catch(e){status('Библиотека сохранена. Вернуться в Images не удалось: '+e.message);}
    return true;
-  }catch(e){saveFailed=true;status('Не удалось сохранить: '+e.message);return false;}
+  }catch(e){saveFailed=true;status('Не удалось сохранить: '+e.message);view.revealActions();return false;}
   finally{saving=false;setBusy(false);renderList();}
  }
  return await new Promise(resolve=>{
   const finish=()=>{if(done)return;done=true;editor?.visibility?.closeBoard?.();guideOpenFirstRecord=()=>false;rulesDialog?.finish();deleteDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();view.disposeView();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
   onChatSwitch=()=>finish(); // Discard stale modal state when the chat changes.
-  close.onclick=()=>{if(busy)return;if(dirty&&!discardAsked){discardAsked=true;status('Сохрани изменения или нажми «Закрыть» ещё раз, чтобы отменить их.');return;}finish();};
+  close.onclick=async()=>{if(busy||done)return;
+   if(document.querySelector('[data-spi-tour]')){if(dirty&&!discardAsked){discardAsked=true;status('Сохрани изменения или нажми «Закрыть» ещё раз, чтобы отменить их.');return;}finish();return;}
+   if(!tryFlush()){view.revealActions();return;}
+   if(dirty&&!(await publishDraft(true)))return;
+   finish();
+  };
   panel.querySelector('.ness-close-dialog').onclick=()=>close.click();
-  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'&&!rulesDialog&&!panel.querySelector('[data-ness-child-dialog]')){if(e.target===search&&search.parentNode.parentNode.dataset.searchOpen==='true')return;e.preventDefault();e.stopPropagation();if(panel.querySelector('.ness-record-tag-popover'))closeTagPicker();else close.onclick();}};document.addEventListener('keydown',onKey,true);
-  save.onclick=()=>publishDraft(false);
+  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'&&!rulesDialog&&!panel.querySelector('[data-ness-child-dialog]')){if(e.target===search&&view.searchIsOpen()){e.preventDefault();e.stopPropagation();view.closeSearch();return;}if(e.target?.classList?.contains('ness-tagboard-search'))return;e.preventDefault();e.stopPropagation();if(panel.querySelector('.ness-record-tag-popover'))closeTagPicker();else close.onclick();}};document.addEventListener('keydown',onKey,true);
+  save.onclick=()=>publishDraft(Boolean(editor));
  });
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.65',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.66',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
