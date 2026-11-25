@@ -560,3 +560,26 @@ test('Page-specific dialogue settings are passed unchanged to director and compi
   }
  }
 });
+
+test('All three built-in director formats require in-scene gaze; page formats vary shots in both lettering modes',()=>{
+ for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
+  const prompt=experimentalDirectorPrompt(kind,{includeText});
+  assert.match(prompt,/In every character entry, explicitly specify a gaze target within the scene/);
+  assert.match(prompt,/another participant, an object, an event, or a visible direction of attention/);
+  const sample=JSON.parse(prompt.slice(prompt.indexOf('SAMPLE:\n')+8,prompt.lastIndexOf('\n\n'+(kind==='snapshot'?'FINAL:':'Return one valid JSON object.'))));
+  for(const actor of sample.characters){
+   if(kind==='snapshot')assert.match(actor.action,/^(eyes on|looking into)/);
+   else{
+    for(const part of actor.action.split(/;\s*(?=Panel \d+:)/))assert.match(part,/\b(?:eyes (?:on|fixed on)|looking (?:at|into|down at))/);
+   }
+  }
+  if(kind==='snapshot')assert.doesNotMatch(prompt,/rather than reusing the same shot from panel to panel/);
+  else{
+   assert.match(prompt,/Vary panel framing, camera angle, crop, focal emphasis, and narrative beat across the page, rather than reusing the same shot from panel to panel/);
+   assert.match(prompt,/Give each panel a distinct action, reaction, or detail/);
+   assert.match(prompt,/For every panel showing the character’s eyes, specify the in-scene gaze target in that character’s action/);
+   assert.match(prompt,kind==='comic'?/complementary views of one established instant/:/established beats in chronological reading order/);
+   assert.match(sample.scene,/over-the-shoulder/);
+  }
+ }
+});
