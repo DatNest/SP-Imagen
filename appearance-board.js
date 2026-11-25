@@ -53,8 +53,6 @@ export function normalizeSkinTags(raw){
   if(!keyOK(id)||!Array.isArray(arr))continue;
   selections[id]=[...new Set(arr.map(x=>remap.get(x)).filter(x=>all.has(x)))];
  }
- const always=new Set(selections.always||[]);
- for(const id of Object.keys(SKIN_PRESETS))if(selections[id])selections[id]=selections[id].filter(x=>!always.has(x));
  return {tags:items,selections,sections};
 }
 export const hasSkinSelections=skin=>Object.values(normalizeSkinTags(skin).selections).some(xs=>xs.length>0);
@@ -451,10 +449,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  function setSkinSelection(id,list){
   skin.selections[id]=[...new Set(list)];
-  if(id===SKIN_ALWAYS){
-   const excluded=new Set(skin.selections.always);
-   for(const key of Object.keys(SKIN_PRESETS))if(skin.selections[key])skin.selections[key]=skin.selections[key].filter(t=>!excluded.has(t));
-  }
  }
 
  function toggle(tag,assign){if(assign)confirmAssignment(tag.text,()=>changeMany([tag],true));else changeMany([tag],false);}
@@ -464,7 +458,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!relevant.length)return;
   if(recordHistory)record();
   if(mode==='skin'){
-   const current=new Set(skin.selections[preset]||[]),ids=new Set();
+   const current=new Set(skin.selections[preset]||[]);
    for(const tag of relevant){
     let st=skinTag(tag);
     if(!st&&assign){
@@ -473,10 +467,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
      st={id,text:tag.text,section:''};skin.tags.push(st);
     }
     if(!st)continue;
-    ids.add(st.id);if(assign)current.add(st.id);else current.delete(st.id);
+    if(assign)current.add(st.id);else current.delete(st.id);
    }
    setSkinSelection(preset,[...current]);
-   if(preset!==SKIN_ALWAYS&&assign)skin.selections.always=(skin.selections.always||[]).filter(x=>!ids.has(x));
   }else if(mode==='nsfw'){
    const state={...readNsfwState()};
    for(const tag of relevant)state[preset]=assign?appendNsfwTag(state[preset],tag.text):editNsfwTag(state[preset],tag.text);
@@ -493,12 +486,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const current=baseSelected(preset).filter(r=>!targets.some(t=>overlap(r,t)));
    if(assign)for(const t of targets)current.push({start:t.start,end:t.end,text:t.text});
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
-   if(preset===NESS_APPEARANCE_ALWAYS&&assign){
-    for(const id of Object.keys(NESS_APPEARANCE_PRESETS))
-     updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!targets.some(t=>overlap(r,t))),true);
-   }else if(preset!==NESS_APPEARANCE_ALWAYS&&assign){
-    updated.always=normalizeAppearanceRanges(state.base,baseSelected(NESS_APPEARANCE_ALWAYS).filter(r=>!targets.some(t=>overlap(r,t))),true);
-   }
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
   after(false);
