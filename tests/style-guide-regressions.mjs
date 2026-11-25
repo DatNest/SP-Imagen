@@ -365,3 +365,36 @@ test('Style library keeps its compact toolbar, existing rows and current style d
  assert.match(read('style.css'),/\.spi-style-rows \{[^}]*overflow:auto/);
  assert.ok(makeGuideSteps(true).some(step=>step.text.includes('кружок ⊘')));
 });
+
+test('Compact style actions retain rows, preserve input, duplicate current content and leave saved styles intact',()=>{
+ const src=read('index.js'),body=src.slice(src.indexOf('function openStyleLibrary('),src.indexOf('async function openLibrary()'));
+ class Node{
+  constructor(tag){this.tagName=tag;this.children=[];this.dataset={};this.attrs={};this.events={};this.scrollTop=0;this.textContent='';this.value='';this.className='';this.classList={add:name=>{this.className+=' '+name;},toggle:(name,on)=>{const names=new Set(this.className.split(' ').filter(Boolean));on?names.add(name):names.delete(name);this.className=[...names].join(' ');}};}
+  append(...nodes){for(const node of nodes)this.insertBefore(node,null);}
+  prepend(node){this.insertBefore(node,this.children[0]||null);}
+  insertBefore(node,before){if(node===before)return;node.remove();const pos=this.children.indexOf(before);this.children.splice(pos<0?this.children.length:pos,0,node);node.parentElement=this;}
+  remove(){if(this.parentElement){const parent=this.parentElement;parent.children.splice(parent.children.indexOf(this),1);this.parentElement=null;}}
+  setAttribute(k,v){this.attrs[k]=v;}
+  addEventListener(k,fn){this.events[k]=fn;}
+  focus(){}select(){}
+  getBoundingClientRect(){return {top:0,bottom:10};}
+  matches(s){return s[0]==='.'?this.className.split(' ').includes(s.slice(1)):s==='[data-style-activate]'?Object.hasOwn(this.dataset,'styleActivate'):this.tagName===s;}
+  querySelectorAll(s){return this.children.flatMap(n=>[...(n.matches(s)?[n]:[]),...n.querySelectorAll(s)]);}
+  querySelector(s){return this.querySelectorAll(s)[0]||null;}
+  click(){(this.events.click||this.onclick)?.({stopPropagation(){}});}
+ }
+ const create=tag=>new Node(tag),root={novelai:{styles:[{id:'a',name:'A',value:'old'},{id:'b',name:'B',value:'second'}],activeStyleId:'a',apiKey:'unchanged'}},dialog=create('div');
+ const doc={createElement:create,createElementNS:(ns,tag)=>create(tag)};
+ const btn=(label,parent,action)=>{const n=create('button');n.textContent=label;n.className='menu_button';n.addEventListener('click',action);parent.append(n);return n;};
+ const field=(parent,label,node)=>{const wrap=create('label');wrap.append(node);parent.append(wrap);return node;};
+ const open=new Function('document','settings','shell','input','formField','button','normalizeNovelAISettings','saveSettings','clone','confirm',body+'\nreturn openStyleLibrary;')(doc,()=>root,()=>({dialog,closed:Promise.resolve()}),()=>create('input'),field,btn,structuredClone,()=>{},structuredClone,()=>true);
+ open();
+ const rows=dialog.querySelector('.spi-style-rows'),header=dialog.querySelector('.spi-style-controls'),first=rows.children[0],second=rows.children[1],name=dialog.querySelector('input'),value=dialog.querySelector('textarea');
+ name.value='Edited';name.events.input();value.value='new content ';value.events.input();
+ header.children[1].click();assert.equal(root.novelai.activeStyleId,'');assert.equal(value.value,'new content ');assert.strictEqual(rows.children[0],first);
+ first.children[2].click();assert.equal(root.novelai.styles[2].name,'Edited — копия');assert.equal(root.novelai.styles[2].value,'new content ' .trim());
+ assert.strictEqual(rows.children[0],first);assert.strictEqual(rows.children[1],second);
+ header.children[0].click();assert.equal(root.novelai.styles.length,4);assert.strictEqual(rows.children[0],first);
+ first.children[0].click();assert.equal(root.novelai.activeStyleId,'a');
+ first.children[3].click();assert.equal(root.novelai.activeStyleId,'');assert.strictEqual(rows.children[0],second);assert.equal(root.novelai.apiKey,'unchanged');
+});

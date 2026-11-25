@@ -962,10 +962,14 @@ function openStyleLibrary({ back = false } = {}) {
         saveSettings();
     };
     const current = () => novelai.styles.find(style => style.id === selectedId);
+    let editorStyleId;
     const syncEditor = () => {
         const style = current();
         nameField.parentElement.hidden = !style; valueField.parentElement.hidden = !style;
-        name.value = style?.name || ''; value.value = style?.value || '';
+        if (editorStyleId !== (style?.id || '')) {
+            editorStyleId = style?.id || '';
+            name.value = style?.name || ''; value.value = style?.value || '';
+        }
         editorStatus.textContent = style ? (novelai.activeStyleId === style.id ? 'Активный стиль · автосохранение' : 'Выбран для редактирования · автосохранение') : 'Выбери или создай стиль.';
     };
     const header = document.createElement('div'); header.className = 'spi-style-header';

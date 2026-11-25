@@ -1751,11 +1751,11 @@
 /* Dynamic SP Imagen viewports restore their own offsets after updates.
    Do not change the native chat's anchoring or intentional gallery navigation. */
 #sp-imagen-review-panel :is([data-review-scroll],[data-library-list],.ness-library-tools,.ness-tab-viewport,.ness-tag-strip,.ness-record-tags,.ness-editor-meta-tags,.ness-tag-choices,.ness-results,.ness-unified-tagflow,.ness-tagboard-chosen-list,.ness-tagboard-ribbon,.ness-tab-strip,.ness-context-tab-strip),
-:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-library){
+:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-rows){
  overflow-anchor:none;scroll-behavior:auto!important;
 }
 #sp-imagen-review-panel :is([data-library-list],.ness-tab-viewport,.ness-unified-tagflow,.ness-tagboard-chosen-list,.ness-results,.ness-tag-choices),
-:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-library){
+:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-rows){
  scrollbar-gutter:stable;
 }
 #sp-imagen-review-panel .ness-tagboard-ribbon>.ness-button::after{font-variant-numeric:tabular-nums}
@@ -1923,7 +1923,7 @@
 /* Allow native wheel, trackpad and touch chaining within extension windows.
    The overlay itself still prevents scroll leaking into the RP chat. */
 #sp-imagen-review-panel :is([data-review-scroll],[data-library-list],.ness-library-tools,.ness-tab-viewport,.ness-tag-strip,.ness-record-tags,.ness-editor-meta-tags,.ness-tag-choices,.ness-results,.ness-unified-tagflow,.ness-tagboard-chosen-list,.ness-tagboard-ribbon,.ness-child-body,.ness-transfer-targets,textarea){overscroll-behavior:auto!important}
-:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-library,.spi-prompt-window>textarea){overscroll-behavior:auto!important}
+:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-rows,.spi-prompt-window>textarea){overscroll-behavior:auto!important}
 @media(max-width:767px),(pointer:coarse){
  #sp-imagen-review-overlay:not([data-minimized=true]) #sp-imagen-review-panel[data-dialog=library]{border-radius:12px!important}
  #sp-imagen-review-panel[data-dialog=library] .ness-header{order:0;gap:4px;padding:5px 8px!important;flex-wrap:nowrap}
