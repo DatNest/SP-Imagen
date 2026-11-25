@@ -53,6 +53,8 @@ export function normalizeSkinTags(raw){
   if(!keyOK(id)||!Array.isArray(arr))continue;
   selections[id]=[...new Set(arr.map(x=>remap.get(x)).filter(x=>all.has(x)))];
  }
+ const always=new Set(selections.always||[]);
+ for(const id of Object.keys(SKIN_PRESETS))if(selections[id])selections[id]=selections[id].filter(x=>!always.has(x));
  return {tags:items,selections,sections};
 }
 export const hasSkinSelections=skin=>Object.values(normalizeSkinTags(skin).selections).some(xs=>xs.length>0);
@@ -464,12 +466,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  function setSkinSelection(id,list){
   skin.selections[id]=[...new Set(list)];
+  if(id===SKIN_ALWAYS){const excluded=new Set(skin.selections.always);for(const key of Object.keys(SKIN_PRESETS))if(skin.selections[key])skin.selections[key]=skin.selections[key].filter(t=>!excluded.has(t));}
  }
 
- function toggle(tag,assign){if(assign)confirmAssignment(tag.text,()=>changeMany([tag],true));else changeMany([tag],false);}
+ const fromAlways=tag=>preset!=='always'&&mode!=='nsfw'&&isChosen(tag,'always');
+ function toggle(tag,assign){if(assign&&fromAlways(tag)){warn('Этот тег уже добавляется из «Всегда». Измени его там.');return;}if(assign)confirmAssignment(tag.text,()=>changeMany([tag],true));else changeMany([tag],false);}
  function changeMany(tags,assign,recordHistory=true){
   if(readOnly()||!tags.length)return;
-  const relevant=tags.filter(t=>isChosen(t,preset)!==assign);
+  const relevant=tags.filter(t=>isChosen(t,preset)!==assign&&(!assign||!fromAlways(t)));
   if(!relevant.length)return;
   if(recordHistory)record();
   if(mode==='skin'){
@@ -502,6 +506,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    if(assign)for(const t of targets)current.push({start:t.start,end:t.end,text:t.text});
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
    if(assign&&updated['exclude_'+preset])updated['exclude_'+preset]=updated['exclude_'+preset].filter(r=>!targets.some(t=>overlap(r,t)));
+   if(preset===NESS_APPEARANCE_ALWAYS&&assign)for(const id of Object.keys(NESS_APPEARANCE_PRESETS))updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!targets.some(t=>overlap(r,t))),true);
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
   after(false);
@@ -977,8 +982,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const elsewhere=locations.filter(x=>x.mode!==mode||x.preset!==preset);
    chip.dataset.assignedElsewhere=String(elsewhere.length>0);
    if(!toolMode)chip.title=elsewhere.length?elsewhere.map(x=>MODE_LABELS[x.mode]+' → '+x.label).join('\n'):'Добавить или снять тег';
-   const inherited=!!shared&&!marked&&shared.has(identity);
-   const prefix=marked?'✓ ':inherited?'✦ ':elsewhere.length?'↗ ':'＋ ';
+   const inherited=!!shared&&!marked&&shared.has(identity),permanent=alwaysKeys.has(identity);
+   chip.setAttribute('aria-disabled',String(!toolMode&&permanent&&!marked));
+   const prefix=marked?'✓ ':permanent?'✦ ':inherited?'↳ ':elsewhere.length?'↗ ':'＋ ';
    if(chip.dataset.highlighted!==String(marked)||chip.dataset.inherited!==String(inherited)||chip.textContent!==prefix+tag.text){
     chip.textContent=prefix+tag.text;
     chip.setAttribute('aria-pressed',String(marked||inherited));
