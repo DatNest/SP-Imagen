@@ -22,7 +22,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.73';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.74';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -1078,7 +1078,7 @@ function openStyleLibrary({ back = false } = {}) {
                     novelai.activeStyleId = novelai.activeStyleId === id ? '' : id; selectedId = id; persist(); syncListState(); syncEditor();
                 });
                 activate.dataset.styleActivate = '';
-                const summary = document.createElement('button'); summary.type = 'button'; summary.className = 'spi-style-summary';
+                const summary = document.createElement('button'); summary.type = 'button'; summary.className = 'menu_button spi-style-summary';
                 summary.append(document.createElement('strong'), document.createElement('small'));
                 summary.onclick = () => { if (selectedId === id) return; selectedId = id; syncListState(); syncEditor(); };
                 row.append(summary);
@@ -1101,6 +1101,9 @@ function openStyleLibrary({ back = false } = {}) {
                 const path = document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d','M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7'); svg.append(path); remove.append(svg);
             }
             const title = row.querySelector('strong'), description = row.querySelector('small');
+            const summary = row.querySelector('.spi-style-summary');
+            summary.title = style.name;
+            summary.setAttribute('aria-label', style.name);
             if (title.textContent !== style.name) title.textContent = style.name;
             if (description.textContent !== (style.value || 'Пустой стиль')) description.textContent = style.value || 'Пустой стиль';
             if (rows.children[position] !== row) rows.insertBefore(row, rows.children[position] || null);
@@ -1114,7 +1117,7 @@ function openStyleLibrary({ back = false } = {}) {
         style.name = name.value.trim() || style.name; style.value = value.value.trim(); persist();
         editorStatus.textContent = 'Сохранено автоматически.';
         const row = [...library.querySelectorAll('.spi-style-row')].find(node => node.dataset.styleId === style.id);
-        if (!row) renderList(); else { row.querySelector('strong').textContent = style.name; row.querySelector('small').textContent = style.value || 'Пустой стиль'; }
+        if (!row) renderList(); else { const summary=row.querySelector('.spi-style-summary'); summary.title=style.name; summary.setAttribute('aria-label',style.name); row.querySelector('strong').textContent = style.name; row.querySelector('small').textContent = style.value || 'Пустой стиль'; }
     };
     name.addEventListener('input', saveEditor); value.addEventListener('input', saveEditor);
     renderList(); syncEditor(); layout.append(library, editor);
