@@ -4,7 +4,7 @@
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
 import { openExplanation } from './onboarding.js';
-import { findTagConflicts, MODE_LABELS, duplicateWarningsEnabled, setDuplicateWarnings } from './appearance-overlap.js';
+import { findTagConflicts, MODE_LABELS, BASE_INHERITANCE, duplicateWarningsEnabled, setDuplicateWarnings } from './appearance-overlap.js';
 import { createAppearanceFigure } from './appearance-figure.js';
 import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { normalizeAppearanceModeCatalog, NSFW_AREAS, repositionModeTag, modeTokens, fromModeTokens } from './appearance-mode-state.js';
@@ -176,7 +176,7 @@ export function reorderBaseTags(state,reordered){
  return {base:text,ranges:mapRanges(oldRanges,false),selections:normalizeAppearanceSelections(text,Object.fromEntries(Object.entries(oldSelections).map(([k,v])=>[k,mapRanges(v,true)])))};
 }
 
-export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfwState=()=>({}),writeNsfwState=()=>{},initialSkin,initialSections,initialCatalog,initialMode='base',initialPreset,initialHelpPinned=false,changed,readOnly,onLayoutChange=()=>{},onHistoryChange=()=>{},onHelpChange=()=>{}}){
+export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfwState=()=>({}),writeNsfwState=()=>{},initialSkin,initialSections,initialCatalog,initialMode='base',initialPreset,initialHelpPinned=false,readWarningPreference,writeWarningPreference,changed,readOnly,onLayoutChange=()=>{},onHistoryChange=()=>{},onHelpChange=()=>{}}){
  const {el,button,clear,input}=ui;
  let skin=normalizeSkinTags(initialSkin),catalog=normalizeAppearanceCatalog(initialCatalog,readBaseState().base,skin,readNsfwState(),initialSections);
   let modeCatalog=normalizeAppearanceModeCatalog(initialCatalog,readBaseState().base,skin,readNsfwState(),initialSections);
@@ -238,11 +238,16 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  const warningStorage=()=>{try{return globalThis.localStorage;}catch{return undefined;}};
  let warningEnabled=duplicateWarningsEnabled(warningStorage());
- const warningSetting=el('label',undefined,header,'ness-tag-warning-setting');
- const warningCheckbox=el('input',undefined,warningSetting);warningCheckbox.type='checkbox';warningCheckbox.checked=warningEnabled;
- el('span','Предупреждать о повторах',warningSetting);
- const setWarningEnabled=value=>{warningEnabled=Boolean(value);warningCheckbox.checked=warningEnabled;setDuplicateWarnings(warningStorage(),warningEnabled);};
- warningCheckbox.onchange=()=>setWarningEnabled(warningCheckbox.checked);
+ const setWarningEnabled=value=>{warningEnabled=Boolean(value);if(writeWarningPreference)writeWarningPreference(warningEnabled);else setDuplicateWarnings(warningStorage(),warningEnabled);};
+ const inheritSetting=el('label',undefined,controls,'ness-tag-warning-setting');
+ const inheritCheck=el('input',undefined,inheritSetting);inheritCheck.type='checkbox';
+ el('span','Наследовать ракурсы',inheritSetting);
+ inheritCheck.onchange=()=>{
+  if(readOnly())return;
+  record();const state=baseState(),selections={...state.selections};
+  if(inheritCheck.checked)selections.inheritance_v1=[];else delete selections.inheritance_v1;
+  writeBaseState({...state,selections});after(false);
+ };
  const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
  const basic=button('Ракурсы',modes,()=>{if(!flushModeText())return;filterByMode[mode]=filter;mode='base';layout=layouts.base;filter=filterByMode[mode];preset='face';checked.clear();closeTransfer();render();},'quiet');
@@ -311,6 +316,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const availablePresets=()=>mode==='base'?{always:'✦ Показывать всегда',...Object.fromEntries(Object.entries(NESS_APPEARANCE_PRESETS).map(([id,v])=>[id,v.label]))}:mode==='skin'?{always:'✦ Для всех открытых областей',...SKIN_PRESETS}:NSFW_PRESETS;
  const baseState=()=>readBaseState();
  const baseSelected=id=>visibleAppearanceRanges(baseState().ranges,id,baseState().selections,false);
+ const inheritanceActive=()=>Object.hasOwn(baseState().selections||{},'inheritance_v1');
+ function syncInheritance(){inheritSetting.hidden=mode!=='base';inheritCheck.checked=inheritanceActive();inheritCheck.disabled=readOnly();}
+ function excludeInherited(tag){
+  if(readOnly()||mode!=='base'||!inheritanceActive()||preset==='always')return;
+  const t=baseTag(tag);if(!t)return;
+  record();const state=baseState(),selections={...state.selections},key='exclude_'+preset;
+  selections[key]=normalizeAppearanceRanges(state.base,[...(selections[key]||[]),t],true);
+  writeBaseState({...state,selections});after(false);
+ }
  const baseTag=tag=>parseBaseTags(baseState().base).find(t=>norm(t.text)===norm(tag.text));
  const isBaseChosen=(tag,id)=>{
   const t=baseTag(tag);return !!t&&baseSelected(id).some(r=>r.start<t.end&&t.start<r.end);
@@ -335,7 +349,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   return result;
  }
  function confirmAssignment(text,proceed){
-  if(!warningEnabled){proceed();return true;}
+  if(!(readWarningPreference?readWarningPreference():warningEnabled)){proceed();return true;}
+  if(frame.querySelector('.ness-tag-duplicate-dialog'))return false;
   const matches=findTagConflicts(text,{mode,preset},assignedTags());
   if(!matches.length){proceed();return true;}
   const targetMode=mode,targetPreset=preset;
@@ -486,6 +501,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const current=baseSelected(preset).filter(r=>!targets.some(t=>overlap(r,t)));
    if(assign)for(const t of targets)current.push({start:t.start,end:t.end,text:t.text});
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
+   if(assign&&updated['exclude_'+preset])updated['exclude_'+preset]=updated['exclude_'+preset].filter(r=>!targets.some(t=>overlap(r,t)));
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
   after(false);
@@ -943,7 +959,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!columns){render();return;}
   const restore=scrollPositions();
   const byId=new Map(items().map(tag=>[tag.id,tag]));
+  syncInheritance();
   const selected=selectedKeys(preset),shared=preset!=='always'&&mode!=='nsfw'?selectedKeys('always'):null;
+  const alwaysKeys=new Set(shared||[]);
+  if(shared&&mode==='base'&&inheritanceActive()){
+   const state=baseState(),ranges=visibleAppearanceRanges(state.ranges,preset,state.selections,true);
+   for(const t of parseBaseTags(state.base))if(ranges.some(r=>r.start<t.end&&t.start<r.end))shared.add(norm(t.text));
+  }
   const assignments=assignedTags(),byText=new Map();
   for(const item of assignments){const key=norm(item.text);if(!byText.has(key))byText.set(key,[]);byText.get(key).push(item);}
   for(const row of columns.querySelectorAll('.ness-unified-tag-row')){
@@ -988,7 +1010,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     for(let i=0;i<tags.length;i++){
      const tag=tags[i];let chip=previous.get(tag.id);
      if(!chip){
-      if(inheritedFlow)chip=el('span','✦ '+tag.text,undefined,'ness-tagboard-inherited');
+      if(inheritedFlow)chip=button('✦ '+tag.text,undefined,()=>{},'quiet ness-tagboard-inherited');
       else{
        chip=button('',undefined,()=>toggle(tag,false),'quiet ness-tagboard-chosen-chip');
        el('span',tag.text,chip);el('span','×',chip,'ness-chosen-remove-mark');
@@ -998,7 +1020,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
       }
       chip.dataset.selectedTagId=tag.id;
      }
-     if(inheritedFlow)chip.textContent='✦ '+tag.text;else{const label=chip.querySelector('span');if(label&&label.textContent!==tag.text)label.textContent=tag.text;chip.setAttribute('aria-label','Убрать '+tag.text+' из этого ракурса');chip.onclick=()=>toggle(tag,false);}
+     if(inheritedFlow){const permanent=alwaysKeys.has(norm(tag.text));chip.textContent=(permanent?'✦ ':'↳ ')+tag.text+(permanent?'':' ×');chip.disabled=permanent||readOnly();chip.title=permanent?'Добавляется из «Всегда»':'Убрать наследование для этого ракурса';chip.onclick=()=>{if(!permanent)excludeInherited(tag);};}else{const label=chip.querySelector('span');if(label&&label.textContent!==tag.text)label.textContent=tag.text;chip.setAttribute('aria-label','Убрать '+tag.text+' из этого ракурса');chip.onclick=()=>toggle(tag,false);}
      if(flow.children[i]!==chip)flow.insertBefore(chip,flow.children[i]||null);
      previous.delete(tag.id);
     }
@@ -1009,7 +1031,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    let inheritedTitle=chosenList.querySelector('.ness-tagboard-inherited-title');
    let inheritedContainer=chosenList.querySelector('.ness-tagboard-inherited-flow');
    if(inherited.length){
-    if(!inheritedTitle)inheritedTitle=el('p','✦ ДОБАВЛЯЕТСЯ ВСЕГДА',chosenList,'ness-tagboard-overline ness-tagboard-inherited-title');
+    if(!inheritedTitle)inheritedTitle=el('p','✦ НАСЛЕДУЕТСЯ',chosenList,'ness-tagboard-overline ness-tagboard-inherited-title');
     if(!inheritedContainer)inheritedContainer=el('div',undefined,chosenList,'ness-tagboard-chosen-flow ness-tagboard-inherited-flow');
     reconcile(inheritedContainer,inherited,true);
    }else{inheritedTitle?.remove();inheritedContainer?.remove();}
@@ -1056,6 +1078,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    for(const [id,label] of Object.entries(headings)){const btn=button(label,ribbon,()=>selectPreset(id),'quiet');btn.dataset.presetId=id;}
   }
   refreshHelp();
+  syncInheritance();
   syncPresetRibbon();
   // Restore only after buttons and count badges exist: otherwise scrollWidth
   // is empty and the browser clamps the previous horizontal offset to zero.
