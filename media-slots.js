@@ -793,63 +793,52 @@ export async function installSpImagenMediaSlots(options) {
   }
 
   function card(index, kind, slot, locked) {
-    const selected = slot.selected;
-    const item = slot.versions[selected];
-    const displayName=KINDS.includes(kind)?LABEL[kind]:generationProfiles().find(p=>p.id===kind)?.name||slot.label||item?.config?.profileName||LABEL[kind];
-    const section = element('section', 'card');
-    const collapsed = slot.collapsed !== false;
-    section.dataset.collapsed = String(collapsed);
-    const heading = element('button', 'heading');
-    heading.title = collapsed ? 'Развернуть изображение' : 'Свернуть изображение';
-    heading.setAttribute('aria-label', `${collapsed ? 'Развернуть' : 'Свернуть'} ${displayName}`);
-    heading.setAttribute('aria-expanded', String(!collapsed));
-    const name = element('span', 'heading-title', displayName);
-    const meta = element('span', 'heading-meta');
-    meta.append(element('span','heading-count',`${selected+1} / ${slot.versions.length}`),
-        element('span','heading-chevron',collapsed ? '▸' : '▾'));
-    heading.append(name,meta);
-    heading.addEventListener('click', () => void runAction(() => toggleCollapse(index,kind)));
-    const frame = element('button', 'frame');
-    frame.hidden = collapsed;
-    frame.dataset.aspect = item.config?.aspect_ratio || '2:3';
-    if (safeUrl(item.src)) {
-      const image = element('img');
-      image.src = item.src;
-      image.alt = `${displayName} · версия ${selected + 1}`;
-      image.loading = 'lazy';
-      frame.addEventListener('click', () => showImageViewer(frame,item.src,image.alt));
-      frame.append(image);
-    } else {
-      // Do not load external URLs or potentially executable protocols automatically.
-      frame.append(element('span','external-image-warning',remoteImage(item.src)
-        ? 'Внешнее изображение скрыто · Нажми, чтобы открыть ссылку'
-        : 'Недопустимый источник изображения · исходная запись сохранена'));
-      frame.addEventListener('click', () => openLegacyRemote(item.src));
-    }
-
-    const bar = element('div', 'bar');
-    bar.hidden = collapsed;
-    const navigation = element('div', 'actions');
-    const actions = element('div', 'actions');
-    navigation.append(
-      galleryButton('←', 'Предыдущая версия', () => choose(index, kind, -1), selected === 0),
-      element('span', 'count', `${selected + 1} / ${slot.versions.length}`),
-      galleryButton('→', 'Следующая версия', () => choose(index, kind, 1), selected === slot.versions.length - 1),
-    );
-    const editorButton = galleryButton('📝', 'Открыть промпт и стиль этой картинки', () => showPromptEditor(
-      editorButton, index, kind, guideDemo?.view?.index === index ? guideSampleConfig() : item.config,
-      { previewOnly: guideDemo?.view?.index === index }
-    ), locked || !item.config);
+    const section = element('section', 'card'),heading=element('button','heading'),frame=element('button','frame'),bar=element('div','bar');
+    const name=element('span','heading-title'),meta=element('span','heading-meta'),headingCount=element('span','heading-count'),chevron=element('span','heading-chevron');
+    meta.append(headingCount,chevron);heading.append(name,meta);
+    heading.addEventListener('click',()=>void runAction(()=>toggleCollapse(index,kind)));
+    let currentItem=null,media=null,source=null;
+    frame.addEventListener('click',()=>{
+      if(!currentItem)return;
+      if(safeUrl(currentItem.src))showImageViewer(frame,currentItem.src,media?.alt||'');
+      else openLegacyRemote(currentItem.src);
+    });
+    const navigation=element('div','actions'),actions=element('div','actions');
+    const previous=galleryButton('←','Предыдущая версия',()=>choose(index,kind,-1)),count=element('span','count'),next=galleryButton('→','Следующая версия',()=>choose(index,kind,1));
+    navigation.append(previous,count,next);
+    const editorButton=galleryButton('📝','Открыть промпт и стиль этой картинки',()=>showPromptEditor(
+      editorButton,index,kind,guideDemo?.view?.index===index?guideSampleConfig():currentItem?.config,
+      {previewOnly:guideDemo?.view?.index===index}
+    ));
     editorButton.classList.add('prompt-edit');
-    actions.append(
-      editorButton,
-      galleryButton(locked ? '⏳' : '↻', 'Повторить с текущим активным стилем', () => regenerate(index, kind), locked || !item.config),
-      galleryButton('↓', 'Скачать', () => saveSelected(index, kind)),
-      galleryButton('🗑', 'Удалить из галереи', () => deleteSelected(index, kind), locked),
-    );
-    bar.append(navigation, actions);
-    section.append(heading, frame, bar);
-    return section;
+    const regen=galleryButton('↻','Повторить с текущим активным стилем',()=>regenerate(index,kind)),
+      download=galleryButton('↓','Скачать',()=>saveSelected(index,kind)),
+      remove=galleryButton('🗑','Удалить из галереи',()=>deleteSelected(index,kind));
+    actions.append(editorButton,regen,download,remove);bar.append(navigation,actions);section.append(heading,frame,bar);
+    function update(slot,locked){
+      const selected=slot.selected,item=slot.versions[selected];if(!item)return;
+      const displayName=KINDS.includes(kind)?LABEL[kind]:generationProfiles().find(p=>p.id===kind)?.name||slot.label||item?.config?.profileName||LABEL[kind];
+      const collapsed=slot.collapsed!==false,label=collapsed?'Развернуть':'Свернуть',position=(selected+1)+' / '+slot.versions.length;
+      currentItem=item;section.dataset.collapsed=String(collapsed);heading.title=label+' изображение';
+      heading.setAttribute('aria-label',label+' '+displayName);heading.setAttribute('aria-expanded',String(!collapsed));
+      if(name.textContent!==displayName)name.textContent=displayName;
+      if(headingCount.textContent!==position)headingCount.textContent=position;
+      chevron.textContent=collapsed?'▸':'▾';frame.hidden=collapsed;bar.hidden=collapsed;frame.dataset.aspect=item.config?.aspect_ratio||'2:3';
+      if(source!==item.src||!media){
+        source=item.src;const safe=safeUrl(source);
+        if(!media||((media.tagName==='IMG')!==Boolean(safe))){
+          media?.remove();
+          media=safe?element('img'):element('span','external-image-warning');frame.append(media);
+          if(safe)media.loading='lazy';
+        }
+        if(safe)media.src=source;
+        else media.textContent=remoteImage(source)?'Внешнее изображение скрыто · Нажми, чтобы открыть ссылку':'Недопустимый источник изображения · исходная запись сохранена';
+      }
+      if(safeUrl(source))media.alt=displayName+' · версия '+(selected+1);
+      count.textContent=position;previous.disabled=selected===0;next.disabled=selected===slot.versions.length-1;
+      editorButton.disabled=locked||!item.config;regen.disabled=locked||!item.config;regen.textContent=locked?'⏳':'↻';remove.disabled=locked;
+    }
+    update(slot,locked);return {node:section,update};
   }
 
   function newestSavedPrompt(slots) {
@@ -923,7 +912,7 @@ export async function installSpImagenMediaSlots(options) {
         if(live.chat?.[view.index]!==view.message)return;
         if(!host.confirm('Удалить сохранённый черновик этого поста? Картинки в галерее останутся.'))return;
         discardPostDraft(live,view.index);
-        paint();
+        paintPost(view.index);
       }));
       view.tools.append(button);view.discardDraftButton=button;
     }
@@ -946,13 +935,13 @@ export async function installSpImagenMediaSlots(options) {
       const locked = busy.has(`${chatId}|${view.index}|${kind}`);
       const count = slot.versions.length;
       if (previous?.item === item && previous.selected === slot.selected && previous.count === count && previous.locked === locked && previous.collapsed === (slot.collapsed!==false)) continue;
-      const node = card(view.index, kind, slot, locked);
-      if (previous) previous.node.replaceWith(node);
+      const mountedCard=previous||card(view.index,kind,slot,locked);
+      if(previous)mountedCard.update(slot,locked);
       else {
         const order=availableKinds(slots),nextKind=order.slice(order.indexOf(kind)+1).find(key=>view.cards.has(key));
-        view.gallery.insertBefore(node, view.cards.get(nextKind)?.node ?? null);
+        view.gallery.insertBefore(mountedCard.node, view.cards.get(nextKind)?.node ?? null);
       }
-      view.cards.set(kind, { node, item, selected: slot.selected, count, locked, collapsed: slot.collapsed!==false });
+      Object.assign(mountedCard,{item,selected:slot.selected,count,locked,collapsed:slot.collapsed!==false});view.cards.set(kind,mountedCard);
     }
     view.gallery.hidden = !view.cards.size;
     view.node.hidden = view.tools.hidden && view.gallery.hidden;
@@ -963,6 +952,12 @@ export async function installSpImagenMediaSlots(options) {
     if (guideDemo?.view === view) endGuideDemo();
     if (openMenu?.toggle === view.toggle) closeToolsMenu();
     view.node.remove();
+  }
+
+  function paintPost(index){
+    const current=context(),view=mounted.get(index);
+    if(!view||!view.node.isConnected||!view.anchor.isConnected||view.message!==current.chat?.[index]){paint();return;}
+    updatePost(view,slotsOf(view.message),current.chatId);
   }
 
   function paint() {
@@ -1238,9 +1233,9 @@ export async function installSpImagenMediaSlots(options) {
     const before = slot.selected;
     slot.selected = Math.max(0, Math.min(before + delta, slot.versions.length - 1));
     if (slot.selected === before) return;
-    paint();
+    paintPost(index);
     try { await current.saveChat(); }
-    catch (error) { slot.selected = before; paint(); throw error; }
+    catch (error) { slot.selected = before; paintPost(index); throw error; }
   }
 
   async function toggleCollapse(index,kind) {
@@ -1249,9 +1244,9 @@ export async function installSpImagenMediaSlots(options) {
     if(!slot) return;
     const before=slot.collapsed!==false;
     slot.collapsed=!before;
-    paint();
+    paintPost(index);
     try{ await current.saveChat(); }
-    catch(error){ slot.collapsed=before; paint(); throw error; }
+    catch(error){ slot.collapsed=before; paintPost(index); throw error; }
   }
 
   async function deleteSelected(index, kind) {
