@@ -144,7 +144,7 @@ export async function installSpImagenMediaSlots(options) {
       inline-size: min(15em, var(--ms-max-width));
       max-block-size: var(--ms-max-height);
       overflow: auto;
-      overscroll-behavior: auto;
+      overscroll-behavior: contain;
       padding: .25em;
       border: 1px solid var(--ms-line);
       border-radius: .6em;

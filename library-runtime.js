@@ -667,7 +667,7 @@ async function openLibraryEditor(){
  const {overlay,panel,el,clear,input,area,field,button,choice,section,search,bulkActions,list,form,message,save,close}=view;
  view.tools.addEventListener('wheel',event=>{
   if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.shiftKey||Math.abs(event.deltaY)<=Math.abs(event.deltaX))return;
-  let node=event.target;while(node&&view.tools.contains(node)){if(node.scrollHeight>node.clientHeight+1&&((event.deltaY>0&&node.scrollTop<node.scrollHeight-node.clientHeight-1)||(event.deltaY<0&&node.scrollTop>1)))return;if(node===view.tools)break;node=node.parentElement;}
+  let node=event.target;while(node&&view.tools.contains(node)){if(/^(auto|scroll|overlay)$/.test(getComputedStyle(node).overflowY)&&node.scrollHeight>node.clientHeight+1&&((event.deltaY>0&&node.scrollTop<node.scrollHeight-node.clientHeight-1)||(event.deltaY<0&&node.scrollTop>1)))return;if(node===view.tools)break;node=node.parentElement;}
   const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?list.clientHeight:1);
   const next=Math.max(0,Math.min(list.scrollHeight-list.clientHeight,list.scrollTop+delta));
   if(next!==list.scrollTop){list.scrollTop=next;event.preventDefault();}
@@ -815,7 +815,7 @@ async function openLibraryEditor(){
  }
  let listLayout='grid';try{if(window.localStorage?.getItem('sp-imagen-library-layout')==='list')listLayout='list';}catch{}
  const updateListLayout=()=>{view.layoutList.setAttribute('aria-pressed',String(listLayout==='list'));view.layoutGrid.setAttribute('aria-pressed',String(listLayout==='grid'));};
- const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?96:84,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches&&listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
+ const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:84,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches&&listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
  const selectListLayout=next=>{if(listLayout===next)return;closeTagPicker();listLayout=next;updateListLayout();try{window.localStorage?.setItem('sp-imagen-library-layout',next);}catch{}virtualList.refresh();};
  view.layoutList.onclick=()=>selectListLayout('list');view.layoutGrid.onclick=()=>selectListLayout('grid');updateListLayout();
  let searchTimer=null;

@@ -1285,7 +1285,7 @@ function activeStyle(novelai = settings().novelai) {
 }
 
 function directGenerationEnabled() {
-    return true;
+    return Boolean(settings().novelai.apiKey);
 }
 
 function listImageStyles() {
