@@ -26,7 +26,7 @@ const DIMENSIONS = Object.freeze({
 
 export function defaultNovelAISettings() {
     return {
-        enabled: false,
+        enabled: true,
         endpoint: OFFICIAL_NOVELAI_ORIGIN,
         apiKey: '',
         model: 'nai-diffusion-5-full',
@@ -49,7 +49,7 @@ export function normalizeNovelAISettings(value) {
     const defaults = defaultNovelAISettings();
     const input = value && typeof value === 'object' ? value : {};
     const settings = { ...defaults, ...input };
-    settings.enabled = settings.enabled === true;
+    settings.enabled = true;
     settings.neverSpendAnlas = settings.neverSpendAnlas !== false;
     settings.endpoint = String(settings.endpoint || defaults.endpoint).trim().replace(/\/+$/, '');
     settings.apiKey = String(settings.apiKey || '').trim();

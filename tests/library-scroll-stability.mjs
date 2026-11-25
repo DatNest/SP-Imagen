@@ -71,9 +71,9 @@ test('Virtual row geometry agrees with CSS on desktop and phone, with no margin-
  assert.ok(styledRow,'The original theme-specific row style exists');
  assert.match(styledRow,/\bmargin:0;/);
  assert.doesNotMatch(styledRow,/margin:\s*[1-9]\d*px/, 'Vertical margins must not accumulate across hundreds of rows');
- assert.match(lib,/rowHeight:\(\)=>window\.matchMedia\?\.\('\(max-width:767px\), \(pointer:coarse\)'\)\?\.matches\?96:84/);
+ assert.match(lib,/rowHeight:\(\)=>window\.matchMedia\?\.\('\(max-width:767px\), \(pointer:coarse\)'\)\?\.matches\?80:84/);
  assert.match(css,/\.ness-library-cell\{box-sizing:border-box;height:84px;min-width:0;padding:0 0 9px/);
- assert.match(css,/\.ness-library-cell\{height:96px\}/);
+ assert.match(css,/\.ness-library-cell\{height:80px\}/);
  assert.match(css,/\.ness-library-virtual-rows\{column-gap:10px;row-gap:0/);
  assert.match(css,/\.ness-library-cell>\.ness-library-item\{[\s\S]*?height:100%!important;min-height:0!important;max-height:100%;[\s\S]*?margin:0!important/);
  assert.match(lib,/const cell=el\('div',undefined,undefined,'ness-library-cell'\)/);
@@ -161,7 +161,7 @@ test('Dynamic ribbons and settings restore offsets, without redirecting whole ch
  assert.match(board,/ribbon\.scrollLeft=offset/);
  assert.match(board,/function scrollPositions\(\)/);
  assert.doesNotMatch(board,/active\?\.scrollIntoView/);
- assert.match(lib,/view\.bulkTags\.scrollTop=bulkScroll/);
+ assert.match(lib,/view\.tagStrip\.scrollTop=stripScroll/);
  assert.match(lib,/recordTagHost\.scrollLeft=scroll/);
  assert.match(lib,/mountRow:\(row,\{id\}\)/);
  assert.match(css,/overflow-anchor:none;scroll-behavior:auto!important/);

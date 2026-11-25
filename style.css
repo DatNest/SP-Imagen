@@ -7,7 +7,7 @@
 .spi-actions .menu_button, .spi-dialog .menu_button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 38px; margin: 0; padding: 7px 11px; border-radius: 9px; white-space: nowrap; line-height: 1.2; }
 .spi-actions .menu_button { width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .spi-new { display: inline-flex; align-items: center; justify-content: center; min-height: 18px; padding: 1px 7px; border-radius: 999px; background: var(--SmartThemeQuoteColor, #8b5cf6); color: var(--SmartThemeBodyColor, #fff); font-size: 10px; font-weight: 800; letter-spacing: .04em; }
-.spi-overlay { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: 100vw; height: 100dvh; box-sizing: border-box; min-height: 0; overflow: hidden; z-index: 2147482500; display: grid; place-items: center; padding: 12px; background: color-mix(in srgb, #000 56%, transparent); }
+ .spi-overlay { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: 100vw; height: 100dvh; box-sizing: border-box; min-height: 0; overflow: hidden; overscroll-behavior:none; z-index: 2147482500; display: grid; place-items: center; padding: 12px; background: color-mix(in srgb, #000 56%, transparent); }
 .spi-dialog [hidden] { display: none !important; }
 .spi-dialog { width: min(760px, 100%); max-height: min(100%, 860px); overflow: auto; padding: 16px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 14px; background: var(--SmartThemeBlurTintColor, #222); color: var(--SmartThemeBodyColor, #eee); box-shadow: 0 12px 36px rgba(0,0,0,.34); box-sizing: border-box; }
 
@@ -571,7 +571,7 @@
  white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ness-text);line-height:1.6;
 }
 #sp-imagen-review-panel .ness-tagboard-context-menu{
- max-height:min(60dvh,430px);overflow-y:auto;overscroll-behavior:contain;
+ max-height:min(60dvh,430px);overflow-y:auto;overscroll-behavior:auto;
  position:absolute;z-index:50;width:min(315px,calc(100% - 8px));
  padding:12px;border:1px solid var(--ness-border);border-radius:11px;
  background:var(--ness-surface);box-shadow:0 9px 27px rgba(0,0,0,.16);
@@ -669,7 +669,7 @@
   display:flex;flex-direction:column;align-items:stretch;
   flex:1 1 auto;min-width:0;min-height:0;overflow-y:auto;
   overflow-x:hidden;padding:5px 4px 22px;gap:14px;
-  overscroll-behavior:contain;
+  overscroll-behavior:auto;
 }
 .spi-custom-profile-editor .spi-custom-profile-form>*{
   position:relative;flex:0 0 auto;min-width:0;margin:0;
@@ -994,30 +994,6 @@
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-editor{
  order:3;flex:1 1 100%;min-width:0;
-}
-/* Bulk-tag chips get a full second row instead of a sliver beside action buttons. */
-#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>.ness-note,
-#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>.ness-row{
- flex:1 1 100%;min-width:0;
-}
-#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>.ness-row{
- display:flex;flex-wrap:wrap;gap:5px;
-}
-#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>[data-bulk-tags]{
- display:flex;flex:1 1 100%;width:100%;min-width:0;
- flex-flow:row wrap;align-content:flex-start;align-items:flex-start;gap:5px;
- height:59px;min-height:59px;max-height:59px;
- overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;
- scrollbar-width:none;-ms-overflow-style:none;
- touch-action:pan-y;-webkit-overflow-scrolling:touch;
-}
-#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>[data-bulk-tags]::-webkit-scrollbar{
- display:none;width:0;height:0;
-}
-#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>[data-bulk-tags]>.ness-tag-filter{
- flex:0 0 auto;max-width:100%;min-width:0;min-height:27px!important;
- height:27px!important;padding:3px 9px!important;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip::-webkit-scrollbar{
  display:none;width:0;height:0;
@@ -1811,8 +1787,10 @@
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-editor{order:3}
 #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-button{min-height:30px;padding:4px 9px}
 @media(max-width:767px),(pointer:coarse){
- #sp-imagen-review-panel[data-dialog=library] .ness-library-cell{height:96px}
- #sp-imagen-review-panel[data-dialog=library] .ness-library-cell>.ness-library-item{padding:6px 8px;gap:7px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-cell{height:80px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-cell>.ness-library-item{padding:5px 7px;gap:7px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-row-icon{width:42px;height:42px;flex-basis:42px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-record-content{gap:3px}
 }
 @container spi-library (max-width:560px){
  #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip{flex-basis:100%;order:2}
@@ -1920,4 +1898,85 @@
 @media(max-height:450px){
  #sp-imagen-review-panel[data-dialog=library] dialog.ness-tagboard-context-menu{padding:8px;gap:5px;max-height:calc(100dvh - 12px)}
  #sp-imagen-review-panel .ness-transfer-active-tag{max-height:2.5em}
+}
+
+/* Shared filter strip becomes an assignment strip while records are selected. */
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk{order:0;flex:none;display:inline-flex;align-items:center;gap:3px;margin:0}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk>.ness-row{display:flex;flex-wrap:nowrap;gap:3px}
+#sp-imagen-review-panel[data-dialog=library] .ness-library-bulk .ness-button{width:32px;min-width:32px;min-height:32px;padding:3px}
+#sp-imagen-review-panel[data-dialog=library] [data-assignment=partial]{border-style:dashed!important}
+#sp-imagen-review-panel[data-dialog=library] [data-assignment=all]{box-shadow:inset 0 0 0 1px currentColor!important}
+#sp-imagen-review-panel[data-dialog=library] :is(.ness-library-bulk-delete,.ness-editor-delete){color:var(--ness-danger,#bd6870)!important}
+#sp-imagen-review-panel[data-dialog=library] :is(.ness-library-search-toggle,.ness-editor-expand){display:none}
+#sp-imagen-review-panel[data-dialog=library] [data-library-save][data-save-state=saved]{color:#32774c!important}
+#sp-imagen-review-panel[data-dialog=library] [data-library-save][data-save-state=busy] svg{animation:spi-library-saving .8s linear infinite}
+@keyframes spi-library-saving{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#sp-imagen-review-panel[data-dialog=library] [data-library-save][data-save-state=busy] svg{animation:none}}
+/* Allow native wheel, trackpad and touch chaining within extension windows.
+   The overlay itself still prevents scroll leaking into the RP chat. */
+#sp-imagen-review-panel :is([data-review-scroll],[data-library-list],.ness-library-tools,.ness-tab-viewport,.ness-tag-strip,.ness-record-tags,.ness-editor-meta-tags,.ness-tag-choices,.ness-results,.ness-unified-tagflow,.ness-tagboard-chosen-list,.ness-tagboard-ribbon,.ness-child-body,.ness-transfer-targets,textarea){overscroll-behavior:auto!important}
+:is(.spi-profile-scroll,.spi-code-prompt-list,.spi-prompt-list,.spi-style-library,.spi-prompt-window>textarea){overscroll-behavior:auto!important}
+@media(max-width:767px),(pointer:coarse){
+ #sp-imagen-review-overlay:not([data-minimized=true]) #sp-imagen-review-panel[data-dialog=library]{border-radius:12px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-header{order:0;gap:4px;padding:5px 8px!important;flex-wrap:nowrap}
+ #sp-imagen-review-panel[data-dialog=library] .ness-header h3{font-size:16px!important;white-space:nowrap}
+ #sp-imagen-review-panel[data-dialog=library] .ness-header p{display:none!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-header>.ness-row{flex:none;flex-wrap:nowrap;gap:2px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-header>.ness-row>.ness-button{min-width:30px!important;min-height:36px!important;padding:2px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-header .ness-badge{padding:2px 5px;font-size:11px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-workspace{order:2;min-height:0}
+ #sp-imagen-review-panel[data-dialog=library] .ness-footer-library{order:1;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;padding:3px 8px!important;gap:4px;border-top:0;border-bottom:1px solid var(--ness-border)}
+ #sp-imagen-review-panel[data-dialog=library] .ness-footer-left{margin-inline-end:auto;gap:4px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-footer-library .ness-button{min-height:36px!important;min-width:36px!important;width:36px!important;padding:4px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-footer-library>.ness-button:not([data-library-save]){display:none}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-action-label{display:none}
+ #sp-imagen-review-panel[data-dialog=library] .ness-footer-library>.ness-status{flex:1 1 100%;order:2;max-height:52px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-footer-library>.ness-status[data-compact=true]{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-tools{padding:5px 8px;gap:4px;max-height:38%}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-field{display:none;order:2;flex:1 1 100%}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters[data-search-open=true]>.ness-field{display:flex}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-field>.ness-label{display:none}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-search-toggle{display:inline-flex;min-width:36px!important;min-height:36px!important;padding:3px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-search-toggle[data-has-query=true]{border-color:var(--ness-accent)!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-add{min-height:36px!important;padding:4px 9px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-layout{display:none!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools{gap:4px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip{flex:1 1 100%;height:34px;min-height:34px;max-height:34px!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap;touch-action:auto}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip>.ness-tag-filter{min-height:32px!important;height:32px!important;flex:none}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-count{padding:4px 9px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-editorpane{padding:4px 5px 0}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading{gap:3px;padding:4px;margin-bottom:3px;align-items:center;flex-wrap:nowrap}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading>.ness-editor-back{min-width:32px!important;width:32px!important;min-height:36px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading>:is(.ness-editor-expand,.ness-editor-delete){display:inline-flex;flex:none;width:32px;min-width:32px!important;min-height:36px!important;padding:3px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-identity{grid-template-columns:36px minmax(0,1fr);flex:1;min-width:0;gap:4px;align-items:center}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-identity-fields{min-width:0}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-emblem{width:36px;min-width:36px;height:36px;min-height:36px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading:not([data-expanded=true]) :is(.ness-editor-type-select,.ness-editor-meta-tags){display:none!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading[data-expanded=true] .ness-editor-expand svg{transform:rotate(180deg)}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-name-row{grid-template-columns:minmax(0,1fr);gap:0}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-name-pencil{display:none}
+ #sp-imagen-review-panel[data-dialog=library] input.ness-editor-name-input{font-size:16px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tab-strip .ness-tab{min-height:36px!important;padding:4px 7px!important;font-size:11px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-controls{position:relative;top:auto;gap:2px;padding:0}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-modes>.ness-button{min-height:34px!important;font-size:11px!important;padding:3px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-ribbon>.ness-button{min-height:34px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-tools{justify-content:flex-start;padding:3px!important;gap:3px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-tools :is(.ness-tagboard-tool,.ness-tagboard-move-arrow,.ness-tagboard-tool-history .ness-button){min-width:34px!important;min-height:36px!important;padding:3px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-tool-history{margin-inline-start:0;gap:3px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tagboard-tools .ness-format-strip{flex:0 1 auto;gap:3px}
+ #sp-imagen-review-panel[data-dialog=library] .ness-format-strip .ness-button{min-height:36px!important;padding:3px 6px!important;font-size:11px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tab-content{padding:3px 0 6px}
+}
+
+@media(max-width:767px),(pointer:coarse){
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library{order:0;flex:0 1 auto;display:flex;margin-inline-start:auto!important;padding:0!important;gap:3px;border:0;background:transparent}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library>.ness-status:not([data-compact=true]){position:static;flex-basis:100%}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library>.ness-footer-left{gap:3px;margin:0}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-footer-library .ness-button{min-width:34px!important;width:34px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-library-filters>.ness-library-add{font-size:12px!important}
+ #sp-imagen-review-panel[data-dialog=library] .ness-tag-tools>.ness-tag-strip{touch-action:pan-x pan-y}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading .ness-editor-identity{display:grid}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading:not([data-expanded=true]) .ness-editor-identity-fields{display:block}
+ #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading:not([data-expanded=true]) .ness-editor-identity>.ness-help-toggle{display:none}
 }

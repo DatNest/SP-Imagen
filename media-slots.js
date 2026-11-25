@@ -203,7 +203,7 @@ export async function installSpImagenMediaSlots(options) {
     .editor-head .close-x { margin-inline-start: auto; inline-size: 36px; block-size: 36px;
       display: grid; place-items: center; border-radius: 7px; font-size: 24px; }
     .editor-head .close-x:hover, .editor-footer button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
-    .editor-body { min-block-size: 0; overflow: auto; overscroll-behavior: contain;
+    .editor-body { min-block-size: 0; overflow: auto; overscroll-behavior: auto;
       padding: 14px 16px; scrollbar-width: thin; }
     .editor-footer { justify-content: flex-end; flex-wrap: wrap; border-block-start: 1px solid var(--ms-line); }
     .editor-footer button, .editor-save-style, .editor-style-save-panel button {
@@ -1351,7 +1351,7 @@ export async function installSpImagenMediaSlots(options) {
     config.kind = kind;
     const extension = getExtension?.();
     if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') {
-      throw new Error('Для повторной генерации включи SP Imagen → NovelAI и укажи API-токен.');
+      throw new Error('Для повторной генерации проверь подключение SP Imagen → NovelAI.');
     }
     const lock = `${current.chatId}|${index}|${kind}`;
     if (busy.has(lock)) throw new Error('Эта картинка уже генерируется.');
@@ -1496,7 +1496,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 27,
-    bundleVersion: '2.9.64',
+    bundleVersion: '2.9.65',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},
