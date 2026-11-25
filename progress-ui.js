@@ -105,7 +105,7 @@ export function createSpImagenProgress() {
     };
     const submitted = () => {
         dispatched = true;
-        set('NovelAI · генерация изображения', 'Передаю запрос и ожидаю сервер; повторная отправка может потратить Anlas.', { stoppable: false });
+        set('Генерация изображения', 'Ожидаю ответ сервера; повторная отправка может расходовать Anlas или кредиты.', { stoppable: false });
     };
     // Mount outside theme-transformed body containers, as other SP Imagen dialogs do.
     (document.documentElement || document.body).appendChild(root);
