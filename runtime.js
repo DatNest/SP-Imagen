@@ -1080,14 +1080,14 @@ function mountDialog(overlay,onChatChanged){
 
 async function previewFinalPrompt(config, origin) {
  const {overlay,panel}=createDialogShell('prompt');
- const ui=createUiKit(document);createNessHeader(document,panel,'Итоговый промпт','Последняя проверка перед генерацией','NAI5');
+ const ui=createUiKit(document);createNessHeader(document,panel,'Итоговый промпт','Последняя проверка перед генерацией','SP Imagen');
  const scroll=ui.el('div',undefined,panel);scroll.setAttribute('data-review-scroll','');
  const tools=ui.el('div',undefined,scroll,'ness-prompt-toolbar');ui.el('span','✎ Готовое задание · можно редактировать',tools);
  ui.el('span',config.aspect_ratio+' · '+config.image_size,tools,'ness-badge');const counter=ui.el('span','',tools,'ness-badge');
  const field=ui.area('');field.setAttribute('data-final-prompt','');field.setAttribute('aria-label','Итоговый промпт');ui.field(scroll,'Итоговый промпт',field);
  const actions=ui.el('footer',undefined,panel);actions.setAttribute('data-review-actions','');
  const error=ui.el('p','',actions,'ness-error');error.setAttribute('data-error','');error.style.display='none';
- const cancel=ui.button('Отмена',actions),send=ui.button('Отправить в NAI5',actions,undefined,'primary');
+ const cancel=ui.button('Отмена',actions),send=ui.button('Генерировать',actions,undefined,'primary');
  cancel.setAttribute('data-preview-cancel','');send.setAttribute('data-preview-send','');
  field.value=config.prompt;const updateCount=()=>{counter.textContent=field.value.length.toLocaleString('ru-RU')+' / 45 000 знаков';};
  const previousFocus=document.activeElement;
@@ -2147,7 +2147,7 @@ const v=st.chatMetadata.variables||={};
 const ticket=String(v.sp_imagen_run_ticket||'');
 if(v.sp_imagen_preview_status!=='approved'||!ticket||v.sp_imagen_prepared_ticket!==ticket)throw Error('Подтвердите данные и подготовьте библиотеку');
 const lockedChat=st.chat;
-if(!spImagenExtension().directGenerationEnabled?.())throw Error('Укажи API-токен в SP Imagen → NovelAI.');
+if(!spImagenExtension().directGenerationEnabled?.())throw Error('Укажи токен выбранного провайдера в SP Imagen → NovelAI.');
 if(generationLocks.has(lockedChat))throw Error('Генерация уже выполняется');
 const progress=providedProgress||createSpImagenProgress();
 generationLocks.add(lockedChat);
@@ -2277,9 +2277,9 @@ const target=beforeChat[targetIndex];
 rememberPostPrompts(st,targetIndex,{kind,finalPrompt:config.prompt});
 savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
- progress.set('Проверка перед NovelAI', 'Подтверди готовый промпт. Пока запрос NovelAI не отправлен.');
+ progress.set('Проверка перед генерацией', 'Подтверди готовый промпт. Запрос на изображение ещё не отправлен.');
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount,index:targetIndex,kind,message:target});
- if(!accepted){finished=true;progress.close();return 'Отправка в NAI5 отменена';}
+ if(!accepted){finished=true;progress.close();return 'Отправка отменена';}
 }
 validateImagePromptLayout(config.prompt,baseKind);
 const imagePrompt=config.prompt,cast=Array.isArray(v.sp_imagen_present_ids)?v.sp_imagen_present_ids:[];
@@ -2296,8 +2296,8 @@ const live = SillyTavern.getContext();
   if(live.chat[targetIndex]!==target)throw Error('Выбранный RP-пост изменился.');
   // SP Imagen owns the complete image request and publishes to its own gallery.
   const directExtension=spImagenExtension();
-  if(!directExtension.directGenerationEnabled?.()){
-    throw new Error('SP Imagen генерирует самостоятельно. Проверь подключение NovelAI.');
+  if(!directExtension.directGenerationEnabled?.(config)){
+    throw new Error('SP Imagen генерирует самостоятельно. Проверь подключение в настройках.');
   }
   requireOrigin();
   progress.submitted(); // The paid request might have reached NovelAI; never promise cancellation.
@@ -2370,12 +2370,12 @@ async function resumePost(request=null) {
     const config=JSON.parse(JSON.stringify(finalConfig));
     if(config.spImagenDirect?.settings?.apiKey || config.spImagenDirect?.settings?.endpoint)
       throw Error('Черновик содержит параметры подключения, которые нельзя хранить в чате. Сохрани новый черновик без API-ключа.');
-    if(!spImagenExtension().directGenerationEnabled?.())throw Error('Проверь подключение NovelAI в SP Imagen.');
+    if(!spImagenExtension().directGenerationEnabled?.(config,true))throw Error('Проверь подключение провайдера сохранённого промпта в SP Imagen.');
     progress.set('Сохранённый промпт', 'Проверь сохранённый текст; режиссёр не вызывается.',{stoppable:false});
     const accepted=await previewFinalPrompt(config,{
      chat:originalChat,id:originalId,count:originalChat.length,index:request.index,kind,message:post
     });
-    if(!accepted){progress.close();return 'Черновик оставлен на посте без отправки в NovelAI.';}
+    if(!accepted){progress.close();return 'Черновик оставлен на посте без отправки изображения.';}
     ensureOrigin();
     if(progress.signal.aborted)throw Error('Отменено пользователем. Черновик сохранён.');
     st.chatMetadata.variables ||= {};
