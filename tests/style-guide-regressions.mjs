@@ -163,10 +163,9 @@ test('Library adapts to its own panel width and keeps filter and bulk tag chips 
  assert.match(css,/@container spi-library \(max-width:760px\)\{[\s\S]*?\[data-view=editor\] \.ness-library-listpane\{\s*display:none/);
  assert.match(css,/@container spi-library \(max-width:760px\)\{[\s\S]*?\[data-view=editor\] \.ness-library-editorpane\{\s*display:flex/);
  assert.match(css,/\.ness-tag-tools>\.ness-tag-strip\{\s*display:flex!important;order:2;flex:1 1 100%;width:100%/);
- assert.match(css,/\.ness-library-bulk>\[data-bulk-tags\]\{\s*display:flex;flex:1 1 100%;width:100%/);
- assert.match(css,/\.ness-library-bulk>\[data-bulk-tags\]::-webkit-scrollbar\{\s*display:none/);
- assert.match(css,/\.ness-library-bulk>\.ness-row\{\s*display:flex;flex-wrap:wrap/);
- assert.match(runtime,/bulkTags=el\('div',undefined,bulk,'ness-tag-strip'\)/);
+ assert.match(css,/\.ness-library-bulk>\.ness-row\{display:flex;flex-wrap:nowrap/);
+ assert.match(runtime,/const bulk=el\('div',undefined,tagTools,'ness-library-bulk'\)/);
+ assert.doesNotMatch(runtime,/bulkTags=el/);
  assert.match(shared,/\.ness-library-editorpane\{display:flex;flex-direction:column/);
 });
 
@@ -283,4 +282,22 @@ test('Resume is a distinct arrow left of the star, and the tour shows a non-gene
  assert.doesNotMatch(demo,/executeCommand|savePostDraft|discardPostDraft|generateImage/);
  assert.match(gallery,/demo\.resume\?\.remove\(\)/);
  assert.match(gallery,/if \(guideDemo && \['sp_ness_generate_at','sp_ness_resume_post'\]\.includes\(command\)\) return/);
+});
+
+test('Mobile library uses one compact action bar, collapsible search and shared bulk tags',()=>{
+ const lib=read('library-runtime.js'),css=read('style.css'),index=read('index.js'),guide=makeGuideSteps(true);
+ assert.match(lib,/function saveState\(state\)/);
+ assert.match(lib,/view\.saveState\(value\?'busy':dirty\?'dirty':'saved'\)/);
+ assert.match(lib,/chip\.dataset\.assignment=all\?'all':partial\?'partial':'none'/);
+ assert.match(lib,/assignSelectedTag\(id,!all\)/);
+ assert.match(lib,/function confirmDeleteRecords\(ids\)/);
+ assert.match(lib,/dialog\.finish\(\);if\(!editor\)view\.resetEditor\(\);changed\(true\);renderList\(\)/);
+ assert.doesNotMatch(lib,/button\('Удалить персонажа',promptTab/);
+ assert.match(css,/\.ness-library-layout\{display:none!important\}/);
+ assert.match(css,/\.ness-footer-library\{order:1;display:flex/);
+ assert.match(css,/\.ness-library-workspace\{order:2/);
+ assert.match(css,/overscroll-behavior:auto!important/);
+ assert.doesNotMatch(index,/formField\(grid, 'Генерировать напрямую через NovelAI'/);
+ assert.match(index,/function directGenerationEnabled\(\) \{\s*return true/);
+ assert.ok(guide.some(s=>s.text.includes('SillyImages не используется')));
 });

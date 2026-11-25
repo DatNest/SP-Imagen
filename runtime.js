@@ -2135,7 +2135,7 @@ const v=st.chatMetadata.variables||={};
 const ticket=String(v.sp_imagen_run_ticket||'');
 if(v.sp_imagen_preview_status!=='approved'||!ticket||v.sp_imagen_prepared_ticket!==ticket)throw Error('Подтвердите данные и подготовьте библиотеку');
 const lockedChat=st.chat;
-if(!spImagenExtension().directGenerationEnabled?.())throw Error('Включи прямую генерацию NovelAI в SP Imagen и укажи свой API-токен.');
+if(!spImagenExtension().directGenerationEnabled?.())throw Error('Укажи API-токен в SP Imagen → NovelAI.');
 if(generationLocks.has(lockedChat))throw Error('Генерация уже выполняется');
 const progress=providedProgress||createSpImagenProgress();
 generationLocks.add(lockedChat);
@@ -2286,7 +2286,7 @@ const live = SillyTavern.getContext();
   // SP Imagen owns the complete image request and publishes to its own gallery.
   const directExtension=spImagenExtension();
   if(!directExtension.directGenerationEnabled?.()){
-    throw new Error('В SP Imagen → NovelAI включи прямую генерацию и укажи API-токен. Внешний SillyImages больше не требуется.');
+    throw new Error('SP Imagen генерирует самостоятельно. Проверь подключение NovelAI.');
   }
   requireOrigin();
   progress.submitted(); // The paid request might have reached NovelAI; never promise cancellation.
@@ -2359,7 +2359,7 @@ async function resumePost(request=null) {
     const config=JSON.parse(JSON.stringify(finalConfig));
     if(config.spImagenDirect?.settings?.apiKey || config.spImagenDirect?.settings?.endpoint)
       throw Error('Черновик содержит параметры подключения, которые нельзя хранить в чате. Сохрани новый черновик без API-ключа.');
-    if(!spImagenExtension().directGenerationEnabled?.())throw Error('Включи прямую генерацию NovelAI в SP Imagen.');
+    if(!spImagenExtension().directGenerationEnabled?.())throw Error('Проверь подключение NovelAI в SP Imagen.');
     progress.set('Сохранённый промпт', 'Проверь сохранённый текст; режиссёр не вызывается.',{stoppable:false});
     const accepted=await previewFinalPrompt(config,{
      chat:originalChat,id:originalId,count:originalChat.length,index:request.index,kind,message:post

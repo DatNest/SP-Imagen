@@ -21,7 +21,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.64';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.65';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -880,8 +880,7 @@ function openNovelAISettings({ back = false } = {}) {
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
     dialog.append(grid, status, actions);
     try {
-    const enabled = input('', 'checkbox'); enabled.checked = draft.enabled;
-    formField(grid, 'Генерировать напрямую через NovelAI', enabled, 'Картинки создаются самим SP Imagen, без SillyImages и временных постов.');
+    const intro=document.createElement('p');intro.className='spi-status';intro.textContent='SP Imagen самостоятельно генерирует изображения через NovelAI. SillyImages не используется.';grid.append(intro);
     const neverSpend = input('', 'checkbox'); neverSpend.checked = draft.neverSpendAnlas;
     formField(grid, 'Ни в коем случае не тратить Anlas', neverSpend, 'Проверяет Opus и доступный лимит перед каждой отправкой.');
     const token = input(draft.apiKey, 'password'); token.autocomplete = 'off';
@@ -903,7 +902,7 @@ function openNovelAISettings({ back = false } = {}) {
     const updateModelFields=()=>{negativeField.parentElement.hidden=model.value==='nai-diffusion-5-full-medium';};
     model.addEventListener('change',updateModelFields);updateModelFields();
     const readDraft = () => normalizeNovelAISettings({
-        ...draft, enabled: enabled.checked, neverSpendAnlas: neverSpend.checked,
+        ...draft, enabled: true, neverSpendAnlas: neverSpend.checked,
         apiKey: token.value, endpoint: OFFICIAL_NOVELAI_ORIGIN, model: model.value, resolution: resolution.value,
         steps: Number(steps.value), cfgScale: Number(cfg.value), cfgRescale: Number(rescale.value),
         sampler: sampler.value, seed: Number(seed.value), negativePrompt: negative.value,
@@ -923,10 +922,10 @@ function openNovelAISettings({ back = false } = {}) {
         const next = readDraft();
         try { officialNovelAIEndpoint(next.endpoint); }
         catch(error){status.textContent=String(error?.message||error);return;}
-        if (next.enabled && !next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Для автономной генерации требуется токен NovelAI.'; token.focus(); return; }
+        if (!next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Для автономной генерации требуется токен NovelAI.'; token.focus(); return; }
         const root = settings(); root.novelai = next; saveSettings(); close();
     }, true);
-    requestAnimationFrame(() => enabled.focus());
+    requestAnimationFrame(() => token.focus());
     } catch (error) {
         status.textContent = 'Не удалось открыть настройки: ' + String(error?.message || error);
         button('Закрыть', actions, close);
@@ -1286,7 +1285,7 @@ function activeStyle(novelai = settings().novelai) {
 }
 
 function directGenerationEnabled() {
-    return settings().novelai.enabled === true;
+    return true;
 }
 
 function listImageStyles() {
