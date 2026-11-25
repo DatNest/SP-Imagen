@@ -1,4 +1,5 @@
 import { loadNessTheme, applyNessTheme, normalizeNessTheme, activeNessThemeForEditor, themeSettingsLocation, NESS_THEME_MODE_KEY, NESS_CUSTOM_THEME_KEY } from './theme-runtime.js';
+import { duplicateWarningsEnabled, setDuplicateWarnings } from './appearance-overlap.js';
 import { addFieldHelp } from './onboarding.js';
 import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './dialog-shell.js';
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
@@ -734,6 +735,9 @@ async function openLibraryEditor(){
   editor.original=cloneLibrary(entry);editor.clearAppearanceEdited();
  }
  function tryFlush(){try{flushEditor();return true;}catch(e){status(e.message);return false;}}
+ const warningStorage=()=>{try{return window.localStorage;}catch{return undefined;}};
+ let tagWarnings=duplicateWarningsEnabled(warningStorage());
+ const setTagWarnings=value=>{tagWarnings=Boolean(value);setDuplicateWarnings(warningStorage(),tagWarnings);};
  let rulesDialog=null,deleteDialog=null;
  const rulesButton=button('◈',view.addTag.parentNode,()=>{
   if(busy||done||rulesDialog||!tryFlush())return;
@@ -741,6 +745,10 @@ async function openLibraryEditor(){
   const dialog=createNessChildDialog(document,panel,{title:'Правила ракурсов',marker:'data-appearance-rules',onClose:()=>{rulesDialog=null;}});
   rulesDialog=dialog;
   el('p','Режиссёр выбирает один ракурс на персонажа. Опиши, когда выбирать каждый вариант. «Вставлять всегда» применяется отдельно.',dialog.body,'ness-note');
+  const warningLabel=el('label',undefined,dialog.body,'ness-tag-warning-setting');
+  const warningCheck=el('input',undefined,warningLabel);warningCheck.type='checkbox';warningCheck.checked=tagWarnings;
+  el('span','Предупреждать о возможных повторениях тегов',warningLabel);
+  el('p','Проверяет совпадения в пересекающихся ракурсах всех трёх режимов.',dialog.body,'ness-note');
   const inputs={};
   for(const [id,[label,standard]] of Object.entries(NESS_APPEARANCE_RULES)){
    const row=el('div',undefined,dialog.body,'ness-appearance-rule');
@@ -750,6 +758,7 @@ async function openLibraryEditor(){
   }
   button('Отмена',dialog.actions,dialog.finish);
   button('Применить',dialog.actions,()=>{
+   setTagWarnings(warningCheck.checked);
    const rules=normalizeAppearanceRules(Object.fromEntries(Object.entries(inputs).map(([id,control])=>[id,control.value])));
    if(JSON.stringify(rules)!==JSON.stringify(draft.appearanceRules||{})){
     if(Object.keys(rules).length)draft.appearanceRules=rules;else delete draft.appearanceRules;
@@ -1015,6 +1024,7 @@ async function openLibraryEditor(){
     initialCatalog:appearanceEntry.appearanceCatalog,
     initialMode:'base',
     initialHelpPinned:appearanceHintPinned,
+    readWarningPreference:()=>tagWarnings,writeWarningPreference:setTagWarnings,
     onHelpChange:(pinned,peek)=>{
       appearanceHintPinned=pinned;
       pinHint.setAttribute('aria-checked',String(pinned));
