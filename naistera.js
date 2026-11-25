@@ -21,13 +21,13 @@ export function normalizeNaisteraSettings(input = {}) {
 }
 export function validateNaisteraSettings(s) {
     if (!s.apiKey || /^pst-/i.test(s.apiKey)) throw Error('Укажи токен NAISTERA, а не постоянный токен NovelAI.');
-    if (!Number.isInteger(s.steps) || s.steps < 1 || s.steps > 50) throw Error('Steps: целое число от 1 до 50.');
+    if (s.model !== 'novelai-v5-medium' && (!Number.isInteger(s.steps) || s.steps < 1 || s.steps > 50)) throw Error('Steps: целое число от 1 до 50.');
     if (!Number.isFinite(s.cfgScale) || s.cfgScale < 0 || s.cfgScale > 10) throw Error('CFG scale: от 0 до 10.');
-    if (!Number.isFinite(s.cfgRescale) || s.cfgRescale < 0 || s.cfgRescale > 1) throw Error('CFG rescale: от 0 до 1.');
+    if (s.model !== 'novelai-v5-medium' && (!Number.isFinite(s.cfgRescale) || s.cfgRescale < 0 || s.cfgRescale > 1)) throw Error('CFG rescale: от 0 до 1.');
 }
 export function imageProvider(state, config, reuseSnapshot = false) {
-    const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
-    if (reuseSnapshot) return snapshot?.provider === 'naistera' ? 'naistera' : 'novelai';
+    const snapshot = config?.spImagenDirect;
+    if (reuseSnapshot || snapshot?.provider) return snapshot?.provider === 'naistera' ? 'naistera' : 'novelai';
     return state.imageProvider === 'naistera' ? 'naistera' : 'novelai';
 }
 export function publicNaisteraSettings(s) {
