@@ -7,6 +7,7 @@ import { insertSkinAppearance, normalizeSkinTags, normalizeAppearanceCatalog, ap
 import { parseImageHtml } from '../image-transport.js';
 import { normalizeImagePrompt, limitComicDialogue } from '../image-prompt.js';
 import { normalizeProfile, generationFormats, filterProfileSources, directorProfileGuidance, migrateLegacyProfiles } from '../profiles.js';
+import { generateTextCompletion } from '../text-api.js';
 
 const base = 'brown eyes, long hair, dark tattoo, leather boots;';
 const range = value => {
@@ -164,4 +165,56 @@ test('Legacy additional rules migrate without replacing copied directors', () =>
   assert.equal(old.extraPrompts[0].enabled,true);
   assert.equal(old.customProfiles.length,1);
   assert.equal(old.customProfiles[0].name,'Director copy');
+});
+
+test('Comic post-character bubbles respect configurable line limit without touching artwork or notes', () => {
+  const picture = '1girl, 3 panels, ornate page borders | girl, Ji, long tail; Speech bubble 1: oval, saying "Привет!"; Speech bubble 2: small, saying "Пока!"\n\nText: Привет!\n\nЗАПИСКА\n\nПока!';
+  const result = limitComicDialogue(picture,'comic',{dialogue:{comicLines:1,comicWords:7}});
+  assert.match(result, /ornate page borders/);
+  assert.match(result, /girl, Ji, long tail/);
+  assert.match(result, /Speech bubble 1: oval, saying "Привет!"/);
+  assert.doesNotMatch(result, /Speech bubble 2:|Пока!/);
+  assert.match(result, /Text: Привет!\n\nЗАПИСКА$/);
+});
+
+test('Story Page and older pre-character bubble syntax both preserve their lettering contracts', () => {
+  const after='1girl, watercolor inset | girl, Ji, tail; Speech bubble 1: oval, saying "Да!"; Speech bubble 2: oval, saying "Нет!"\n\nText: Да!\n\nНет!';
+  const before='1girl; Speech bubble 1: oval, saying "Да!"; Speech bubble 2: oval, saying "Нет!" | girl, Ji, tail\n\nText: Да!\n\nНет!';
+  for(const source of [after,before]){
+    const result=limitComicDialogue(source,'story_page',{dialogue:{storyLines:1,storyWords:10}});
+    assert.match(result,/Speech bubble 1:/);
+    assert.doesNotMatch(result,/Speech bubble 2:|Нет!/);
+    assert.match(result,/girl, Ji, tail/);
+  }
+});
+
+test('Direct streaming accepts SSE event separators split across transport chunks', {concurrency:false}, async () => {
+  const previous=globalThis.fetch;
+  const parts=[
+    'data: {"choices":[{"delta":{"content":"ok"}}]}\r', '\n', '\r', '\n',
+    'data: [DONE]\r', '\n', '\r', '\n',
+  ];
+  let cursor=0;
+  const encoder=new TextEncoder();
+  globalThis.fetch=async()=>({
+    ok:true,
+    body:{getReader:()=>({
+      async read(){
+        if(cursor===parts.length)throw Error('The stream did not recognize the terminal [DONE] event.');
+        return {done:false,value:encoder.encode(parts[cursor++])};
+      },
+      async cancel(){},
+      releaseLock(){},
+    })},
+  });
+  try {
+    const result=await generateTextCompletion({
+      mode:'direct',endpoint:'https://example.invalid/v1',apiKey:'test',model:'mock',
+      streaming:true,
+    },[{role:'user',content:'Say ok'}]);
+    assert.equal(result,'ok');
+    assert.equal(cursor,parts.length);
+  } finally {
+    globalThis.fetch=previous;
+  }
 });
