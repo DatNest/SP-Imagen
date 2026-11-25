@@ -300,7 +300,8 @@ test('Mobile library uses one compact action bar, collapsible search and shared 
  assert.match(css,/\.ness-library-workspace\{order:2/);
  assert.match(css,/overscroll-behavior:auto!important/);
  assert.doesNotMatch(index,/formField\(grid, 'Генерировать напрямую через NovelAI'/);
- assert.match(index,/function directGenerationEnabled\(\) \{\s*return Boolean\(settings\(\)\.novelai\.apiKey\)/);
+ assert.match(index,/function directGenerationEnabled\(config, reuseSnapshot = false\)/);
+ assert.match(index,/state\[imageProvider\(state,config,reuseSnapshot\)\]\?\.apiKey/);
  assert.ok(guide.some(s=>s.text.includes('SillyImages не используется')));
 });
 
