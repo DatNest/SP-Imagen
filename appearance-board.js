@@ -1021,7 +1021,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const searchToggle=button('⌕',header,undefined,'quiet ness-tag-search-toggle');searchToggle.title='Найти тег';searchToggle.setAttribute('aria-label','Найти тег');
   const setTagSearch=(open,focus=false)=>{tagSearchOpen=Boolean(open);search.dataset.open=String(tagSearchOpen);searchToggle.setAttribute('aria-expanded',String(tagSearchOpen));searchToggle.dataset.hasQuery=String(!!filter);if(open&&focus)search.focus?.({preventScroll:true});};
   searchToggle.onclick=()=>setTagSearch(!tagSearchOpen,true);setTagSearch(tagSearchOpen);
-  search.onblur=e=>{if(mobile()&&e.relatedTarget!==searchToggle)setTagSearch(false);};
   search.onkeydown=e=>{if(e.key==='Escape'&&mobile()){e.preventDefault();e.stopPropagation();setTagSearch(false);searchToggle.focus?.({preventScroll:true});}};
   const scene=el('div',undefined,left,'ness-unified-highlight-list');
   const tagFlow=el('div',undefined,scene,'ness-unified-tagflow');
@@ -1148,6 +1147,12 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   }
  }
 
+ frame.addEventListener('click',e=>{
+  if(!mobile()||!tagSearchOpen)return;
+  const search=content.querySelector('.ness-tagboard-search'),toggle=content.querySelector('.ness-tag-search-toggle');
+  if(e.target===search||e.target===toggle||toggle?.contains?.(e.target))return;
+  tagSearchOpen=false;if(search)search.dataset.open='false';toggle?.setAttribute('aria-expanded','false');
+ });
  frame.tabIndex=-1;
  frame.addEventListener('keydown',e=>{
   if(!(e.ctrlKey||e.metaKey)||e.altKey||readOnly())return;

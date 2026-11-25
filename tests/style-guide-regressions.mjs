@@ -343,3 +343,11 @@ test('Exit handlers preserve the draft on a failed or invalid save, and skip wri
  h=harness({dirty:false});await h.closeLibrary();assert.deepEqual(h.events,['flush','closed']);
  h=harness({guide:true});await h.leaveEditor();assert.deepEqual(h.events,['flush','list']);
 });
+
+test('Mobile disclosures fold after click dispatch rather than moving the tapped target on pointerdown',()=>{
+ const lib=read('library-runtime.js'),board=read('appearance-board.js');
+ assert.match(lib,/panel\.addEventListener\('click',outside\)/);
+ assert.match(lib,/panel\.removeEventListener\('click',outside\)/);
+ assert.match(lib,/panel\.addEventListener\('click',e=>\{if\(!searchToggle\.contains/);
+ assert.match(board,/frame\.addEventListener\('click',e=>\{\s*if\(!mobile\(\)\|\|!tagSearchOpen\)return/);
+});

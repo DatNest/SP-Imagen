@@ -478,7 +478,7 @@ function createLibraryView(D){
  setSearchOpen(false,false);
  searchToggle.onclick=()=>setSearchOpen(filters.dataset.searchOpen!=='true');
  // A pointer elsewhere folds the search field, but keeps its query.
- panel.addEventListener('pointerdown',e=>{if(!searchToggle.contains(e.target)&&!search.parentNode.contains(e.target))setSearchOpen(false);});
+ panel.addEventListener('click',e=>{if(!searchToggle.contains(e.target)&&!searchField.contains(e.target))setSearchOpen(false,false);});
  search.addEventListener('keydown',e=>{if(e.key==='Escape'&&filters.dataset.searchOpen==='true'){e.stopPropagation();setSearchOpen(false);}});
  search.addEventListener('input',()=>searchToggle.dataset.hasQuery=String(!!search.value));
  const add=button('+ Персонаж',filters,undefined,'primary ness-library-add');add.setAttribute('data-library-add','');
@@ -1038,8 +1038,8 @@ async function openLibraryEditor(){
    syncDrawerTab(appearanceActive?0:1);setDrawer('');
   };
   const outside=e=>{if(!drawer||bookmarks.contains(e.target)||navDrawer.contains(e.target)||toolsDrawer.contains(e.target)||e.target.closest?.('dialog,[data-ness-child-dialog]'))return;setDrawer('');};
-  panel.addEventListener('pointerdown',outside);
-  const drawers={tools:toolsDrawer,sync:syncDrawers,close:()=>setDrawer(''),reveal:target=>{if(!view.isMobile())return;if(navDrawer.contains(target))setDrawer('nav');else if(toolsDrawer.contains(target))setDrawer('tools');else setDrawer('');},dispose:()=>panel.removeEventListener('pointerdown',outside)};
+  panel.addEventListener('click',outside);
+  const drawers={tools:toolsDrawer,sync:syncDrawers,close:()=>setDrawer(''),reveal:target=>{if(!view.isMobile())return;if(navDrawer.contains(target))setDrawer('nav');else if(toolsDrawer.contains(target))setDrawer('tools');else setDrawer('');},dispose:()=>panel.removeEventListener('click',outside)};
   headingBar.hidden=true;
   inlineBoard.element.insertBefore(proseWrap,editorBody.parentElement);
   runUndo=()=>inlineBoard.undo();runRedo=()=>inlineBoard.redo();
