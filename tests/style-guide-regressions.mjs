@@ -113,9 +113,9 @@ test('Style selection and activation update existing list nodes rather than recr
  assert.ok(start>=0&&end>start);
  const body=index.slice(start,end);
  assert.match(body,/const syncListState = \(\) =>/);
- assert.match(body,/summary\.onclick = \(\) => \{ selectedId = style\.id; syncListState\(\); syncEditor\(\); \}/);
- assert.match(body,/selectedId = style\.id; persist\(\); syncListState\(\); syncEditor\(\)/);
- assert.match(body,/library\.scrollTop = scrollTop/);
+ assert.match(body,/summary\.onclick = \(\) => \{ if \(selectedId === id\) return; selectedId = id; syncListState\(\); syncEditor\(\); \}/);
+ assert.match(body,/selectedId = id; persist\(\); syncListState\(\); syncEditor\(\)/);
+ assert.match(body,/rows\.scrollTop = scrollTop/);
 });
 test('Cast picker avoids resetting the list when an asynchronous save succeeds',()=>{
  const runtime=read('runtime.js');
