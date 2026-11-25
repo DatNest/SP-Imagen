@@ -2011,3 +2011,14 @@
  #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading:not([data-expanded=true]) .ness-editor-identity-fields{display:block}
  #sp-imagen-review-panel[data-dialog=library] .ness-editor-heading:not([data-expanded=true]) .ness-editor-identity>.ness-help-toggle{display:none}
 }
+
+#sp-imagen-review-panel .ness-tag-warning-setting{display:flex;align-items:center;gap:7px;min-width:0;font-size:12px;line-height:1.3;padding:5px 0;white-space:normal}
+#sp-imagen-review-panel .ness-tag-warning-setting input{flex:none;width:18px;height:18px;margin:0}
+#sp-imagen-review-panel .ness-unified-chip[data-assigned-elsewhere=true][data-highlighted=false][data-inherited=false]{border-style:dashed}
+.ness-tag-duplicate-dialog{box-sizing:border-box;width:min(420px,calc(100vw - 24px));max-height:80dvh;overflow:auto;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:12px;padding:16px;background:var(--SmartThemeBlurTintColor,#222);color:var(--SmartThemeBodyColor,#eee);font:inherit}
+.ness-tag-duplicate-dialog::backdrop{background:#0009}
+.ness-tag-duplicate-name{overflow-wrap:anywhere;font-weight:650}
+.ness-tag-duplicate-list{display:grid;gap:5px;max-height:38dvh;overflow:auto}
+.ness-tag-duplicate-match{display:grid;gap:2px;padding:7px 9px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:7px;overflow-wrap:anywhere}
+.ness-tag-duplicate-match small{opacity:.8}
+.ness-tag-duplicate-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
