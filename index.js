@@ -935,7 +935,8 @@ function openNovelAISettings({ back = false } = {}) {
         if(!isProxy)show(negativeField.parentElement,model.value!=='nai-diffusion-5-full-medium');
         else {
             show(proxyRescale.parentElement,!medium);show(proxyNegative.parentElement,!medium);
-            proxySteps.disabled=medium;proxySampler.disabled=medium;
+            show(proxySteps.parentElement,!medium);show(proxySampler.parentElement,!medium);
+            proxyIntro.textContent='NAISTERA · генерация расходует квоту или кредиты сервиса. Защита Anlas не применяется.'+(medium?' Medium: 14 Steps, Euler Ancestral.':'');
             proxySteps.max=proxyModel.value==='novelai-v4.5'?'28':'23';
         }
     };
