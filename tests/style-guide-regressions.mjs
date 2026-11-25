@@ -351,3 +351,17 @@ test('Mobile disclosures fold after click dispatch rather than moving the tapped
  assert.match(lib,/panel\.addEventListener\('click',e=>\{if\(!searchToggle\.contains/);
  assert.match(board,/frame\.addEventListener\('click',e=>\{\s*if\(!mobile\(\)\|\|!tagSearchOpen\)return/);
 });
+
+test('Style library keeps its compact toolbar, existing rows and current style data',()=>{
+ const source=read('index.js'),body=source.slice(source.indexOf('function openStyleLibrary('),source.indexOf('async function openLibrary()'));
+ assert.doesNotMatch(body,/Inline Images|inline_image_gen/);
+ assert.match(body,/iconButton\('\+', 'Новый стиль', controls/);
+ assert.match(body,/iconButton\('⊘', 'Без стиля', controls/);
+ assert.match(body,/noneStyleButton\.setAttribute\('aria-pressed', String\(!novelai\.activeStyleId\)\)/);
+ assert.match(body,/let row = previous\.get\(id\)/);
+ assert.match(body,/const source = novelai\.styles\.find\(item => item\.id === id\)/);
+ assert.match(body,/rows\.scrollTop = scrollTop/);
+ assert.match(read('style.css'),/\.spi-style-header \{ display:flex/);
+ assert.match(read('style.css'),/\.spi-style-rows \{[^}]*overflow:auto/);
+ assert.ok(makeGuideSteps(true).some(step=>step.text.includes('кружок ⊘')));
+});

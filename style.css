@@ -59,18 +59,27 @@
 .spi-field:has(.spi-token-row), .spi-field:has(.spi-short-area) { grid-column: 1 / -1; }
 .spi-token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
 .spi-short-area { min-height: 92px !important; resize: vertical; }
-.spi-style-layout { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(0, 1.3fr); gap: 12px; }
-.spi-style-library, .spi-style-editor { min-width: 0; padding: 10px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 11px; background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 80%, #fff 4%); }
-.spi-style-library { display: grid; align-content: start; gap: 7px; max-height: 62dvh; overflow: auto; }
-.spi-style-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 5px; align-items: center; padding: 5px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 9px; }
-.spi-style-row.spi-selected { border-color: var(--SmartThemeQuoteColor, #8b5cf6); }
-.spi-style-row > .menu_button { width: 36px; min-width: 36px; padding: 0; }
-.spi-style-summary { display: grid; min-width: 0; padding: 3px; border: 0; background: transparent; color: inherit; text-align: start; cursor: pointer; }
-.spi-style-summary strong, .spi-style-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.spi-style-summary small { color: var(--SmartThemeEmColor, #aaa); }
-.spi-style-library > .spi-active { outline: 2px solid var(--SmartThemeQuoteColor, #8b5cf6); outline-offset: -2px; }
-.spi-style-editor { display: grid; align-content: start; gap: 9px; }
-.spi-style-editor textarea { min-height: 360px; }
+.spi-style-layout { display: grid; grid-template-columns: minmax(230px, .9fr) minmax(0, 1.3fr); gap: 8px; align-items:start; }
+.spi-style-library, .spi-style-editor { min-width: 0; padding: 7px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 10px; background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 80%, #fff 4%); }
+.spi-style-library { display:flex; flex-direction:column; gap:5px; max-height:62dvh; min-height:0; }
+.spi-style-header { display:flex; align-items:center; gap:5px; flex:none; }
+.spi-style-header h3 { flex:1; min-width:0; margin:0; font-size:14px; line-height:1.2; }
+.spi-style-controls { display:flex; flex:none; gap:3px; align-items:center; }
+.spi-style-rows { display:grid; align-content:start; gap:4px; min-height:0; overflow:auto; overscroll-behavior:auto; scrollbar-width:thin; }
+.spi-style-row { display:grid; grid-template-columns: 34px minmax(0, 1fr) 34px 34px; gap:3px; align-items:center; padding:3px; border:1px solid var(--SmartThemeBorderColor, #666); border-radius:8px; }
+.spi-style-row.spi-selected { border-color:var(--SmartThemeQuoteColor, #8b5cf6); }
+.spi-style-window .menu_button.spi-style-icon { flex:none; width:34px; min-width:34px; max-width:34px; height:34px; min-height:34px; padding:0; font-size:17px; border-radius:7px; }
+.spi-style-icon[data-style-none][aria-pressed=true], .spi-style-icon[data-style-activate][aria-pressed=true] { outline:1px solid var(--SmartThemeQuoteColor, #8b5cf6); outline-offset:-2px; }
+.spi-style-summary { display:grid; gap:1px; min-width:0; min-height:34px; padding:2px; border:0; background:transparent; color:inherit; text-align:start; cursor:pointer; }
+.spi-style-summary strong, .spi-style-summary small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.2; }
+.spi-style-summary strong { font-size:13px; }
+.spi-style-summary small { color:var(--SmartThemeEmColor, #aaa); font-size:11px; }
+.spi-style-editor { display:grid; align-content:start; gap:5px; }
+.spi-style-editor h3 { margin:0; }
+.spi-style-editor .spi-field { gap:3px; }
+.spi-style-editor .spi-field input:not([type="checkbox"]) { min-height:34px; padding:5px 8px; }
+.spi-style-editor .spi-field textarea { min-height:260px; padding:7px 8px; }
+.spi-style-editor .spi-status { margin:0; font-size:12px; min-height:0; }
 .spi-hub { width: min(430px, 100%); }
 .spi-hub-menu { display: grid; gap: 8px; }
 .spi-hub-menu .menu_button { width: 100%; min-height: 46px; justify-content: flex-start; padding-inline: 14px; font-size: 14px; }
@@ -104,8 +113,10 @@
   .spi-prompt-row .spi-dialog-actions { justify-content:flex-start; }
   .spi-form-grid, .spi-style-layout { grid-template-columns:1fr; }
   .spi-field:has(.spi-token-row), .spi-field:has(.spi-short-area) { grid-column:auto; }
-  .spi-style-library { max-height:37dvh; }
-  .spi-style-editor textarea { min-height:210px; }
+  .spi-style-library { max-height:34dvh; }
+  .spi-style-window .menu_button.spi-style-icon { width:36px; min-width:36px; max-width:36px; height:36px; min-height:36px; }
+  .spi-style-row { grid-template-columns:36px minmax(0,1fr) 36px 36px; }
+  .spi-style-editor .spi-field textarea { min-height:160px; }
   .spi-dialog .menu_button { min-height:42px; }
   .spi-dialog.spi-prompt-center, .spi-dialog.spi-prompt-window, .spi-dialog.spi-prompt-json { height:100%; }
   .spi-overlay.spi-collapsed { padding:8px; }
