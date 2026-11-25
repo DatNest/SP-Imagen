@@ -833,3 +833,30 @@ test('Rename mode replaces only tag controls, retaining search, groups and previ
  assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);
  assert.ok(root.querySelectorAll('.ness-unified-chip').some(chip=>chip.textContent.includes('updated freckles')));
 });
+
+test('Overlap warning is optional, cross-mode and never permits reassigning Always',()=>{
+ const ui=makeUI(),raw='freckles, blue eyes, long hair;',tags=parseBaseTags(raw);
+ let state={base:raw,ranges:[],selections:{face:[tags[0]],always:[tags[1]]}},enabled=true;
+ const skinState={tags:[{id:'freckles',text:'freckles'},{id:'scar',text:'long scar'}],selections:{upper_front:[]}};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialSkin:skinState,readBaseState:()=>state,writeBaseState:x=>state=x,readWarningPreference:()=>enabled,writeWarningPreference:x=>enabled=x,changed:()=>{},readOnly:()=>false});
+ const root=board.element,select=id=>root.querySelector('.ness-tagboard-ribbon').querySelectorAll('.ness-button').find(x=>x.dataset.presetId===id).onclick();
+ const chip=name=>root.querySelectorAll('.ness-unified-chip').find(x=>x.textContent.includes(name));
+ const modal=()=>root.querySelector('.ness-tag-duplicate-dialog');
+ select('head');
+ chip('blue eyes').onclick();
+ assert.equal(modal(),null);assert.ok(!(state.selections.head||[]).length);
+ chip('freckles').onclick();
+ assert.ok(modal());assert.ok(!(state.selections.head||[]).length);
+ modal().querySelectorAll('button').find(x=>x.textContent==='Отмена').onclick();
+ assert.equal(modal(),null);assert.ok(!(state.selections.head||[]).length);
+ chip('freckles').onclick();modal().querySelector('.ness-tag-warning-setting').children[0].checked=true;
+ modal().querySelectorAll('button').find(x=>x.textContent==='Добавить').onclick();
+ assert.equal(enabled,false);assert.equal(state.selections.head[0].text,'freckles');
+ assert.equal(state.selections.face[0].text,'freckles');
+ chip('blue eyes').onclick();assert.equal(state.selections.head.length,1);
+ board.undo();assert.ok(!(state.selections.head||[]).length);
+ enabled=true;
+ root.querySelectorAll('button').find(x=>x.textContent==='Под одеждой').onclick();
+ select('upper_back');chip('freckles').onclick();assert.equal(modal(),null);
+ select('upper_front');chip('freckles').onclick();assert.equal(modal(),null);
+});

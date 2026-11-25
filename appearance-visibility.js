@@ -1,3 +1,4 @@
+import { BASE_INHERITANCE } from './appearance-overlap.js';
 import { NESS_APPEARANCE_REGIONS, NESS_APPEARANCE_VIEWS, NESS_APPEARANCE_ALWAYS, NESS_UPPER_REGIONS, NESS_APPEARANCE_PRESETS, NESS_APPEARANCE_RULES } from './shared-data.js';
 // One appearance implementation for both the library editor and image generation.
 // The director's existing instruction text is carried over unchanged.
@@ -22,7 +23,7 @@ export function normalizeAppearanceRanges(base,ranges,allowUnclassified=false){
 
 export function normalizeAppearanceSelections(base,selections){
  if(!selections||typeof selections!=='object')return {};
- const result=Object.fromEntries(Object.entries(selections).filter(([id,ranges])=>(id===NESS_APPEARANCE_ALWAYS||Object.hasOwn(NESS_APPEARANCE_PRESETS,id))&&Array.isArray(ranges)).map(([id,ranges])=>[id,normalizeAppearanceRanges(base,ranges,true)]));
+ const result=Object.fromEntries(Object.entries(selections).filter(([id,ranges])=>(id===NESS_APPEARANCE_ALWAYS||id==='inheritance_v1'||Object.hasOwn(NESS_APPEARANCE_PRESETS,id)||id.startsWith('exclude_')&&Object.hasOwn(NESS_APPEARANCE_PRESETS,id.slice(8)))&&Array.isArray(ranges)).map(([id,ranges])=>[id,normalizeAppearanceRanges(base,ranges,true)]));
  if(Array.isArray(selections.upper_no_face)){
   const rear=result.upper_back||[];
   const legacy=normalizeAppearanceRanges(base,selections.upper_no_face,true).filter(r=>isRearUpperAppearanceRange(r)&&!rear.some(s=>s.start<r.end&&r.start<s.end));
@@ -39,7 +40,17 @@ export function visibleAppearanceRanges(ranges,id,selections={},includeAlways=fa
  const preset=NESS_APPEARANCE_PRESETS[id];
  const selected=selections[id]??(preset?ranges.filter(r=>preset.regions.includes(r.region)&&(r.view==='any'||r.view===preset.view)):[]);
  const visible=[...selected];
- if(includeAlways&&id!==NESS_APPEARANCE_ALWAYS)visible.push(...(selections[NESS_APPEARANCE_ALWAYS]||[]));
+ if(includeAlways&&id!==NESS_APPEARANCE_ALWAYS){
+  if(Object.hasOwn(selections,'inheritance_v1')){
+   const excluded=selections['exclude_'+id]||[];
+   for(const parent of BASE_INHERITANCE[id]||[]){
+    for(const range of visibleAppearanceRanges(ranges,parent,selections,false)){
+     if(!excluded.some(r=>r.start<range.end&&range.start<r.end))visible.push(range);
+    }
+   }
+  }
+  visible.push(...(selections[NESS_APPEARANCE_ALWAYS]||[]));
+ }
  visible.sort((a,b)=>a.start-b.start||b.end-a.end);
  const result=[],seen=new Set();
  for(const r of visible){
@@ -170,5 +181,5 @@ export function insertVisibleAppearance(prompt,records){
 
 // Empty selections are metadata, not usable appearance tags.
 export function hasConfiguredAppearanceViews(entry){
- return Boolean(entry?.appearanceRanges?.length)||Object.values(entry?.appearanceSelections||{}).some(ranges=>Array.isArray(ranges)&&ranges.length>0);
+ return Boolean(entry?.appearanceRanges?.length)||Object.entries(entry?.appearanceSelections||{}).some(([id,ranges])=>!id.startsWith('exclude_')&&id!=='inheritance_v1'&&Array.isArray(ranges)&&ranges.length>0);
 }

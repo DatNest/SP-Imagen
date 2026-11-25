@@ -4,6 +4,7 @@
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
 import { openExplanation } from './onboarding.js';
+import { findTagConflicts, MODE_LABELS, duplicateWarningsEnabled, setDuplicateWarnings } from './appearance-overlap.js';
 import { createAppearanceFigure } from './appearance-figure.js';
 import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { normalizeAppearanceModeCatalog, NSFW_AREAS, repositionModeTag, modeTokens, fromModeTokens } from './appearance-mode-state.js';
@@ -177,7 +178,7 @@ export function reorderBaseTags(state,reordered){
  return {base:text,ranges:mapRanges(oldRanges,false),selections:normalizeAppearanceSelections(text,Object.fromEntries(Object.entries(oldSelections).map(([k,v])=>[k,mapRanges(v,true)])))};
 }
 
-export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfwState=()=>({}),writeNsfwState=()=>{},initialSkin,initialSections,initialCatalog,initialMode='base',initialPreset,initialHelpPinned=false,changed,readOnly,onLayoutChange=()=>{},onHistoryChange=()=>{},onHelpChange=()=>{}}){
+export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,readNsfwState=()=>({}),writeNsfwState=()=>{},initialSkin,initialSections,initialCatalog,initialMode='base',initialPreset,initialHelpPinned=false,readWarningPreference,writeWarningPreference,changed,readOnly,onLayoutChange=()=>{},onHistoryChange=()=>{},onHelpChange=()=>{}}){
  const {el,button,clear,input}=ui;
  let skin=normalizeSkinTags(initialSkin),catalog=normalizeAppearanceCatalog(initialCatalog,readBaseState().base,skin,readNsfwState(),initialSections);
   let modeCatalog=normalizeAppearanceModeCatalog(initialCatalog,readBaseState().base,skin,readNsfwState(),initialSections);
@@ -187,7 +188,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  let layout='board',appearanceFormat='tags',filter='',checked=new Set(),undo=[],redo=[];
  const filterByMode={base:'',skin:'',nsfw:''};
  const layouts={base:'board',skin:'board',nsfw:'board'};
- let textDraft=null,renderedMode='',renderedPreset='',tagSearchOpen=false;
+ let textDraft=null,renderedMode='',renderedPreset='',tagSearchOpen=false,unassignedOnly=false;
  let boardView=null;
  const mobile=()=>Boolean(globalThis.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches);
  // Scrolling is UI state, not character data. Keep each mode's ribbon and
@@ -237,6 +238,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   toolMove.hidden=toolMode!=='move'||layout==='text'||!tag;
   moveName.textContent=tag?'✥ '+tag.text:'';
  }
+ const warningStorage=()=>{try{return globalThis.localStorage;}catch{return undefined;}};
+ let warningEnabled=duplicateWarningsEnabled(warningStorage());
+ const setWarningEnabled=value=>{warningEnabled=Boolean(value);if(writeWarningPreference)writeWarningPreference(warningEnabled);else setDuplicateWarnings(warningStorage(),warningEnabled);};
+ const inheritSetting=el('label',undefined,controls,'ness-tag-warning-setting');
+ const inheritCheck=el('input',undefined,inheritSetting);inheritCheck.type='checkbox';
+ el('span','Наследовать ракурсы',inheritSetting);
+ inheritCheck.onchange=()=>{
+  if(readOnly())return;
+  record();const state=baseState(),selections={...state.selections};
+  if(inheritCheck.checked)selections.inheritance_v1=[];else delete selections.inheritance_v1;
+  writeBaseState({...state,selections});after(false);
+ };
  const notice=el('p',undefined,frame,'ness-note');notice.hidden=true;notice.setAttribute('aria-live','polite');
  const warn=value=>{notice.textContent=value;notice.hidden=!value;};
  const basic=button('Ракурсы',modes,()=>{if(!flushModeText())return;filterByMode[mode]=filter;mode='base';layout=layouts.base;filter=filterByMode[mode];preset='face';checked.clear();closeTransfer();render();},'quiet');
@@ -305,6 +318,15 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const availablePresets=()=>mode==='base'?{always:'✦ Показывать всегда',...Object.fromEntries(Object.entries(NESS_APPEARANCE_PRESETS).map(([id,v])=>[id,v.label]))}:mode==='skin'?{always:'✦ Для всех открытых областей',...SKIN_PRESETS}:NSFW_PRESETS;
  const baseState=()=>readBaseState();
  const baseSelected=id=>visibleAppearanceRanges(baseState().ranges,id,baseState().selections,false);
+ const inheritanceActive=()=>Object.hasOwn(baseState().selections||{},'inheritance_v1');
+ function syncInheritance(){inheritSetting.hidden=mode!=='base';inheritCheck.checked=inheritanceActive();inheritCheck.disabled=readOnly();}
+ function excludeInherited(tag){
+  if(readOnly()||mode!=='base'||!inheritanceActive()||preset==='always')return;
+  const t=baseTag(tag);if(!t)return;
+  record();const state=baseState(),selections={...state.selections},key='exclude_'+preset;
+  selections[key]=normalizeAppearanceRanges(state.base,[...(selections[key]||[]),t],true);
+  writeBaseState({...state,selections});after(false);
+ }
  const baseTag=tag=>parseBaseTags(baseState().base).find(t=>norm(t.text)===norm(tag.text));
  const isBaseChosen=(tag,id)=>{
   const t=baseTag(tag);return !!t&&baseSelected(id).some(r=>r.start<t.end&&t.start<r.end);
@@ -314,6 +336,48 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const isNsfwChosen=(tag,id)=>parseBaseTags(readNsfwState()?.[id]||'').some(t=>norm(t.text)===norm(tag.text));
  const isChosen=(tag,id)=>mode==='base'?isBaseChosen(tag,id):mode==='skin'?isSkinChosen(tag,id):isNsfwChosen(tag,id);
  const items=()=>modeCatalog.modes[mode].tags;
+ function assignedTags(){
+  const result=[],state=baseState(),baseTags=parseBaseTags(state.base);
+  for(const id of [NESS_APPEARANCE_ALWAYS,...Object.keys(NESS_APPEARANCE_PRESETS)]){
+   const ranges=visibleAppearanceRanges(state.ranges,id,state.selections,false);
+   for(const tag of baseTags)if(ranges.some(r=>r.start<tag.end&&tag.start<r.end))result.push({mode:'base',preset:id,text:tag.text,label:id==='always'?'Всегда':NESS_APPEARANCE_PRESETS[id].label});
+  }
+  for(const id of [SKIN_ALWAYS,...Object.keys(SKIN_PRESETS)]){
+   const chosen=new Set(skin.selections[id]||[]);
+   for(const tag of skin.tags)if(chosen.has(tag.id))result.push({mode:'skin',preset:id,text:tag.text,label:id==='always'?'Всегда':SKIN_PRESETS[id]});
+  }
+  const nsfw=readNsfwState();
+  for(const [id,label] of Object.entries(NSFW_PRESETS))for(const tag of parseBaseTags(nsfw[id]||''))result.push({mode:'nsfw',preset:id,text:tag.text,label});
+  return result;
+ }
+ function confirmAssignment(text,proceed){
+  if(!(readWarningPreference?readWarningPreference():warningEnabled)){proceed();return true;}
+  if(frame.querySelector('.ness-tag-duplicate-dialog'))return false;
+  const matches=findTagConflicts(text,{mode,preset},assignedTags());
+  if(!matches.length){proceed();return true;}
+  const targetMode=mode,targetPreset=preset;
+  const dialog=el('dialog',undefined,frame,'ness-tag-duplicate-dialog');
+  dialog.setAttribute('aria-label','Возможное повторение тега');
+  el('strong','Возможное повторение тега',dialog);
+  el('p',text,dialog,'ness-tag-duplicate-name');
+  el('p','Похожие теги уже назначены:',dialog,'ness-note');
+  const list=el('div',undefined,dialog,'ness-tag-duplicate-list');
+  for(const item of matches){
+   const row=el('div',undefined,list,'ness-tag-duplicate-match');
+   el('strong',item.text,row);el('small',MODE_LABELS[item.mode]+' → '+item.label,row);
+  }
+  el('p','Всё равно добавить в выбранный ракурс?',dialog);
+  const label=el('label',undefined,dialog,'ness-tag-warning-setting');
+  const skip=el('input',undefined,label);skip.type='checkbox';
+  el('span','Больше не показывать предупреждения',label);
+  const actions=el('div',undefined,dialog,'ness-tag-duplicate-actions');
+  const close=()=>{if(dialog.open)dialog.close?.();dialog.remove();};
+  button('Отмена',actions,close,'quiet');
+  button('Добавить',actions,()=>{if(readOnly()||mode!==targetMode||preset!==targetPreset){close();return;}if(skip.checked)setWarningEnabled(false);close();proceed();},'primary');
+  dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+  if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+  return false;
+ }
  // Derive visibility once for a batch of tags. Parsing the entire base text for
  // every row was the dominant lag on large imported catalogues.
  function selectedKeys(id){
@@ -402,20 +466,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  }
  function setSkinSelection(id,list){
   skin.selections[id]=[...new Set(list)];
-  if(id===SKIN_ALWAYS){
-   const excluded=new Set(skin.selections.always);
-   for(const key of Object.keys(SKIN_PRESETS))if(skin.selections[key])skin.selections[key]=skin.selections[key].filter(t=>!excluded.has(t));
-  }
+  if(id===SKIN_ALWAYS){const excluded=new Set(skin.selections.always);for(const key of Object.keys(SKIN_PRESETS))if(skin.selections[key])skin.selections[key]=skin.selections[key].filter(t=>!excluded.has(t));}
  }
 
- function toggle(tag,assign){changeMany([tag],assign);}
+ const fromAlways=tag=>preset!=='always'&&mode!=='nsfw'&&isChosen(tag,'always');
+ function toggle(tag,assign){if(assign&&fromAlways(tag)){warn('Этот тег уже добавляется из «Всегда». Измени его там.');return;}if(assign)confirmAssignment(tag.text,()=>changeMany([tag],true));else changeMany([tag],false);}
  function changeMany(tags,assign,recordHistory=true){
   if(readOnly()||!tags.length)return;
-  const relevant=tags.filter(t=>isChosen(t,preset)!==assign);
+  const relevant=tags.filter(t=>isChosen(t,preset)!==assign&&(!assign||!fromAlways(t)));
   if(!relevant.length)return;
   if(recordHistory)record();
   if(mode==='skin'){
-   const current=new Set(skin.selections[preset]||[]),ids=new Set();
+   const current=new Set(skin.selections[preset]||[]);
    for(const tag of relevant){
     let st=skinTag(tag);
     if(!st&&assign){
@@ -424,10 +486,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
      st={id,text:tag.text,section:''};skin.tags.push(st);
     }
     if(!st)continue;
-    ids.add(st.id);if(assign)current.add(st.id);else current.delete(st.id);
+    if(assign)current.add(st.id);else current.delete(st.id);
    }
    setSkinSelection(preset,[...current]);
-   if(preset!==SKIN_ALWAYS&&assign)skin.selections.always=(skin.selections.always||[]).filter(x=>!ids.has(x));
   }else if(mode==='nsfw'){
    const state={...readNsfwState()};
    for(const tag of relevant)state[preset]=assign?appendNsfwTag(state[preset],tag.text):editNsfwTag(state[preset],tag.text);
@@ -444,12 +505,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const current=baseSelected(preset).filter(r=>!targets.some(t=>overlap(r,t)));
    if(assign)for(const t of targets)current.push({start:t.start,end:t.end,text:t.text});
    updated[preset]=normalizeAppearanceRanges(state.base,current,true);
-   if(preset===NESS_APPEARANCE_ALWAYS&&assign){
-    for(const id of Object.keys(NESS_APPEARANCE_PRESETS))
-     updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!targets.some(t=>overlap(r,t))),true);
-   }else if(preset!==NESS_APPEARANCE_ALWAYS&&assign){
-    updated.always=normalizeAppearanceRanges(state.base,baseSelected(NESS_APPEARANCE_ALWAYS).filter(r=>!targets.some(t=>overlap(r,t))),true);
-   }
+   if(assign&&updated['exclude_'+preset])updated['exclude_'+preset]=updated['exclude_'+preset].filter(r=>!targets.some(t=>overlap(r,t)));
+   if(preset===NESS_APPEARANCE_ALWAYS&&assign)for(const id of Object.keys(NESS_APPEARANCE_PRESETS))updated[id]=normalizeAppearanceRanges(state.base,baseSelected(id).filter(r=>!targets.some(t=>overlap(r,t))),true);
    writeBaseState({...state,selections:normalizeAppearanceSelections(state.base,updated)});
   }
   after(false);
@@ -614,13 +671,14 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   modeCatalog.modes[mode].sections=sectionsForMode().filter(x=>x.id!==id);
   after();
  }
- function addTag(value,insertAt=items().length,sectionId=null){
+ function addTag(value,insertAt=items().length,sectionId=null,confirmed=false,onAdded=()=>{}){
   const text=String(value||'').trim().replace(/[;,\s]+$/,'').trim();
   if(readOnly())return false;
   if(!norm(text)){warn('Введи название тега.');return false;}
   if(/[,\r\n]/.test(text)){warn('Добавляй по одному тегу.');return false;}
   const existing=items().find(x=>norm(x.text)===norm(text));
   if(existing){warn('Такой тег уже есть в этом режиме.');return false;}
+  if(!confirmed){let added=false;confirmAssignment(text,()=>{added=addTag(text,insertAt,sectionId,true,onAdded);if(added)onAdded();});return added;}
   const tokens=modeTokens(modeCatalog.modes[mode]);
   let position;
   if(sectionId!==null){
@@ -666,8 +724,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    const closeInput=()=>{field.remove();apply.remove();plus.hidden=false;};
    const commit=()=>{
     if(committed)return;
-    if(addTag(field.value,indexFor(),sectionId)){committed=true;closeInput();}
-    else field.focus?.({preventScroll:true});
+    const completed=()=>{if(!committed){committed=true;closeInput();}};
+    if(!addTag(field.value,indexFor(),sectionId,false,completed)&&!committed)field.focus?.({preventScroll:true});
    };
    const apply=button('✓',slot,commit,'quiet ness-tagboard-add-confirm');
    apply.title='Добавить тег';apply.setAttribute('aria-label','Подтвердить добавление тега');
@@ -906,14 +964,29 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(!columns){render();return;}
   const restore=scrollPositions();
   const byId=new Map(items().map(tag=>[tag.id,tag]));
+  syncInheritance();
   const selected=selectedKeys(preset),shared=preset!=='always'&&mode!=='nsfw'?selectedKeys('always'):null;
+  const alwaysKeys=new Set(shared||[]);
+  if(shared&&mode==='base'&&inheritanceActive()){
+   const state=baseState(),ranges=visibleAppearanceRanges(state.ranges,preset,state.selections,true);
+   for(const t of parseBaseTags(state.base))if(ranges.some(r=>r.start<t.end&&t.start<r.end))shared.add(norm(t.text));
+  }
+  const assignments=assignedTags(),byText=new Map();
+  for(const item of assignments){const key=norm(item.text);if(!byText.has(key))byText.set(key,[]);byText.get(key).push(item);}
   for(const row of columns.querySelectorAll('.ness-unified-tag-row')){
    const tag=byId.get(row.dataset.tagId),chip=row.querySelector('.ness-unified-chip');
-   if(!tag||!chip)continue;
-   const identity=norm(tag.text),marked=selected.has(identity);
-   const inherited=!!shared&&!marked&&shared.has(identity);
-   if(chip.dataset.highlighted!==String(marked)||chip.dataset.inherited!==String(inherited)||chip.textContent!==(marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text){
-    chip.textContent=(marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text;
+   if(!tag)continue;
+   const identity=norm(tag.text),marked=selected.has(identity),locations=byText.get(identity)||[];
+   row.hidden=(!!filter&&!identity.includes(norm(filter)))||(unassignedOnly&&locations.length>0);
+   if(!chip)continue;
+   const elsewhere=locations.filter(x=>x.mode!==mode||x.preset!==preset);
+   chip.dataset.assignedElsewhere=String(elsewhere.length>0);
+   if(!toolMode)chip.title=alwaysKeys.has(identity)?'Уже добавляется из «Всегда»':elsewhere.length?elsewhere.map(x=>MODE_LABELS[x.mode]+' → '+x.label).join('\n'):'Добавить или снять тег';
+   const inherited=!!shared&&!marked&&shared.has(identity),permanent=alwaysKeys.has(identity);
+   chip.setAttribute('aria-disabled',String(!toolMode&&permanent&&!marked));
+   const prefix=marked?'✓ ':permanent?'✦ ':inherited?'↳ ':elsewhere.length?'↗ ':'＋ ';
+   if(chip.dataset.highlighted!==String(marked)||chip.dataset.inherited!==String(inherited)||chip.textContent!==prefix+tag.text){
+    chip.textContent=prefix+tag.text;
     chip.setAttribute('aria-pressed',String(marked||inherited));
     chip.setAttribute('data-highlighted',String(marked));
     chip.setAttribute('data-inherited',String(inherited));
@@ -943,7 +1016,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     for(let i=0;i<tags.length;i++){
      const tag=tags[i];let chip=previous.get(tag.id);
      if(!chip){
-      if(inheritedFlow)chip=el('span','✦ '+tag.text,undefined,'ness-tagboard-inherited');
+      if(inheritedFlow)chip=button('✦ '+tag.text,undefined,()=>{},'quiet ness-tagboard-inherited');
       else{
        chip=button('',undefined,()=>toggle(tag,false),'quiet ness-tagboard-chosen-chip');
        el('span',tag.text,chip);el('span','×',chip,'ness-chosen-remove-mark');
@@ -953,7 +1026,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
       }
       chip.dataset.selectedTagId=tag.id;
      }
-     if(inheritedFlow)chip.textContent='✦ '+tag.text;else{const label=chip.querySelector('span');if(label&&label.textContent!==tag.text)label.textContent=tag.text;chip.setAttribute('aria-label','Убрать '+tag.text+' из этого ракурса');chip.onclick=()=>toggle(tag,false);}
+     if(inheritedFlow){const permanent=alwaysKeys.has(norm(tag.text));chip.textContent=(permanent?'✦ ':'↳ ')+tag.text+(permanent?'':' ×');chip.disabled=permanent||readOnly();chip.title=permanent?'Добавляется из «Всегда»':'Убрать наследование для этого ракурса';chip.onclick=()=>{if(!permanent)excludeInherited(tag);};}else{const label=chip.querySelector('span');if(label&&label.textContent!==tag.text)label.textContent=tag.text;chip.setAttribute('aria-label','Убрать '+tag.text+' из этого ракурса');chip.onclick=()=>toggle(tag,false);}
      if(flow.children[i]!==chip)flow.insertBefore(chip,flow.children[i]||null);
      previous.delete(tag.id);
     }
@@ -964,7 +1037,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    let inheritedTitle=chosenList.querySelector('.ness-tagboard-inherited-title');
    let inheritedContainer=chosenList.querySelector('.ness-tagboard-inherited-flow');
    if(inherited.length){
-    if(!inheritedTitle)inheritedTitle=el('p','✦ ДОБАВЛЯЕТСЯ ВСЕГДА',chosenList,'ness-tagboard-overline ness-tagboard-inherited-title');
+    if(!inheritedTitle)inheritedTitle=el('p','✦ НАСЛЕДУЕТСЯ',chosenList,'ness-tagboard-overline ness-tagboard-inherited-title');
     if(!inheritedContainer)inheritedContainer=el('div',undefined,chosenList,'ness-tagboard-chosen-flow ness-tagboard-inherited-flow');
     reconcile(inheritedContainer,inherited,true);
    }else{inheritedTitle?.remove();inheritedContainer?.remove();}
@@ -1011,6 +1084,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    for(const [id,label] of Object.entries(headings)){const btn=button(label,ribbon,()=>selectPreset(id),'quiet');btn.dataset.presetId=id;}
   }
   refreshHelp();
+  syncInheritance();
   syncPresetRibbon();
   // Restore only after buttons and count badges exist: otherwise scrollWidth
   // is empty and the browser clamps the previous horizontal offset to zero.
@@ -1034,6 +1108,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   el('span','БИБЛИОТЕКА ТЕГОВ',heading,'ness-tagboard-overline');
   el('strong','Все теги · '+items().length,heading);
   el('p',toolHint(),heading,'ness-note');
+  const unassigned=el('label',undefined,left,'ness-tag-warning-setting');
+  const unassignedCheck=el('input',undefined,unassigned);unassignedCheck.type='checkbox';unassignedCheck.checked=unassignedOnly;
+  el('span','Только неназначенные',unassigned);
+  unassignedCheck.onchange=()=>{unassignedOnly=unassignedCheck.checked;refreshSelection();};
   const search=el('input',undefined,left,'ness-input ness-tagboard-search');
   search.type='search';search.placeholder='Найти тег...';search.value=filter;
   const searchToggle=button('⌕',header,undefined,'quiet ness-tag-search-toggle');searchToggle.title='Найти тег';searchToggle.setAttribute('aria-label','Найти тег');
@@ -1044,9 +1122,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const tagFlow=el('div',undefined,scene,'ness-unified-tagflow');
   search.oninput=()=>{
    filter=search.value;searchToggle.dataset.hasQuery=String(!!filter);
-   const query=norm(filter),searchTexts=new Map(items().map(tag=>[tag.id,norm(tag.text)]));
-   for(const row of tagFlow.querySelectorAll('.ness-unified-tag-row'))
-    row.hidden=!!query&&!String(searchTexts.get(row.dataset.tagId)||'').includes(query);
+   refreshSelection();
   };
   const rootFlow=el('div',undefined,tagFlow,'ness-unified-section-tags ness-unified-ungrouped');
   const rowsById=new Map(),sectionsById=new Map();
@@ -1080,7 +1156,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
       if(chip.dataset.ignoreClick==='true'){chip.dataset.ignoreClick='false';return;}
       focusTagId=focusTagId===tag.id?'':tag.id;syncToolMode();return;
      }
-     if(preset!=='always'&&mode!=='nsfw'&&!isChosen(tag,preset)&&isChosen(tag,'always')){warn('Этот тег берётся из «Всегда». Измени его там.');return;}
      toggle(tag,!isChosen(tag,preset));
     },'quiet ness-unified-chip');
     chip.setAttribute('aria-pressed',String(marked||inherited));
@@ -1094,7 +1169,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     row.hidden=!!filter&&!norm(tag.text).includes(norm(filter));
     if(field&&field.value!==tag.text&&(previous!==tag.text||field!==frame.ownerDocument?.activeElement)){field.value=tag.text;field.style.width=Math.max(3,Math.min(30,tag.text.length+1))+'ch';}
     if(field)field.setAttribute('aria-label','Изменить '+tag.text);
-    if(chip){const label=(chip.dataset.highlighted==='true'?'✓ ':chip.dataset.inherited==='true'?'✦ ':'＋ ')+tag.text;if(chip.textContent!==label)chip.textContent=label;}
+    if(chip){const label=(chip.dataset.highlighted==='true'?'✓ ':chip.dataset.inherited==='true'?'✦ ':chip.dataset.assignedElsewhere==='true'?'↗ ':'＋ ')+tag.text;if(chip.textContent!==label)chip.textContent=label;}
    }};
   };
   const drawSection=initial=>{
@@ -1241,7 +1316,7 @@ export function skinAppearanceInstruction(records){
   +'Skin tags are inserted by the library after the base appearance and before clothing, not written by you. This is an extension-control marker, not an unresolved placeholder: it overrides any general placeholder prohibition. All body marks are now in the region-specific skin catalogue; do not duplicate them as unscoped appearance.\n'
   +'Skin-equipped character IDs and available parts:\n'+names;
 }
-export function insertSkinAppearance(prompt,records){
+export function insertSkinAppearance(prompt,records,baseMarkerPrompt=''){
  const source=String(prompt||'');
  const openings=[...source.matchAll(/\[\[NESS_SKIN\b/gi)],seenMarkers=new Set(),ignoredMarkers=new Set();
  if(!openings.length&&/\bNESS_SKIN\s*:/i.test(source))
@@ -1276,7 +1351,14 @@ export function insertSkinAppearance(prompt,records){
   if(chosen.length===1&&chosen[0]==='none')return '';
   if(!chosen.length||chosen.some(p=>!Object.hasOwn(SKIN_PRESETS,p)))
    throw Error('Режиссёр выбрал неизвестную область кожи персонажа '+id+'.');
-  const line=formatSkinParts(record.skinTags,chosen);
+  let line=formatSkinParts(record.skinTags,chosen);
+  const marker=[...String(baseMarkerPrompt||'').matchAll(/\[\[NESS_VIS:([a-z][a-z0-9_]*):([a-z_]+)\]\]/g)].find(m=>m[1]===id);
+  if(marker&&marker[2]!=='none'&&record.appearanceFormat!=='prose'){
+   const configured=hasConfiguredAppearanceViews({appearanceRanges:record.ranges,appearanceSelections:record.selections});
+   const baseText=configured?visibleAppearanceRanges(record.ranges||[],marker[2],record.selections||{},true).map(r=>r.text).join(', '):record.base;
+   const baseKeys=new Set(parseBaseTags(String(baseText||'')).map(t=>norm(t.text)));
+   line=parseBaseTags(line).filter(t=>!baseKeys.has(norm(t.text))).map(t=>t.text).join(', ');
+  }
   return line?line+'; ':'';
  });
  if(result.includes('[[NESS_SKIN:'))throw Error('Режиссёр оставил неподставленную [[NESS_SKIN]] ОТКРЫТОЙ КОЖИ; проверь ID, названия открытых областей и закрывающие ]]. Это НЕ ракурс базовой внешности.');
