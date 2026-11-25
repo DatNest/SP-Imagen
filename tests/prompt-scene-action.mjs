@@ -24,7 +24,7 @@ test('Official Comic and Story Page samples conform to the actual BASE, characte
   assert.doesNotMatch(example,/(\[[^\]]*(?:continue|outfit|duplicate|text content)[^\]]*\]|Speech bubble 2\.\.\.)/iu);
   assert.doesNotMatch(prompt,/legacy bubble-after-cast example|despite their legacy placement|even though the legacy sample places them afterward/i);
   assert.match(prompt,/Each panel establishes the camera, visible background, participants' relative positions and central shared interaction/);
-  assert.match(prompt,/Refer to the panel and established position, then detail that character's body pose/);
+  assert.match(prompt,/Refer to the panel and established position, then detail that character's explicit in-scene gaze target, body pose/);
   if(kind==='comic')assert.match(example,/Text: Привет!\n\nI love you$/);
   else assert.match(example,/Text: I love you\n\nПривет!$/);
  }
@@ -34,7 +34,7 @@ test('Original textless Comic and Story Page preserve their output contract and 
  for(const kind of ['comic','story_page']){
   const p=SP_IMAGEN_NO_TEXT_DIRECTORS[kind];
   assert.match(p,/Each panel anchors its camera, visible background, participants' relative positions and central shared interaction/);
-  assert.match(p,/Refer to the panel and established position, then detail that character's body pose/);
+  assert.match(p,/Refer to the panel and established position, then detail that character's explicit in-scene gaze target, body pose/);
   assert.doesNotMatch(p,/SAMPLE:\n/,'No new example was added to textless modes');
   assert.match(p,/VISUAL STORYTELLING — WITHOUT LETTERING/);
  }
@@ -54,5 +54,16 @@ test('Experimental JSON-samples teach scene spatial anchors and character-specif
   assert.match(p,/"characters":/);
  }
  assert.match(SP_IMAGEN_PROMPTS.sp_ness_snapshot_director,/participants' relative positions and the central visible interaction/);
- assert.match(SP_IMAGEN_PROMPTS.sp_ness_snapshot_director,/describe each person's body pose, expression, gaze, hands, prop handling/);
+ assert.match(SP_IMAGEN_PROMPTS.sp_ness_snapshot_director,/describe each person's explicit in-scene gaze target, body pose, expression, hands, prop handling/);
+});
+
+test('Legacy director templates require explicit gaze targets and distinct page shots',()=>{
+ for(const [kind,prompt] of [...Object.entries(SP_IMAGEN_PROMPTS).map(([key,value])=>[key.replace(/^sp_ness_|_director$/g,''),value]),...Object.entries(SP_IMAGEN_NO_TEXT_DIRECTORS)]){
+  assert.match(prompt,/In every character entry, explicitly specify a gaze target within the scene/);
+  if(kind==='snapshot')assert.doesNotMatch(prompt,/rather than reusing the same shot from panel to panel/);
+  else{
+   assert.match(prompt,/rather than reusing the same shot from panel to panel/);
+   assert.match(prompt,/For every panel showing the character’s eyes, specify the in-scene gaze target/);
+  }
+ }
 });
