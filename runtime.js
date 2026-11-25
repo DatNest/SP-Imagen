@@ -919,10 +919,11 @@ function createGen2SettingsPanel(D,initial,skipPreview,onDirty=()=>{}){
 
 // Module: virtual_list
 // Keep only the visible rows plus a small scroll buffer in the DOM.
-function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1,mountRow=()=>{}}={}){
+function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1,mountRow=()=>{},keyOf=item=>item?.id??item,updateRow=()=>{}}={}){
  const ui=createUiKit(D),top=ui.el('div',undefined,container),rows=ui.el('div',undefined,container),bottom=ui.el('div',undefined,container);
  top.setAttribute('aria-hidden','true');bottom.setAttribute('aria-hidden','true');
  let items=[],start=-1,end=-1,frame=null,disposed=false,previousColumns=1,previousHeight=0,pendingReset=false,forceNext=false;
+ const mountedRows=new Map();let emptyNode=null;
  const request=typeof window.requestAnimationFrame==='function'?fn=>window.requestAnimationFrame(fn):fn=>setTimeout(fn,16);
  const getRowHeight=()=>typeof rowHeight==='function'?rowHeight():rowHeight;
  const cancel=typeof window.cancelAnimationFrame==='function'?id=>window.cancelAnimationFrame(id):id=>clearTimeout(id);
@@ -937,12 +938,22 @@ function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyT
   const from=Math.max(0,Math.floor(wanted/rowHeight)-overscan),to=Math.min(totalRows,from+Math.ceil(height/rowHeight)+overscan*2);
   if(!force&&!pendingReset&&!reflow&&from===start&&to===end)return;
   start=from;end=to;previousColumns=cols;previousHeight=rowHeight;pendingReset=false;
-  // Restore after every complete rebuild, not just when the grid changes.
-  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';ui.clear(rows);
+  const visible=items.slice(from*cols,Math.min(items.length,to*cols));
+  const wantedKeys=new Set(visible.map(keyOf));
+  for(const [key,row] of mountedRows)if(!wantedKeys.has(key)){row.remove();mountedRows.delete(key);}
+  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';
   rows.style.display=cols>1?'grid':'block';
   rows.style.gridTemplateColumns=cols>1?'repeat('+cols+',minmax(0,1fr))':'';
-  if(!items.length)ui.el('p',emptyText,rows,'ness-note');
-  else for(let i=from*cols;i<Math.min(items.length,to*cols);i++){const row=renderRow(items[i]);rows.appendChild(row);mountRow(row,items[i]);}
+  if(!items.length){if(!emptyNode)emptyNode=ui.el('p',emptyText,rows,'ness-note');}
+  else{
+   emptyNode?.remove();emptyNode=null;
+   for(const [position,item] of visible.entries()){
+    const key=keyOf(item);let row=mountedRows.get(key),fresh=!row;
+    if(fresh){row=renderRow(item);mountedRows.set(key,row);}
+    if(rows.children[position]!==row)rows.insertBefore(row,rows.children[position]||null);
+    updateRow(row,item);if(fresh)mountRow(row,item);
+   }
+  }
   container.scrollTop=wanted;
  }
  function refresh(force=false){if(disposed)return;forceNext=forceNext||force;if(frame!==null)return;frame=request(()=>{frame=null;const rebuild=forceNext;forceNext=false;paint(rebuild);});}
@@ -962,7 +973,7 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
  const checks=[],element=el('fieldset',undefined,undefined,'ness-cast');el('legend','Персонажи этого чата',element);ui.note(element,'Отметь тех, кто присутствует в сцене.');
  const current=el('div',undefined,element,'ness-chips'),addBox=ui.section(element,'+ Добавить из библиотеки'),search=ui.input('','search');search.placeholder='Найти по имени или псевдониму';search.setAttribute('aria-label','Поиск персонажа в библиотеке');addBox.appendChild(search);
  const count=ui.note(addBox,''),results=el('div',undefined,addBox,'ness-results'),error=el('p','',element,'ness-error');
- const list=createVirtualList(D,results,({id,entry})=>{const b=ui.button('+ '+String(entry.name||id),undefined,()=>update([...ids,id],id));b.disabled=busy;if(colors.has(id))b.style.borderLeft='5px solid '+colors.get(id);b.className+=' ness-cast-result';return b;},{rowHeight:44,overscan:4,emptyText:'Нет подходящих персонажей.'});
+ const list=createVirtualList(D,results,({id,entry})=>{const b=ui.button('+ '+String(entry.name||id),undefined,()=>update([...ids,id],id));b.disabled=busy;if(colors.has(id))b.style.borderLeft='5px solid '+colors.get(id);b.className+=' ness-cast-result';return b;},{rowHeight:44,overscan:4,emptyText:'Нет подходящих персонажей.',updateRow:node=>{node.disabled=busy;}});
  function syncChecks(){for(const {id,cb}of checks){if(cb.checked)selected.add(id);else selected.delete(id);}}
  function renderResults(reset=false){
   if(disposed)return;if(timer!==null){clearTimeout(timer);timer=null;}
@@ -971,12 +982,16 @@ function createChatCastPicker(D,entries,initialIds,selectedIds,persist,organizer
   count.textContent=available.length?'Найдено: '+available.length:'Нет подходящих персонажей.';list.setItems(available,{reset});
  }
  function render(){
-  if(disposed)return;const viewport=element.closest?.('[data-review-scroll]'),top=viewport?.scrollTop;ui.clear(current);checks.length=0;
-  if(!ids.length)ui.note(current,'Список пуст. Добавь нужных персонажей из библиотеки.');
-  for(const id of ids){const entry=library.get(id),row=el('div',undefined,current,'ness-chip');if(colors.has(id))row.style.borderLeft='5px solid '+colors.get(id);
+  if(disposed)return;const viewport=element.closest?.('[data-review-scroll]'),top=viewport?.scrollTop;
+  const existing=new Map(checks.map(check=>[check.id,check]));checks.length=0;
+  if(ids.length)current.querySelector('.ness-note')?.remove();
+  else if(!current.querySelector('.ness-note'))ui.note(current,'Список пуст. Добавь нужных персонажей из библиотеки.');
+  for(const id of ids){const old=existing.get(id);if(old){old.cb.checked=selected.has(id);old.cb.disabled=busy;old.remove.disabled=busy;if(current.children[checks.length]!==old.row)current.insertBefore(old.row,current.children[checks.length]||null);checks.push(old);existing.delete(id);continue;}
+   const entry=library.get(id),row=el('div',undefined,undefined,'ness-chip');if(colors.has(id))row.style.borderLeft='5px solid '+colors.get(id);
    const label=el('label',undefined,row),cb=el('input',undefined,label);cb.type='checkbox';cb.checked=selected.has(id);cb.disabled=busy;el('span',String(entry.name||id),label);label.title='Включить '+String(entry.name||id)+' в текущую иллюстрацию. Внешность передаётся только отмеченным персонажам.';
-   const remove=ui.button('×',row,()=>update(ids.filter(x=>x!==id)), 'icon quiet');remove.title='Убрать из списка этого чата';remove.setAttribute('aria-label','Убрать '+String(entry.name||id)+' из списка чата');remove.disabled=busy;checks.push({id,cb});
+   const remove=ui.button('×',row,()=>update(ids.filter(x=>x!==id)), 'icon quiet');remove.title='Убрать из списка этого чата';remove.setAttribute('aria-label','Убрать '+String(entry.name||id)+' из списка чата');remove.disabled=busy;current.insertBefore(row,current.children[checks.length]||null);checks.push({id,cb,row,remove});
   }
+  for(const old of existing.values())old.row.remove();
   renderResults();if(viewport)viewport.scrollTop=top;
  }
  function update(next,added){

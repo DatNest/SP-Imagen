@@ -136,8 +136,9 @@ test('Approved direct text provider can list models and generate normally',async
 test('Existing gallery version records survive even when previews are blocked',()=>{
  const source=readFileSync(new URL('../media-slots.js',import.meta.url),'utf8');
  assert.doesNotMatch(source,/slot\.versions\s*=\s*slot\.versions\.filter/);
- assert.match(source,/if\s*\(safeUrl\(item\.src\)\)/);
- assert.match(source,/frame\.append\(element\('span','external-image-warning'/);
+ assert.match(source,/const safe=safeUrl\(source\);/);
+ assert.match(source,/media=safe\?element\('img'\):element\('span','external-image-warning'\)/);
+ assert.match(source,/if\(safe\)media\.src=source;/);
  assert.match(source,/host\.confirm\('Это изображение хранится на внешнем сайте/);
 });
 

@@ -339,11 +339,12 @@ function createAliasTags(D,values,onChange){
  let items=[...(values||[])];
  function render(){
   const viewport=element.closest?.('.ness-tab-viewport'),top=viewport?.scrollTop;
-  ui.clear(chips);
+  const existing=new Map([...chips.children].map(node=>[node.dataset.alias,node]));
   items.forEach((name,index)=>{
-   const chip=ui.el('span',undefined,chips,'ness-alias-chip');ui.el('span',name,chip);
-   const remove=ui.button('×',chip,()=>{items.splice(index,1);render();onChange();},'icon quiet');remove.setAttribute('aria-label','Удалить псевдоним '+name);remove.title='Удалить '+name;
-  });
+   let chip=existing.get(name);if(!chip){chip=ui.el('span',undefined,undefined,'ness-alias-chip');chip.dataset.alias=name;ui.el('span',name,chip);
+    const remove=ui.button('×',chip,()=>{items=items.filter(value=>value!==name);render();onChange();},'icon quiet');remove.setAttribute('aria-label','Удалить псевдоним '+name);remove.title='Удалить '+name;}
+   if(chips.children[index]!==chip)chips.insertBefore(chip,chips.children[index]||null);existing.delete(name);
+  });for(const chip of existing.values())chip.remove();
   if(viewport)viewport.scrollTop=top;
  }
  function add(text){
@@ -360,10 +361,11 @@ function createAliasTags(D,values,onChange){
 
 // Module: virtual_list
 // Keep only the visible rows plus a small scroll buffer in the DOM.
-function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1,mountRow=()=>{}}={}){
+function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyText='Ничего не найдено.',columns=()=>1,mountRow=()=>{},keyOf=item=>item?.id??item,updateRow=()=>{}}={}){
  const ui=createUiKit(D),top=ui.el('div',undefined,container),rows=ui.el('div',undefined,container,'ness-library-virtual-rows'),bottom=ui.el('div',undefined,container);
  top.setAttribute('aria-hidden','true');bottom.setAttribute('aria-hidden','true');
  let items=[],start=-1,end=-1,frame=null,disposed=false,previousColumns=1,previousHeight=0,pendingReset=false,forceNext=false;
+ const mountedRows=new Map();let emptyNode=null;
  const request=typeof window.requestAnimationFrame==='function'?fn=>window.requestAnimationFrame(fn):fn=>setTimeout(fn,16);
  const getRowHeight=()=>typeof rowHeight==='function'?rowHeight():rowHeight;
  const cancel=typeof window.cancelAnimationFrame==='function'?id=>window.cancelAnimationFrame(id):id=>clearTimeout(id);
@@ -378,12 +380,22 @@ function createVirtualList(D,container,renderRow,{rowHeight=56,overscan=6,emptyT
   const from=Math.max(0,Math.floor(wanted/rowHeight)-overscan),to=Math.min(totalRows,from+Math.ceil(height/rowHeight)+overscan*2);
   if(!force&&!pendingReset&&!reflow&&from===start&&to===end)return;
   start=from;end=to;previousColumns=cols;previousHeight=rowHeight;pendingReset=false;
-  // Restore after every complete rebuild, not just when the grid changes.
-  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';ui.clear(rows);
+  const visible=items.slice(from*cols,Math.min(items.length,to*cols));
+  const wantedKeys=new Set(visible.map(keyOf));
+  for(const [key,row] of mountedRows)if(!wantedKeys.has(key)){row.remove();mountedRows.delete(key);}
+  top.style.height=(from*rowHeight)+'px';bottom.style.height=(Math.max(0,totalRows-to)*rowHeight)+'px';
   rows.style.display=cols>1?'grid':'block';
   rows.style.gridTemplateColumns=cols>1?'repeat('+cols+',minmax(0,1fr))':'';
-  if(!items.length)ui.el('p',emptyText,rows,'ness-note');
-  else for(let i=from*cols;i<Math.min(items.length,to*cols);i++){const row=renderRow(items[i]);rows.appendChild(row);mountRow(row,items[i]);}
+  if(!items.length){if(!emptyNode)emptyNode=ui.el('p',emptyText,rows,'ness-note');}
+  else{
+   emptyNode?.remove();emptyNode=null;
+   for(const [position,item] of visible.entries()){
+    const key=keyOf(item);let row=mountedRows.get(key),fresh=!row;
+    if(fresh){row=renderRow(item);mountedRows.set(key,row);}
+    if(rows.children[position]!==row)rows.insertBefore(row,rows.children[position]||null);
+    updateRow(row,item);if(fresh)mountRow(row,item);
+   }
+  }
   container.scrollTop=wanted;
  }
  function refresh(force=false){if(disposed)return;forceNext=forceNext||force;if(frame!==null)return;frame=request(()=>{frame=null;const rebuild=forceNext;forceNext=false;paint(rebuild);});}
@@ -506,7 +518,7 @@ function createLibraryView(D){
  const recoveryButton=button('◷',footerLeft,undefined,'icon quiet');recoveryButton.setAttribute('aria-label','Резервные копии библиотеки');ui.tip(recoveryButton,'История сохранений на сервере. Восстановление через черновик.');
  const message=el('p','',actions,'ness-status');message.setAttribute('role','status');message.setAttribute('aria-live','polite');
  const close=button(getExtension?.()?.hubChildOpen?'← Назад':'Закрыть',actions),save=button('✓ Сохранить',actions,undefined,'primary');save.setAttribute('data-library-save','');
- function saveState(state){save.dataset.saveState=state;libraryIcon(save,state==='busy'?'loading':state==='saved'?'saved':'save',state==='busy'?'Сохранение…':state==='saved'?'Все изменения сохранены':'Сохранить',true);save.disabled=state==='busy';}
+ function saveState(state){if(save.dataset.saveState!==state){save.dataset.saveState=state;libraryIcon(save,state==='busy'?'loading':state==='saved'?'saved':'save',state==='busy'?'Сохранение…':state==='saved'?'Все изменения сохранены':'Сохранить',true);}save.disabled=state==='busy';}
  saveState('saved');
  let editorDrawers=null;
  function mountActions(){
@@ -753,17 +765,20 @@ async function openLibraryEditor(){
   const stripScroll=filterScroll,left=view.tagStrip.scrollLeft;
   const active=document.activeElement?.getAttribute?.('data-tag-filter');
   view.tagStrip.hidden=!view.tagEditor.hidden;
-  clear(view.tagStrip);
+  const existing=new Map([...view.tagStrip.children].map(node=>[node.getAttribute('data-tag-filter'),node]));let position=0;
   const selectedTag=draft.organizer.filterTagId;
   const bulkMode=selected.size>0;
   const addFilter=(id,name,color)=>{
    const assignable=bulkMode&&id!=='*'&&id!=='';
    const assignment=assignable?bulkTagState(draft,selected,id):'none';
    const all=assignment==='all',partial=assignment==='partial';
-   const chip=el('button',assignable?(all?'✓ ':partial?'− ':'+ ')+name:name,view.tagStrip,'ness-tag-filter');chip.type='button';chip.setAttribute('data-tag-filter',id);
+   let chip=existing.get(id);if(!chip){chip=el('button',undefined,undefined,'ness-tag-filter');chip.type='button';chip.setAttribute('data-tag-filter',id);}
+   existing.delete(id);if(view.tagStrip.children[position]!==chip)view.tagStrip.insertBefore(chip,view.tagStrip.children[position]||null);position++;
+   const label=assignable?(all?'✓ ':partial?'− ':'+ ')+name:name;if(chip.textContent!==label)chip.textContent=label;
    chip.setAttribute('aria-pressed',String(assignable?all:selectedTag===id));
    if(assignable){chip.dataset.assignment=all?'all':partial?'partial':'none';chip.title=all?'Убрать у всех выбранных': 'Назначить всем выбранным';}
-   if(color){chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',color);}
+   if(!assignable){delete chip.dataset.assignment;chip.title='';}
+   if(color){chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',color);}else{chip.removeAttribute('data-colored');chip.style.removeProperty('--ness-tag-color');}
    chip.onclick=()=>{
     if(busy)return;
     if(assignable){assignSelectedTag(id,!all);return;}
@@ -773,9 +788,10 @@ async function openLibraryEditor(){
   };
   if(!bulkMode){addFilter('*','Все');addFilter('','Без тегов');}
   for(const tag of draft.organizer.tags)addFilter(tag.id,tag.name,tag.color);
+  for(const chip of existing.values())chip.remove();
   view.editTag.hidden=bulkMode||!view.tagEditor.hidden||!draft.organizer.tags.some(t=>t.id===selectedTag);
   if(!view.tagStrip.hidden){view.tagStrip.scrollTop=stripScroll;view.tagStrip.scrollLeft=left;}
-  if(active!==null&&active!==undefined)[...view.tagStrip.querySelectorAll('[data-tag-filter]')].find(node=>node.getAttribute('data-tag-filter')===active)?.focus?.({preventScroll:true});
+  if(active!==null&&active!==undefined&&document.activeElement?.getAttribute?.('data-tag-filter')!==active)[...view.tagStrip.querySelectorAll('[data-tag-filter]')].find(node=>node.getAttribute('data-tag-filter')===active)?.focus?.({preventScroll:true});
  }
  function renderList(reset=false){
   const q=norm(search.value);
@@ -784,7 +800,7 @@ async function openLibraryEditor(){
   const entries=searchIndex.filter(({id,searchText})=>{
    const tags=draft.organizer.characters[id]?.tagIds||[];
    return (selectedTag==='*'||(selectedTag===''?tags.length===0:tags.includes(selectedTag)))&&(!q||searchText.includes(q));
-  });
+  }).map(record=>({...record,entry:draft[record.group][record.id]})).filter(record=>record.entry);
   const top=list.scrollTop;
   view.selection(selected.size);view.counts(searchIndex.length,entries.length);renderTags();
   if(!reset&&list.clientHeight)list.scrollTop=top;
@@ -797,11 +813,12 @@ async function openLibraryEditor(){
   const box=el('div',undefined,panel,'ness-record-tag-popover');box.setAttribute('role','dialog');box.setAttribute('aria-label','Теги записи');applyNessTheme(box,loadNessTheme());
   const heading=el('div',undefined,box,'ness-row');el('strong','Теги записи',heading);const quit=button('×',heading,()=>closeTagPicker(),'icon quiet');quit.setAttribute('aria-label','Закрыть выбор тегов');
   const choices=el('div',undefined,box,'ness-tag-choices');
-  function paint(){const scroll=choices.scrollTop;clear(choices);const ids=new Set(draft.organizer.characters[id]?.tagIds||[]);
-   if(!draft.organizer.tags.length)el('p','Сначала создай тег кнопкой «+ Тег» над списком.',choices,'ness-note');
-   for(const tag of draft.organizer.tags){const chip=el('button',(ids.has(tag.id)?'✓ ':'+ ')+tag.name,choices,'ness-tag-filter');chip.type='button';chip.setAttribute('data-record-tag',tag.id);chip.setAttribute('aria-pressed',String(ids.has(tag.id)));chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',tag.color);
+  function paint(){const scroll=choices.scrollTop;const ids=new Set(draft.organizer.characters[id]?.tagIds||[]);const existing=new Map([...choices.children].map(node=>[node.getAttribute('data-record-tag'),node]));let position=0;
+   if(!draft.organizer.tags.length&&!existing.has(null))el('p','Сначала создай тег кнопкой «+ Тег» над списком.',choices,'ness-note');
+   for(const tag of draft.organizer.tags){let chip=existing.get(tag.id);if(!chip){chip=el('button',undefined,undefined,'ness-tag-filter');chip.type='button';chip.setAttribute('data-record-tag',tag.id);}existing.delete(tag.id);if(choices.children[position]!==chip)choices.insertBefore(chip,choices.children[position]||null);position++;chip.textContent=(ids.has(tag.id)?'✓ ':'+ ')+tag.name;chip.setAttribute('aria-pressed',String(ids.has(tag.id)));chip.setAttribute('data-colored','');chip.style.setProperty('--ness-tag-color',tag.color);
     chip.onclick=()=>{if(busy)return;if(ids.has(tag.id))ids.delete(tag.id);else ids.add(tag.id);draft.organizer.characters[id]={...draft.organizer.characters[id],tagIds:[...ids]};if(editor?.id===id)editor.tagIds=new Set(ids);changed();renderList();editor?.refreshMetaTags?.();paint();};
    }
+   for(const [key,chip] of existing)if(key!==null||draft.organizer.tags.length)chip.remove();
    choices.scrollTop=scroll;
   }
   function outside(e){if(!box.contains(e.target)&&!anchor.contains(e.target))closeTagPicker();}
@@ -810,6 +827,7 @@ async function openLibraryEditor(){
   paint();positionNessPopover(box,anchor,true);document.addEventListener('pointerdown',outside,true);document.addEventListener('scroll',scroll,true);
  }
  const recordTagScroll=new Map();
+ const rowUpdates=new WeakMap();
  function renderLibraryRow({id,group,entry}){
   const cell=el('div',undefined,undefined,'ness-library-cell');
   const row=el('div',undefined,cell,'ness-library-item');row.setAttribute('data-active',String(editor?.id===id));
@@ -819,17 +837,34 @@ async function openLibraryEditor(){
   if(entry.libraryIconData){const img=el('img',undefined,portrait);img.src=entry.libraryIconData;img.alt='';img.loading='lazy';img.decoding='async';}else portrait.textContent='✦';
   const content=el('div',undefined,row,'ness-record-content'),open=el('button',undefined,content,'ness-record-open');open.type='button';open.disabled=busy;open.title='Редактировать '+entry.name;open.setAttribute('aria-label','Открыть '+entry.name);open.setAttribute('data-open-record',id);open.onclick=e=>{e?.stopPropagation?.();editCharacter(id,group);};
   row.onclick=e=>{if(!busy&&e?.target!==cb)editCharacter(id,group);};
-  const title=el('span',undefined,open,'ness-record-title');el('span',entry.name,title,'ness-record-name');el('span',group==='personas'?'Персона':'Персонаж',title,'ness-record-type');
-  const tags=el('div',undefined,content,'ness-record-tags'),ids=draft.organizer.characters[id]?.tagIds||[];
+  const title=el('span',undefined,open,'ness-record-title');const recordName=el('span',entry.name,title,'ness-record-name'),recordType=el('span',group==='personas'?'Персона':'Персонаж',title,'ness-record-type');
+  const tags=el('div',undefined,content,'ness-record-tags');
   view.wheelAlongX(tags);
   tags.addEventListener('scroll',()=>{if(tags.isConnected&&tags.clientWidth)recordTagScroll.set(id,tags.scrollLeft);},{passive:true});
   const add=el('button','+',tags,'ness-tag-add');add.type='button';add.disabled=busy;add.setAttribute('aria-label','Назначить теги: '+entry.name);add.setAttribute('data-row-tags',id);add.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,add);};
-  for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){const chip=el('button',tag.name,tags,'ness-tag-badge');chip.type='button';chip.style.setProperty('--ness-tag-color',tag.color);chip.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,chip);};}
+  let icon=entry.libraryIconData||'';
+  rowUpdates.set(cell,next=>{
+   group=next.group;entry=next.entry;
+   row.setAttribute('data-active',String(editor?.id===id));cb.checked=selected.has(id);cb.disabled=busy;open.disabled=busy;add.disabled=busy;
+   cb.setAttribute('aria-label','Выбрать '+entry.name+' для действий');open.title='Редактировать '+entry.name;open.setAttribute('aria-label','Открыть '+entry.name);add.setAttribute('aria-label','Назначить теги: '+entry.name);
+   if(recordName.textContent!==entry.name)recordName.textContent=entry.name;
+   recordType.textContent=group==='personas'?'Персона':'Персонаж';
+   const nextIcon=entry.libraryIconData||'';
+   if(icon!==nextIcon){icon=nextIcon;clear(portrait);if(icon){const img=el('img',undefined,portrait);img.src=icon;img.alt='';img.loading='lazy';img.decoding='async';}else portrait.textContent='✦';}
+   const existing=new Map([...tags.children].filter(node=>node.dataset.tagId).map(node=>[node.dataset.tagId,node]));
+   const ids=draft.organizer.characters[id]?.tagIds||[];let position=1;
+   for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){
+    let chip=existing.get(tag.id);if(!chip){chip=el('button',tag.name,undefined,'ness-tag-badge');chip.type='button';chip.dataset.tagId=tag.id;chip.onclick=e=>{e?.stopPropagation?.();openRecordTags(id,chip);};}
+    if(chip.textContent!==tag.name)chip.textContent=tag.name;chip.style.setProperty('--ness-tag-color',tag.color);chip.disabled=busy;
+    if(tags.children[position]!==chip)tags.insertBefore(chip,tags.children[position]||null);position++;existing.delete(tag.id);
+   }
+   for(const chip of existing.values())chip.remove();
+  });
   return cell;
  }
  let listLayout='grid';try{if(window.localStorage?.getItem('sp-imagen-library-layout')==='list')listLayout='list';}catch{}
  const updateListLayout=()=>{view.layoutList.setAttribute('aria-pressed',String(listLayout==='list'));view.layoutGrid.setAttribute('aria-pressed',String(listLayout==='grid'));};
- const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:84,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches&&listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
+ const virtualList=createVirtualList(document,list,renderLibraryRow,{rowHeight:()=>window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches?80:84,emptyText:'Нет персонажей с таким тегом или именем.',columns:()=>!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches&&listLayout==='grid'?Math.max(1,Math.min(3,Math.floor(list.clientWidth/300))):1,updateRow:(row,record)=>rowUpdates.get(row)?.(record),mountRow:(row,{id})=>{const tags=row.querySelector('.ness-record-tags');if(tags)tags.scrollLeft=recordTagScroll.get(id)||0;}});
  const selectListLayout=next=>{if(listLayout===next)return;closeTagPicker();listLayout=next;updateListLayout();try{window.localStorage?.setItem('sp-imagen-library-layout',next);}catch{}virtualList.refresh();};
  view.layoutList.onclick=()=>selectListLayout('list');view.layoutGrid.onclick=()=>selectListLayout('grid');updateListLayout();
  let searchTimer=null;
@@ -903,13 +938,16 @@ async function openLibraryEditor(){
   const recordTagHost=el('div',undefined,identityCard,'ness-editor-meta-tags');
   function renderHeaderTags(){
     const scroll=recordTagHost.scrollLeft;
-    clear(recordTagHost);
-    const ids=draft.organizer.characters[id]?.tagIds||[];
+    const existing=new Map([...recordTagHost.children].filter(node=>node.dataset.tagId).map(node=>[node.dataset.tagId,node]));
+    const ids=draft.organizer.characters[id]?.tagIds||[];let position=0;
     for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){
-      const chip=button(tag.name,recordTagHost,undefined,'quiet ness-editor-meta-tag');chip.style.setProperty('--ness-tag-color',tag.color);
-      chip.title='Изменить теги записи';chip.onclick=()=>openRecordTags(id,chip);
+      let chip=existing.get(tag.id);
+      if(!chip){chip=button(tag.name,undefined,undefined,'quiet ness-editor-meta-tag');chip.dataset.tagId=tag.id;chip.title='Изменить теги записи';chip.onclick=()=>openRecordTags(id,chip);}
+      if(chip.textContent!==tag.name)chip.textContent=tag.name;chip.style.setProperty('--ness-tag-color',tag.color);
+      if(recordTagHost.children[position]!==chip)recordTagHost.insertBefore(chip,recordTagHost.children[position]||null);position++;existing.delete(tag.id);
     }
-    const plus=button('+',recordTagHost,undefined,'quiet ness-editor-meta-add');plus.title='Добавить тег записи';plus.setAttribute('aria-label','Добавить тег записи');plus.onclick=()=>openRecordTags(id,plus);
+    for(const chip of existing.values())chip.remove();
+    if(!recordTagHost.querySelector('.ness-editor-meta-add')){const plus=button('+',recordTagHost,undefined,'quiet ness-editor-meta-add');plus.title='Добавить тег записи';plus.setAttribute('aria-label','Добавить тег записи');plus.onclick=()=>openRecordTags(id,plus);}
     recordTagHost.scrollLeft=scroll;
   }
   renderHeaderTags();
@@ -1215,6 +1253,6 @@ async function openLibraryEditor(){
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.66',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.67',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }

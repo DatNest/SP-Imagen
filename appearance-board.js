@@ -188,6 +188,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  const filterByMode={base:'',skin:'',nsfw:''};
  const layouts={base:'board',skin:'board',nsfw:'board'};
  let textDraft=null,renderedMode='',renderedPreset='',tagSearchOpen=false;
+ let boardView=null;
  const mobile=()=>Boolean(globalThis.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches);
  // Scrolling is UI state, not character data. Keep each mode's ribbon and
  // catalogue position across editor rebuilds, with per-preset chosen offsets.
@@ -208,8 +209,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  for(const [id,icon,label] of [['edit','✎','Переименовывать теги'],['delete','🗑','Удалять теги'],['move','✥','Менять порядок тегов'],['transfer','⇄','Перенести тег в раздел или режим']]){
   const control=button(icon,toolModes,()=>{
    if(readOnly())return;
-   toolMode=toolMode===id?'':id;
-   focusTagId='';closeTransfer();render();
+   const previous=toolMode;toolMode=toolMode===id?'':id;
+   focusTagId='';closeTransfer();if(layout==='board'&&previous!=='edit'&&toolMode!=='edit')syncToolMode();else render();
   },'quiet ness-tagboard-tool');
   control.title=label;control.setAttribute('aria-label',label);
   toolButtons[id]=control;
@@ -283,6 +284,18 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(s.editor){filterByMode[mode]=filter;mode=s.editor.mode;filter=filterByMode[mode];preset=s.editor.preset;focusTagId=s.editor.focusTagId||'';layout=layouts[mode]||'board';}
   followMovedTag=!!focusTagId;
   changed();render();historyState();
+ }
+ function syncToolMode(){
+  updateToolBar();
+  const hint=content.querySelector('.ness-tagboard-left')?.querySelector('.ness-tagboard-pane-head')?.querySelector('.ness-note');
+  if(hint)hint.textContent=toolHint();
+  const byId=new Map(items().map(tag=>[tag.id,tag]));
+  for(const row of content.querySelectorAll('.ness-unified-tag-row')){
+   const chip=row.querySelector('.ness-unified-chip'),tag=byId.get(row.dataset.tagId);if(!chip||!tag)continue;
+   row.dataset.moveSelected=String(['move','transfer'].includes(toolMode)&&focusTagId===tag.id);
+   chip.title=toolMode==='delete'?'Удалить тег (можно отменить ↶)':toolMode==='move'?'Выбрать для изменения порядка':toolMode==='transfer'?'Перенести в раздел или режим':'Добавить или снять тег в выбранном ракурсе';
+   chip.onpointerdown=toolMode==='move'?e=>gripPointerDown(e,tag,row,chip):null;
+  }
  }
  function historyState(){updateToolBar();onHistoryChange(undo.length>0,redo.length>0);}
  function record(){undo.push(snapshot());if(undo.length>50)undo.shift();redo.length=0;historyState();}
@@ -586,6 +599,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   record();
   const id='g'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),divider={id,title,before:items().length};
   sectionsForMode().push(divider);
+  inputNode.value='';inputNode.hidden=true;inputNode.parentElement?.querySelectorAll('button').forEach(node=>{if(node.textContent==='Создать')node.hidden=true;});
   after();
  }
  function renameGroup(id,title){
@@ -702,7 +716,10 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(existing)writeBaseState(reorderBaseTags(baseState(),source.map(x=>x.start===existing.start?{...x,text}:x)));
   if(mode==='skin'){const st=skinTag(tag);if(st)st.text=text;}
   if(mode==='nsfw')writeNsfwState(cleanNsfwTags(readNsfwState(),previous,text));
-  tag.text=text;after();
+  tag.text=text;changed();
+  const row=[...content.querySelectorAll('.ness-unified-tag-row')].find(node=>node.dataset.tagId===tag.id),field=row?.querySelector('.ness-tagboard-rename-input');
+  if(field){field.value=text;field.style.width=Math.max(3,Math.min(30,text.length+1))+'ch';field.setAttribute('aria-label','Изменить '+text);}
+  refreshSelection();
  }
  function preview(){
   if(mode==='skin'){
@@ -895,7 +912,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    if(!tag||!chip)continue;
    const identity=norm(tag.text),marked=selected.has(identity);
    const inherited=!!shared&&!marked&&shared.has(identity);
-   if(chip.dataset.highlighted!==String(marked)||chip.dataset.inherited!==String(inherited)){
+   if(chip.dataset.highlighted!==String(marked)||chip.dataset.inherited!==String(inherited)||chip.textContent!==(marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text){
     chip.textContent=(marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text;
     chip.setAttribute('aria-pressed',String(marked||inherited));
     chip.setAttribute('data-highlighted',String(marked));
@@ -936,6 +953,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
       }
       chip.dataset.selectedTagId=tag.id;
      }
+     if(inheritedFlow)chip.textContent='✦ '+tag.text;else{const label=chip.querySelector('span');if(label&&label.textContent!==tag.text)label.textContent=tag.text;chip.setAttribute('aria-label','Убрать '+tag.text+' из этого ракурса');chip.onclick=()=>toggle(tag,false);}
      if(flow.children[i]!==chip)flow.insertBefore(chip,flow.children[i]||null);
      previous.delete(tag.id);
     }
@@ -966,6 +984,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   syncPresetRibbon();
   restore();
  }
+ const toolHint=()=>toolMode==='delete'?'🗑 Нажимай на теги для удаления. Можно отменить ↶.':toolMode==='move'?'✥ Выбери тег, стрелки появятся рядом с инструментами.':toolMode==='transfer'?'⇄ Нажми на тег и выбери режим и раздел.':toolMode==='edit'?'✎ Меняй названия в компактных полях.':'Нажми на тег, чтобы добавить или убрать.';
  function render(){
   if(transferTagId)closeTransfer();
   // Structural changes rebuild the board; preserve every parent viewport
@@ -984,19 +1003,19 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
-  activeRibbon()?.remove?.();
-  clear(content);textDraft=null;
-  const headings=availablePresets(),ribbon=el('div',undefined,controls,'ness-tagboard-ribbon');
-  refreshHelp();
-  ui.wheelAlongX?.(ribbon);
-  for(const [id,label] of Object.entries(headings)){
-   const btn=button(label,ribbon,()=>selectPreset(id),'quiet');
-   btn.dataset.presetId=id;
+  const sameBoard=layout==='board'&&boardView?.mode===mode;
+  if(!sameBoard){clear(content);textDraft=null;boardView=null;}
+  const headings=availablePresets();let ribbon=activeRibbon();
+  if(!ribbon||ribbon.dataset.mode!==mode){ribbon?.remove();ribbon=el('div',undefined,controls,'ness-tagboard-ribbon');ribbon.dataset.mode=mode;
+   ui.wheelAlongX?.(ribbon);
+   for(const [id,label] of Object.entries(headings)){const btn=button(label,ribbon,()=>selectPreset(id),'quiet');btn.dataset.presetId=id;}
   }
+  refreshHelp();
   syncPresetRibbon();
   // Restore only after buttons and count badges exist: otherwise scrollWidth
   // is empty and the browser clamps the previous horizontal offset to zero.
   ribbon.scrollLeft=ribbonScroll;
+  if(sameBoard){boardView.sync();restore();return;}
   if(layout==='text'){
    el('p',mode==='base'?'Текст внешности редактируется в поле выше.':'Выбранные особенности этого участка:',content,'ness-note');
    if(mode!=='base'){
@@ -1014,8 +1033,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   const heading=el('div',undefined,header);
   el('span','БИБЛИОТЕКА ТЕГОВ',heading,'ness-tagboard-overline');
   el('strong','Все теги · '+items().length,heading);
-  el('p',toolMode==='delete'?'🗑 Нажимай на теги для удаления. Можно отменить ↶.':toolMode==='move'?'✥ Выбери тег, стрелки появятся рядом с инструментами.':toolMode==='transfer'?'⇄ Нажми на тег и выбери режим и раздел.':toolMode==='edit'?'✎ Меняй названия в компактных полях.':'Нажми на тег, чтобы добавить или убрать.',heading,'ness-note');
-  const renameMode=toolMode==='edit';
+  el('p',toolHint(),heading,'ness-note');
   const search=el('input',undefined,left,'ness-input ness-tagboard-search');
   search.type='search';search.placeholder='Найти тег...';search.value=filter;
   const searchToggle=button('⌕',header,undefined,'quiet ness-tag-search-toggle');searchToggle.title='Найти тег';searchToggle.setAttribute('aria-label','Найти тег');
@@ -1024,64 +1042,76 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   search.onkeydown=e=>{if(e.key==='Escape'&&mobile()){e.preventDefault();e.stopPropagation();setTagSearch(false);searchToggle.focus?.({preventScroll:true});}};
   const scene=el('div',undefined,left,'ness-unified-highlight-list');
   const tagFlow=el('div',undefined,scene,'ness-unified-tagflow');
-  const searchTexts=new Map(items().map(tag=>[tag.id,norm(tag.text)]));
   search.oninput=()=>{
    filter=search.value;searchToggle.dataset.hasQuery=String(!!filter);
-   const query=norm(filter);
+   const query=norm(filter),searchTexts=new Map(items().map(tag=>[tag.id,norm(tag.text)]));
    for(const row of tagFlow.querySelectorAll('.ness-unified-tag-row'))
     row.hidden=!!query&&!String(searchTexts.get(row.dataset.tagId)||'').includes(query);
   };
-  let flow=el('div',undefined,tagFlow,'ness-unified-section-tags ness-unified-ungrouped');
-  if(!sectionsForMode().length)addCompactPlus(flow,()=>0);
-  const sequence=orderedSequence();
-  const selected=selectedKeys(preset),shared=preset!=='always'&&mode!=='nsfw'?selectedKeys('always'):null;
-  const drawTag=tag=>{
-   const row=el('div',undefined,flow,'ness-unified-tag-row');
-   row.dataset.tagId=tag.id;row.hidden=!!filter&&!norm(tag.text).includes(norm(filter));
-   const identity=norm(tag.text),marked=selected.has(identity),inherited=!!shared&&!marked&&shared.has(identity);
-   if(renameMode){
-    const field=el('input',undefined,row,'ness-input ness-tagboard-rename-input');
+  const rootFlow=el('div',undefined,tagFlow,'ness-unified-section-tags ness-unified-ungrouped');
+  const rowsById=new Map(),sectionsById=new Map();
+  let topPlus=null,bottomPlus=null,emptyNote=null;
+  function place(parent,node,index){if(parent.children[index]!==node)parent.insertBefore(node,parent.children[index]||null);}
+  const drawTag=initial=>{
+   let tag=initial;
+   const row=el('div',undefined,undefined,'ness-unified-tag-row');
+   row.dataset.tagId=tag.id;
+   let field=null,chip=null;
+   const marked=false,inherited=false;
+   function syncControl(){
+   if(toolMode==='edit'){
+    if(field)return;
+    chip?.remove();chip=null;
+    field=el('input',undefined,row,'ness-input ness-tagboard-rename-input');
     field.value=tag.text;field.setAttribute('aria-label','Изменить '+tag.text);
     field.style.width=Math.max(3,Math.min(30,tag.text.length+1))+'ch';
     field.oninput=()=>{field.style.width=Math.max(3,Math.min(30,field.value.length+1))+'ch';};
-    field.onchange=()=>renameTag(tag,field.value);
-    field.onblur=()=>{if(field.value!==tag.text)renameTag(tag,field.value);};
+    const input=field;
+    const commitRename=()=>{if(input.value!==tag.text)renameTag(tag,input.value);if(input.value!==tag.text)input.value=tag.text;};
+    field.onchange=commitRename;field.onblur=commitRename;
     field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();field.blur?.();}};
    }else{
-    const chip=button((marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text,row,()=>{
+    if(chip)return;
+    if(field){const old=field;field=null;old.onblur=null;old.onchange=null;old.remove();}
+    chip=button((marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text,row,()=>{
      if(toolMode==='delete'){removeTag(tag,false);return;}
      if(toolMode==='transfer'){showTransfer(tag);return;}
      if(toolMode==='move'){
       if(chip.dataset.ignoreClick==='true'){chip.dataset.ignoreClick='false';return;}
-      focusTagId=focusTagId===tag.id?'':tag.id;render();return;
+      focusTagId=focusTagId===tag.id?'':tag.id;syncToolMode();return;
      }
-     if(inherited){warn('Этот тег берётся из «Всегда». Измени его там.');return;}
+     if(preset!=='always'&&mode!=='nsfw'&&!isChosen(tag,preset)&&isChosen(tag,'always')){warn('Этот тег берётся из «Всегда». Измени его там.');return;}
      toggle(tag,!isChosen(tag,preset));
     },'quiet ness-unified-chip');
-    chip.setAttribute('aria-pressed',String(marked||shared));
+    chip.setAttribute('aria-pressed',String(marked||inherited));
     chip.setAttribute('data-highlighted',String(marked));
     chip.setAttribute('data-inherited',String(inherited));
     chip.title=toolMode==='delete'?'Удалить тег (можно отменить ↶)':toolMode==='move'?'Выбрать для изменения порядка':toolMode==='transfer'?'Перенести в раздел или режим':'Добавить или снять тег в выбранном ракурсе';
     if(toolMode==='move')chip.onpointerdown=e=>gripPointerDown(e,tag,row,chip);
-   }
-   row.dataset.moveSelected=String(['move','transfer'].includes(toolMode)&&focusTagId===tag.id);
+   }}
+   return {row,sync(next){
+    const previous=tag.text;tag=next;syncControl();
+    row.hidden=!!filter&&!norm(tag.text).includes(norm(filter));
+    if(field&&field.value!==tag.text&&(previous!==tag.text||field!==frame.ownerDocument?.activeElement)){field.value=tag.text;field.style.width=Math.max(3,Math.min(30,tag.text.length+1))+'ch';}
+    if(field)field.setAttribute('aria-label','Изменить '+tag.text);
+    if(chip){const label=(chip.dataset.highlighted==='true'?'✓ ':chip.dataset.inherited==='true'?'✦ ':'＋ ')+tag.text;if(chip.textContent!==label)chip.textContent=label;}
+   }};
   };
-  for(let i=0;i<sequence.length;i++){
-   const token=sequence[i];
-   if(token.kind==='tag'){drawTag(token.tag);continue;}
-   const section=el('section',undefined,tagFlow,'ness-unified-section');
+  const drawSection=initial=>{
+   let token=initial,count=0;
+   const section=el('section',undefined,undefined,'ness-unified-section');
    section.dataset.dividerId=token.id;
    const bar=el('div',undefined,section,'ness-unified-section-head');
-   let end=i+1;while(end<sequence.length&&sequence[end].kind!=='divider')end++;
-   const count=sequence.slice(i+1,end).filter(t=>t.kind==='tag').length;
-   const key=mode+':'+token.id,folded=collapsed.has(key);
-   const suffix=count%100>=11&&count%100<=14?'тегов':count%10===1?'тег':count%10>=2&&count%10<=4?'тега':'тегов';
+   const key=mode+':'+token.id;
+   const suffix=()=>count%100>=11&&count%100<=14?'тегов':count%10===1?'тег':count%10>=2&&count%10<=4?'тега':'тегов';
+   const label=()=> (collapsed.has(key)?'▸ ':'▾ ')+token.section.title+' · '+count+' '+suffix();
    let held=false,holdTimer=null,startX=0,startY=0;
-   const title=button((folded?'▸ ':'▾ ')+token.section.title+' · '+count+' '+suffix,bar,()=>{
+   const title=button(label(),bar,()=>{
     if(held){held=false;return;}
-    if(collapsed.has(key))collapsed.delete(key);else collapsed.add(key);render();
+    if(collapsed.has(key))collapsed.delete(key);else collapsed.add(key);
+    syncHeading();
    },'quiet ness-unified-section-toggle');
-   title.setAttribute('aria-expanded',String(!folded));
+
    addCompactPlus(bar,()=>{
     const tokens=orderedSequence(),start=tokens.findIndex(t=>t.kind==='divider'&&t.id===token.id);
     const next=tokens.findIndex((t,i)=>i>start&&t.kind==='divider');
@@ -1094,7 +1124,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     if(previous){previous.focus({preventScroll:true});return;}
     const field=el('input',undefined,bar,'ness-input ness-tagboard-section-input');
     field.value=token.section.title;field.setAttribute('aria-label','Название раздела');
-    const commit=()=>{if(field.dataset.cancelled==='true')return;const text=field.value.trim();if(text&&text!==token.section.title)renameGroup(token.id,text);else field.remove();};
+    const commit=()=>{if(field.dataset.cancelled==='true')return;field.dataset.cancelled='true';const text=field.value.trim();field.remove();if(text&&text!==token.section.title)renameGroup(token.id,text);};
     field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();commit();}else if(e.key==='Escape'){e.preventDefault();field.dataset.cancelled='true';field.remove();}};
     field.onblur=commit;field.focus({preventScroll:true});field.select();
    },'quiet ness-section-action');
@@ -1110,10 +1140,35 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    bar.onpointermove=e=>{if(holdTimer!==null&&Math.hypot(e.clientX-startX,e.clientY-startY)>10)cancelHold();};
    bar.onpointerup=cancelHold;bar.onpointercancel=cancelHold;
    bar.oncontextmenu=e=>{if(e.pointerType==='mouse')return;e.preventDefault();cancelHold();held=true;bar.dataset.actionsOpen='true';};
-   flow=el('div',undefined,section,'ness-unified-section-tags');flow.hidden=folded;
+   const flow=el('div',undefined,section,'ness-unified-section-tags');
+   function syncHeading(){const closed=collapsed.has(key);flow.hidden=closed;if(title.textContent!==label())title.textContent=label();title.setAttribute('aria-expanded',String(!closed));}
+   return {section,flow,sync(next,n){token=next;count=n;syncHeading();editSection.setAttribute('aria-label','Переименовать раздел '+token.section.title);removeSection.setAttribute('aria-label','Удалить разделитель '+token.section.title+', оставить теги');}};
+  };
+  function syncCatalogue(){
+   const sequence=orderedSequence(),seenRows=new Set(),seenSections=new Set(),grouped=sectionsForMode().length>0;
+   if(grouped){topPlus?.remove();bottomPlus?.remove();topPlus=bottomPlus=null;}
+   else if(!topPlus)topPlus=addCompactPlus(rootFlow,()=>0);
+   let flow=rootFlow,at=grouped?0:1,sectionAt=1;
+   for(let i=0;i<sequence.length;i++){
+    const token=sequence[i];
+    if(token.kind==='divider'){
+     let section=sectionsById.get(token.id);if(!section){section=drawSection(token);sectionsById.set(token.id,section);}
+     let end=i+1;while(end<sequence.length&&sequence[end].kind!=='divider')end++;
+     section.sync(token,end-i-1);place(tagFlow,section.section,sectionAt++);seenSections.add(token.id);flow=section.flow;at=0;
+    }else{
+     let entry=rowsById.get(token.id);if(!entry){entry=drawTag(token.tag);rowsById.set(token.id,entry);}
+     entry.sync(token.tag);place(flow,entry.row,at++);seenRows.add(token.id);
+    }
+   }
+   for(const [id,entry]of rowsById)if(!seenRows.has(id)){entry.row.remove();rowsById.delete(id);}
+   for(const [id,section]of sectionsById)if(!seenSections.has(id)){section.section.remove();sectionsById.delete(id);}
+   if(!grouped){if(!bottomPlus)bottomPlus=addCompactPlus(rootFlow,()=>items().length);place(rootFlow,topPlus,0);place(rootFlow,bottomPlus,rootFlow.children.length-1);}
+   if(!items().length){if(!emptyNote)emptyNote=el('p','Пока нет тегов — нажми +, чтобы добавить.',tagFlow,'ness-note');}
+   else{emptyNote?.remove();emptyNote=null;}
+   const total=heading.querySelector('strong');if(total)total.textContent='Все теги · '+items().length;
+   if(search.value!==filter)search.value=filter;searchToggle.dataset.hasQuery=String(!!filter);
   }
-  if(!sectionsForMode().length)addCompactPlus(flow,()=>items().length);
-  if(!items().length)el('p','Пока нет тегов — нажми +, чтобы добавить.',tagFlow,'ness-note');
+  syncCatalogue();
   const addSection=el('div',undefined,left,'ness-tagboard-section-add');
   const groupToggle=button('＋ Новый раздел',addSection,()=>{
    groupInput.hidden=!groupInput.hidden;createGroup.hidden=groupInput.hidden;
@@ -1136,15 +1191,22 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   el('p',preset==='always'?'Эти теги появляются во всех ракурсах данного режима.':'Слева — добавить или убрать. Справа — убрать через ×.',right,'ness-tagboard-right-hint');
   const details=el('details',undefined,content,'ness-tagboard-preview');
   el('summary','Предпросмотр строки',details);el('p',preview(),details,'ness-tagboard-preview-text');
+  boardView={mode,sync(){
+   syncCatalogue();syncToolMode();refreshSelection();
+   tagFlow.scrollTop=viewportByMode[mode].tags;
+   right.querySelector('.ness-tagboard-chosen-list').scrollTop=chosenScrollByPreset.get(mode+':'+preset)||0;
+   followTag();
+  }};
+  syncToolMode();
   // Restore after the entire board (including preview and count badges) exists.
   tagFlow.scrollTop=tagScroll;right.querySelector('.ness-tagboard-chosen-list').scrollTop=chosenScroll;ribbon.scrollLeft=ribbonScroll;
-  restore();
-  if(followMovedTag&&['move','transfer'].includes(toolMode)&&focusTagId){
+  restore();followTag();
+  function followTag(){if(followMovedTag&&['move','transfer'].includes(toolMode)&&focusTagId){
    const active=[...content.querySelectorAll('.ness-unified-tag-row')].find(row=>row.dataset.tagId===focusTagId);
    // Follow a deliberately moved tag only inside its own pane, never the whole dialog.
    if(active&&tagFlow.getBoundingClientRect&&active.getBoundingClientRect){const a=active.getBoundingClientRect(),p=tagFlow.getBoundingClientRect();if(a.top<p.top)tagFlow.scrollTop+=a.top-p.top;else if(a.bottom>p.bottom)tagFlow.scrollTop+=a.bottom-p.bottom;}
    followMovedTag=false;
-  }
+  }}
  }
 
  frame.addEventListener('click',e=>{

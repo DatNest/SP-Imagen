@@ -21,7 +21,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.66';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.67';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -509,10 +509,11 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
     const renderCustom=()=>{
         const store=normalizeProfileStore(settings());
         const top=scroll.scrollTop,left=scroll.scrollLeft;
-        customList.replaceChildren();rulesList.replaceChildren();
-        if(!store.profiles.length){const p=document.createElement('p');p.className='spi-status';p.textContent='Пока нет личных режимов генерации.';customList.append(p);}
+        const priorProfiles=new Map([...customList.children].map(row=>[row.dataset.profileId,row])),priorRules=new Map([...rulesList.children].map(row=>[row.dataset.ruleId,row]));let profilePosition=0,rulePosition=0;
+        if(!store.profiles.length){const p=priorProfiles.get(undefined)||document.createElement('p');priorProfiles.delete(undefined);p.className='spi-status';p.textContent='Пока нет личных режимов генерации.';if(!p.parentNode)customList.append(p);}
         for(const profile of store.profiles){
-            const row=document.createElement('div');row.className='spi-prompt-row spi-profile-card';
+            const previous=priorProfiles.get(profile.id),signature=JSON.stringify(profile);if(previous?.dataset.signature===signature){priorProfiles.delete(profile.id);if(customList.children[profilePosition]!==previous)customList.insertBefore(previous,customList.children[profilePosition]||null);profilePosition++;continue;}
+            const row=document.createElement('div');row.className='spi-prompt-row spi-profile-card';row.dataset.profileId=profile.id;row.dataset.signature=signature;
             const head=document.createElement('div');head.className='spi-profile-card-head';
             const info=document.createElement('div');info.className='spi-profile-card-info';
             const title=document.createElement('strong');title.textContent=profile.name;
@@ -521,29 +522,32 @@ function openPromptCenter({ askUpdates = false, backToHub = false } = {}) {
             const toggle=document.createElement('label');toggle.className='spi-profile-visible';toggle.title='Показывать профиль в меню генерации по звёздочке';
             const check=document.createElement('input');check.type='checkbox';check.checked=profile.visible;
             toggle.append(check,document.createTextNode('✧ В меню'));
-            check.onchange=()=>{const target=settings().customProfiles.find(p=>p.id===profile.id);if(target){target.visible=check.checked;saveSettings();mediaSlots?.refresh?.();}};
+            check.onchange=()=>{const target=settings().customProfiles.find(p=>p.id===profile.id);if(target){target.visible=check.checked;profile.visible=check.checked;row.dataset.signature=JSON.stringify(profile);saveSettings();mediaSlots?.refresh?.();}};
             head.append(info,toggle);
             const actions=document.createElement('div');actions.className='spi-dialog-actions spi-profile-card-actions';
             button('Изменить',actions,()=>openCustomProfileEditor(profile,renderCustom)).classList.add('spi-profile-action');
             const dup=document.createElement('div');actions.append(dup);
             button('Создать копию',dup,()=>openCustomProfileEditor(null,renderCustom,{...profile,id:'',name:'Копия · '+profile.name})).classList.add('spi-profile-action','spi-profile-action-copy');
             helpButton(dup,'Копия личного профиля','Создаёт НОВЫЙ независимый профиль на основе этой инструкции. Его можно изменить и показывать отдельно в меню ✧. Исходный профиль не изменяется, галереи у них раздельные.');
-            row.append(head,actions);customList.append(row);
+            row.append(head,actions);if(previous){previous.remove();priorProfiles.delete(profile.id);}customList.insertBefore(row,customList.children[profilePosition++]||null);
         }
-        if(!store.rules.length){const p=document.createElement('p');p.className='spi-status';p.textContent='Пока нет общих дополнительных правил.';rulesList.append(p);}
+        for(const row of priorProfiles.values())row.remove();
+        if(!store.rules.length){const p=priorRules.get(undefined)||document.createElement('p');priorRules.delete(undefined);p.className='spi-status';p.textContent='Пока нет общих дополнительных правил.';if(!p.parentNode)rulesList.append(p);}
         for(const rule of store.rules){
-            const row=document.createElement('div');row.className='spi-prompt-row spi-profile-card spi-profile-rule';
+            const previous=priorRules.get(rule.id),signature=JSON.stringify(rule);if(previous?.dataset.signature===signature){priorRules.delete(rule.id);if(rulesList.children[rulePosition]!==previous)rulesList.insertBefore(previous,rulesList.children[rulePosition]||null);rulePosition++;continue;}
+            const row=document.createElement('div');row.className='spi-prompt-row spi-profile-card spi-profile-rule';row.dataset.ruleId=rule.id;row.dataset.signature=signature;
             const head=document.createElement('div');head.className='spi-profile-card-head';
             const title=document.createElement('strong');title.textContent=rule.name;
             const active=document.createElement('label');active.className='spi-profile-visible';active.title='Применять правило ко всем режиссёрам';
             const check=document.createElement('input');check.type='checkbox';check.checked=rule.enabled;
             active.append(check,document.createTextNode('Применять'));
-            check.onchange=()=>{const r=settings().extraPrompts.find(x=>x.id===rule.id);if(r){r.enabled=check.checked;saveSettings();}};
+            check.onchange=()=>{const r=settings().extraPrompts.find(x=>x.id===rule.id);if(r){r.enabled=check.checked;rule.enabled=check.checked;row.dataset.signature=JSON.stringify(rule);saveSettings();}};
             head.append(title,active);
             const actions=document.createElement('div');actions.className='spi-dialog-actions spi-profile-card-actions';
             button('Изменить',actions,()=>openExtraRuleEditor(rule,renderCustom)).classList.add('spi-profile-action');
-            row.append(head,actions);rulesList.append(row);
+            row.append(head,actions);if(previous){previous.remove();priorRules.delete(rule.id);}rulesList.insertBefore(row,rulesList.children[rulePosition++]||null);
         }
+        for(const row of priorRules.values())row.remove();
         scroll.scrollTop=top;scroll.scrollLeft=left;
     };
     renderCustom();
@@ -796,15 +800,16 @@ function openTextApiSettings({ back = false } = {}) {
     };
     for(const control of [mode,reasoningMode,jailbreak])control.addEventListener('change',refreshMode);
     const fillProfiles = (profiles, selected) => {
-        profile.replaceChildren();
-        const option = document.createElement('option'); option.value = ''; option.textContent = 'Выбери профиль'; profile.append(option);
-        for (const item of profiles) {
-            const child = document.createElement('option'); child.value = item.id; child.textContent = item.name; profile.append(child);
-        }
+        const choices=[['','Выбери профиль'],...profiles.map(item=>[String(item.id),item.name])];
         // The saved choice is preserved if discovery fails or the profile was renamed.
-        if (selected && !profiles.some(item => item.id === selected)) {
-            const saved = document.createElement('option'); saved.value = selected; saved.textContent = 'Сохранённый профиль (' + selected + ')'; profile.append(saved);
+        if(selected&&!profiles.some(item=>item.id===selected))choices.push([String(selected),'Сохранённый профиль ('+selected+')']);
+        const existing=new Map([...profile.options].map(option=>[option.value,option]));
+        for(const [position,[id,name]] of choices.entries()){
+            let option=existing.get(id);if(!option){option=document.createElement('option');option.value=id;}
+            if(option.textContent!==name)option.textContent=name;
+            if(profile.children[position]!==option)profile.insertBefore(option,profile.children[position]||null);existing.delete(id);
         }
+        for(const option of existing.values())option.remove();
         profile.value = selected || '';
     };
     let discoverRun = 0;
@@ -979,7 +984,8 @@ function openStyleLibrary({ back = false } = {}) {
     };
     const renderList = () => {
         const scrollTop = library.scrollTop, scrollLeft = library.scrollLeft;
-        library.replaceChildren();
+        const previous=new Map([...library.querySelectorAll('.spi-style-row')].map(row=>[row.dataset.styleId,row]));
+        if(!noneStyleButton){
         const heading = document.createElement('h3'); heading.textContent = 'Библиотека стилей'; library.append(heading);
         button('+ Новый стиль', library, () => {
             const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '' };
@@ -1003,8 +1009,11 @@ function openStyleLibrary({ back = false } = {}) {
             editorStatus.textContent = added ? `Импортировано стилей: ${added}.` : 'Все стили Inline Images уже есть в SP Imagen.';
         });
         noneStyleButton = button('◉ Без стиля', library, () => { novelai.activeStyleId = ''; persist(); syncListState(); syncEditor(); });
+        }
         noneStyleButton.classList.toggle('spi-active', !novelai.activeStyleId);
+        let position=4;
         for (const style of novelai.styles) {
+            const retained=previous.get(style.id);if(retained){previous.delete(style.id);if(library.children[position]!==retained)library.insertBefore(retained,library.children[position]||null);position++;continue;}
             const row = document.createElement('div'); row.className = `spi-style-row${selectedId === style.id ? ' spi-selected' : ''}`;
             row.dataset.styleId = style.id;
             const activate = button(novelai.activeStyleId === style.id ? '●' : '○', row, event => {
@@ -1029,8 +1038,9 @@ function openStyleLibrary({ back = false } = {}) {
                 persist(); renderList(); syncEditor();
             });
             remove.title = 'Удалить';
-            row.replaceChildren(activate, summary, duplicate, remove); library.append(row);
+            library.insertBefore(row,library.children[position++]||null);
         }
+        for(const row of previous.values())row.remove();syncListState();
         library.scrollTop = scrollTop;
         library.scrollLeft = scrollLeft;
     };
@@ -1062,6 +1072,7 @@ function openHub(page = 'home') {
     }
     let currentPage = page;
     const render = nextPage => {
+        if(body.childElementCount&&currentPage===nextPage)return;
         currentPage = nextPage;
         body.replaceChildren();
         backButton.hidden = currentPage === 'home';

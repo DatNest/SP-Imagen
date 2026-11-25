@@ -65,10 +65,31 @@ test('A pending later draft is preserved when existing image predates the draft'
 
 test('Gallery image opens in in-page viewer, and success clears the post draft',()=>{
  const gallery=read('media-slots.js'),runtime=read('runtime.js');
- assert.match(gallery,/frame\.addEventListener\('click', \(\) => showImageViewer\(/);
+ assert.match(gallery,/if\(safeUrl\(currentItem\.src\)\)showImageViewer\(frame,currentItem\.src/);
  assert.doesNotMatch(gallery,/frame\.addEventListener\('click', \(\) => host\.open/);
  assert.match(gallery,/function closeImageViewer\(\)/);
  assert.match(gallery,/event\.key==='Escape'&&imageViewer/);
  assert.match(runtime,/if\(!stored\.savePending\)discardPostDraft\(live,targetIndex\)/);
  assert.match(runtime,/validateImagePromptLayout\(config\.prompt,baseKind\)/);
+});
+
+test('Gallery updates preserve existing controls and enforce preview source safety',()=>{
+ const source=read('media-slots.js'),start=source.indexOf('  function card(index, kind, slot, locked)'),end=source.indexOf('  function newestSavedPrompt',start);
+ const opened=[],external=[],prompts=[];
+ class Node{
+  constructor(tag,cls,text){this.tagName=tag.toUpperCase();this.className=cls;this.textContent=text||'';this.dataset={};this.children=[];this.classList={add(){}};this.events={};}
+  append(...nodes){for(const node of nodes){node.parent=this;this.children.push(node);}}
+  remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
+  setAttribute(key,value){this[key]=value;}
+  addEventListener(key,fn){this.events[key]=fn;}
+ }
+ const element=(tag,cls,text)=>new Node(tag,cls,text),button=(label,title,action)=>{const n=element('button','',label);n.events.click=action;return n;};
+ const build=new Function('element','galleryButton','safeUrl','remoteImage','KINDS','LABEL','generationProfiles','showImageViewer','openLegacyRemote','showPromptEditor','guideDemo','guideSampleConfig',source.slice(start,end)+'\nreturn card;')(
+ element,button,url=>url.startsWith('/user/'),url=>url.startsWith('https:'),['snapshot'],{snapshot:'Snapshot'},()=>[],(frame,url)=>opened.push(url),url=>external.push(url),(anchor,index,kind,config)=>prompts.push(config),null,()=>({}));
+ const slot={selected:0,collapsed:true,versions:[{src:'/user/a.png',config:{prompt:'a'}},{src:'/user/b.png',config:{prompt:'b'}},{src:'https://external.example/c.png',config:{prompt:'c'}}]};
+ const card=build(0,'snapshot',slot,false),[heading,frame,bar]=card.node.children,image=frame.children[0],nav=bar.children[0],editor=bar.children[1].children[0];
+ slot.selected=1;slot.collapsed=false;card.update(slot,false);
+ assert.strictEqual(card.node.children[0],heading);assert.strictEqual(card.node.children[1],frame);assert.strictEqual(frame.children[0],image);assert.strictEqual(bar.children[0],nav);
+ assert.equal(image.src,'/user/b.png');assert.equal(frame.hidden,false);frame.events.click();editor.events.click();assert.deepEqual(opened,['/user/b.png']);assert.deepEqual(prompts,[{prompt:'b'}]);
+ slot.selected=2;card.update(slot,true);assert.equal(frame.children[0].tagName,'SPAN');assert.equal(frame.children[0].src,undefined);frame.events.click();assert.deepEqual(external,['https://external.example/c.png']);assert.equal(editor.disabled,true);assert.equal(slot.versions.length,3);
 });
