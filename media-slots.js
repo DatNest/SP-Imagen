@@ -1378,8 +1378,8 @@ export async function installSpImagenMediaSlots(options) {
     // images that never stored a kind in their direct-generation snapshot.
     config.kind = kind;
     const extension = getExtension?.();
-    if (!extension?.directGenerationEnabled?.() || typeof extension.generateImage !== 'function') {
-      throw new Error('Для повторной генерации проверь подключение SP Imagen → NovelAI.');
+    if (!extension?.directGenerationEnabled?.(config,true) || typeof extension.generateImage !== 'function') {
+      throw new Error('Для повторной генерации проверь подключение исходного провайдера в SP Imagen.');
     }
     const lock = `${current.chatId}|${index}|${kind}`;
     if (busy.has(lock)) throw new Error('Эта картинка уже генерируется.');
@@ -1533,7 +1533,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 28,
-    bundleVersion: '2.9.71',
+    bundleVersion: '2.9.72',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},
