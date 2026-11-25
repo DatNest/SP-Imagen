@@ -1533,7 +1533,7 @@ export async function installSpImagenMediaSlots(options) {
     installed: true,
     version: 65,
     controlsRevision: 28,
-    bundleVersion: '2.9.71',
+    bundleVersion: '2.9.72',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},
