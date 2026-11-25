@@ -364,6 +364,11 @@ test('Style library keeps its compact toolbar, existing rows and current style d
  assert.match(body,/rows\.scrollTop = scrollTop/);
  assert.match(read('style.css'),/\.spi-style-header \{ display:flex/);
  assert.match(read('style.css'),/\.spi-style-rows \{[^}]*overflow:auto/);
+ const css=read('style.css');
+ assert.match(body,/summary\.className = 'menu_button spi-style-summary'/);
+ assert.match(css,/\.spi-style-row > :nth-child\(2\) \{ grid-column:2; grid-row:1; \}/);
+ assert.match(css,/\.menu_button\.spi-style-summary \{[^}]*display:flex !important[^}]*width:100% !important[^}]*color:var\(--SmartThemeBodyColor/);
+ assert.match(css,/\.spi-style-summary > :is\(strong,small\) \{[^}]*display:block !important[^}]*text-overflow:ellipsis/);
  assert.ok(makeGuideSteps(true).some(step=>step.text.includes('кружок ⊘')));
 });
 
@@ -391,7 +396,14 @@ test('Compact style actions retain rows, preserve input, duplicate current conte
  const open=new Function('document','settings','shell','input','formField','button','normalizeNovelAISettings','saveSettings','clone','confirm',body+'\nreturn openStyleLibrary;')(doc,()=>root,()=>({dialog,closed:Promise.resolve()}),()=>create('input'),field,btn,structuredClone,()=>{},structuredClone,()=>true);
  open();
  const rows=dialog.querySelector('.spi-style-rows'),header=dialog.querySelector('.spi-style-controls'),first=rows.children[0],second=rows.children[1],name=dialog.querySelector('input'),value=dialog.querySelector('textarea');
+ assert.equal(first.querySelector('strong').textContent,'A');
+ assert.equal(first.querySelector('small').textContent,'old');
+ assert.equal(second.querySelector('strong').textContent,'B');
+ assert.equal(first.querySelector('.spi-style-summary').attrs['aria-label'],'A');
  name.value='Edited';name.events.input();value.value='new content ';value.events.input();
+ assert.equal(first.querySelector('strong').textContent,'Edited');
+ assert.equal(first.querySelector('small').textContent,'new content');
+ assert.equal(first.querySelector('.spi-style-summary').attrs['aria-label'],'Edited');
  header.children[1].click();assert.equal(root.novelai.activeStyleId,'');assert.equal(value.value,'new content ');assert.strictEqual(rows.children[0],first);
  first.children[2].click();assert.equal(root.novelai.styles[2].name,'Edited — копия');assert.equal(root.novelai.styles[2].value,'new content ' .trim());
  assert.strictEqual(rows.children[0],first);assert.strictEqual(rows.children[1],second);
