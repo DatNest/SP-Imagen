@@ -42,7 +42,8 @@ async function request(path, s, options, signal) {
         ...options, headers:{...headers(s),...options?.headers}, signal,
     }));
     if (!response.ok) throw Error('NAISTERA: HTTP '+response.status+'. Проверь токен, доступ к модели и остаток кредитов.');
-    return response.json();
+    try { return await response.json(); }
+    catch { throw Error('NAISTERA: сервер вернул некорректный JSON.'); }
 }
 async function bounded(signal, ms, run) {
     const controller = new AbortController();
@@ -121,8 +122,8 @@ export async function generateNaistera({settings:input,prompt,style='',aspectRat
         if (job && !result?.data_url) {
             if (!/^[a-zA-Z0-9_-]{1,128}$/.test(String(job))) throw Error('NAISTERA: некорректный ID задачи.');
             while (!result?.data_url) {
-                if (result?.status==='failed'||result?.status==='cancelled'||result?.error) throw Error('NAISTERA: генерация не завершилась.');
-                if (result?.status==='completed') throw Error('NAISTERA: изображение отсутствует.');
+                if (['failed','cancelled','canceled'].includes(String(result?.status||'').toLowerCase())||result?.error) throw Error('NAISTERA: генерация не завершилась.');
+                if (String(result?.status||'').toLowerCase()==='completed') throw Error('NAISTERA: изображение отсутствует.');
                 await delay(3000,sig);
                 result=await request('/api/generate/jobs/'+encodeURIComponent(job),s,{method:'GET'},sig);
             }
