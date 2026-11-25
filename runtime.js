@@ -2253,8 +2253,9 @@ if(npcLanguage&&!experimental){
  requireOrigin();
 }
 if(visibility.size && profile?.parser?.options?.includeCharacters!==false){
+ const baseMarkerPrompt=config.prompt;
  config.prompt=insertVisibleAppearance(config.prompt,visibility);
- config.prompt=insertSkinAppearance(config.prompt,visibility);
+ config.prompt=insertSkinAppearance(config.prompt,visibility,baseMarkerPrompt);
 }
 // Personal composition rules are already included in the director's instructions.
 // Never prepend their raw text to the NAI5 image prompt.
