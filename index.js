@@ -15,7 +15,7 @@ import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
 import { pageTextEnabled } from './page-text-mode.js';
 import { experimentalProfileFor, experimentalDirectorPrompt } from './experimental-director.js';
 import { decidePromptUpdate } from './update-policy.js';
-import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings } from './novelai.js';
+import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings, cfgValidationErrors, resolveSnapshotCfg } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
 import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } from './security-network.js';
 
@@ -898,8 +898,8 @@ function openNovelAISettings({ back = false } = {}) {
     const model = select(NOVELAI_MODELS, draft.model); formField(grid, 'Модель', model);
     const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution); formField(grid, 'Размер', resolution, 'При защите Anlas используется Normal.');
     const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50'; formField(grid, 'Steps', steps);
-    const cfg = input(draft.cfgScale, 'number'); cfg.min = '0'; cfg.max = '10'; cfg.step = '0.1'; formField(grid, 'CFG scale', cfg);
-    const rescale = input(draft.cfgRescale, 'number'); rescale.min = '0'; rescale.max = '1'; rescale.step = '0.01'; formField(grid, 'CFG rescale', rescale);
+    const cfg = input(Number.isFinite(draft.cfgScale) ? draft.cfgScale : ''); cfg.inputMode = 'decimal'; formField(grid, 'CFG scale', cfg, 'От 0 до 10; дробные числа через точку или запятую.');
+    const rescale = input(Number.isFinite(draft.cfgRescale) ? draft.cfgRescale : ''); rescale.inputMode = 'decimal'; formField(grid, 'CFG rescale', rescale, 'От 0 до 1; дробные числа через точку или запятую.');
     const sampler = select(NOVELAI_SAMPLERS, draft.sampler); formField(grid, 'Sampler', sampler);
     const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
     const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
@@ -909,7 +909,7 @@ function openNovelAISettings({ back = false } = {}) {
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: true, neverSpendAnlas: neverSpend.checked,
         apiKey: token.value, endpoint: OFFICIAL_NOVELAI_ORIGIN, model: model.value, resolution: resolution.value,
-        steps: Number(steps.value), cfgScale: Number(cfg.value), cfgRescale: Number(rescale.value),
+        steps: Number(steps.value), cfgScale: cfg.value, cfgRescale: rescale.value,
         sampler: sampler.value, seed: Number(seed.value), negativePrompt: negative.value,
     });
     button('Проверить подключение', actions, async event => {
@@ -925,6 +925,8 @@ function openNovelAISettings({ back = false } = {}) {
     button('Отмена', actions, close);
     button('Сохранить', actions, () => {
         const next = readDraft();
+        const cfgErrors = cfgValidationErrors(next);
+        if (cfgErrors.length) { status.textContent = cfgErrors.join(' '); (cfgErrors[0].startsWith('CFG scale:') ? cfg : rescale).focus(); return; }
         try { officialNovelAIEndpoint(next.endpoint); }
         catch(error){status.textContent=String(error?.message||error);return;}
         if (!next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Для автономной генерации требуется токен NovelAI.'; token.focus(); return; }
@@ -1361,7 +1363,7 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
         useActiveStyle,
         allowArtStyle:profile?.parser?.options?.useArtStyle!==false,
     });
-    const requestSettings = snapshot?.settings ? { ...saved, ...snapshot.settings, apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
+    const requestSettings = snapshot?.settings ? { ...saved, ...resolveSnapshotCfg(saved, snapshot.settings), apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
     if (!snapshot && profile?.parser?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
