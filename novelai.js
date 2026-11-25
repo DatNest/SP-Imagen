@@ -45,6 +45,40 @@ export function defaultNovelAISettings() {
     };
 }
 
+// Accept decimal comma from localized input and older stored profiles, but never
+// coerce a blank, null, boolean or malformed value to zero.
+export function parseCfgNumber(value) {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+    if (typeof value !== 'string') return NaN;
+    const text = value.trim();
+    if (!/^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)$/.test(text)) return NaN;
+    return Number(text.replace(',', '.'));
+}
+
+function cfgInRange(value, max) {
+    const n = parseCfgNumber(value);
+    return Number.isFinite(n) && n >= 0 && n <= max;
+}
+
+export function cfgValidationErrors(settings) {
+    const errors = [];
+    if (!cfgInRange(settings.cfgScale, 10)) errors.push('CFG scale: от 0 до 10.');
+    if (!cfgInRange(settings.cfgRescale, 1)) errors.push('CFG rescale: от 0 до 1.');
+    return errors;
+}
+
+// Keep valid historical parameters on regeneration. Only a damaged historical
+// CFG field may fall back to the current valid setting.
+export function resolveSnapshotCfg(saved, snapshot) {
+    const merged = { ...snapshot };
+    for (const [key, max] of [['cfgScale', 10], ['cfgRescale', 1]]) {
+        if (Object.hasOwn(merged, key) && !cfgInRange(merged[key], max) && cfgInRange(saved[key], max)) {
+            merged[key] = parseCfgNumber(saved[key]);
+        }
+    }
+    return merged;
+}
+
 export function normalizeNovelAISettings(value) {
     const defaults = defaultNovelAISettings();
     const input = value && typeof value === 'object' ? value : {};
@@ -56,7 +90,8 @@ export function normalizeNovelAISettings(value) {
     if (!Object.hasOwn(NOVELAI_MODELS, settings.model)) settings.model = defaults.model;
     if (!Object.hasOwn(DIMENSIONS, settings.resolution)) settings.resolution = defaults.resolution;
     if (!Object.hasOwn(NOVELAI_SAMPLERS, settings.sampler)) settings.sampler = defaults.sampler;
-    for (const key of ['steps', 'cfgScale', 'cfgRescale', 'seed', 'skipCfgAboveSigma']) settings[key] = Number(settings[key]);
+    for (const key of ['steps', 'seed', 'skipCfgAboveSigma']) settings[key] = Number(settings[key]);
+    for (const key of ['cfgScale', 'cfgRescale']) settings[key] = parseCfgNumber(settings[key]);
     settings.negativePrompt = String(settings.negativePrompt || '').trim();
     settings.styles = Array.isArray(settings.styles) ? settings.styles.map((style, index) => ({
         id: String(style?.id || `spi-style-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`),
@@ -99,8 +134,7 @@ function validate(settings, aspectRatio) {
     if (!Object.hasOwn(NOVELAI_MODELS, settings.model)) errors.push('Выбери модель NovelAI.');
     if (!DIMENSIONS[settings.resolution]?.[aspectRatio]) errors.push('Выбери поддерживаемый размер и формат.');
     if (!Number.isInteger(settings.steps) || settings.steps < 1 || settings.steps > 50) errors.push('Steps: целое число от 1 до 50.');
-    if (!Number.isFinite(settings.cfgScale) || settings.cfgScale < 0 || settings.cfgScale > 10) errors.push('CFG scale: от 0 до 10.');
-    if (!Number.isFinite(settings.cfgRescale) || settings.cfgRescale < 0 || settings.cfgRescale > 1) errors.push('CFG rescale: от 0 до 1.');
+    errors.push(...cfgValidationErrors(settings));
     if (!Number.isInteger(settings.seed) || settings.seed < -1 || settings.seed > 4294967295) errors.push('Seed: -1 или число до 4294967295.');
     if (!Object.hasOwn(NOVELAI_SAMPLERS, settings.sampler)) errors.push('Выбери sampler.');
     if (!settings.model.startsWith('nai-diffusion-5-') && !['native', 'karras', 'exponential', 'polyexponential'].includes(settings.noiseSchedule)) errors.push('Выбери noise schedule.');
