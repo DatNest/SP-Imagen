@@ -45,7 +45,7 @@ export const NESS_UI_CSS = String.raw`
 #sp-imagen-review-panel input[type=checkbox]:checked{border-color:var(--ness-accent)!important;background:var(--ness-accent)!important;}
 #sp-imagen-review-panel input[type=checkbox]:checked::after{display:block!important;}
 #sp-imagen-review-panel input[type=color]{width:42px!important;height:36px;min-height:36px;padding:3px!important;cursor:pointer;}
-#sp-imagen-review-panel .ness-field{display:flex!important;flex-direction:column;gap:5px;min-width:0;margin:0 0 10px!important;padding:0!important;}
+#sp-imagen-review-panel .ness-field:not([hidden]){display:flex!important;flex-direction:column;gap:5px;min-width:0;margin:0 0 10px!important;padding:0!important;}
 #sp-imagen-review-panel .ness-label{font-size:12px;font-weight:550;line-height:1.5;color:var(--ness-muted);overflow-wrap:anywhere;}
 #sp-imagen-review-panel .ness-note{font-size:12px;line-height:1.55;color:var(--ness-muted);margin:6px 0 10px!important;overflow-wrap:anywhere;}
 #sp-imagen-review-panel .ness-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0;}

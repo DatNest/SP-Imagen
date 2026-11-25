@@ -216,7 +216,7 @@ test('Touch-screen library uses one-panel layout even when phone requests deskto
  assert.match(fallback,/\[data-view=editor\] \.ness-library-editorpane\{\s*display:flex;/);
  const ui=read('library-runtime.js');
  assert.match(ui,/panel\.setAttribute\('data-view','list'\)/);
- assert.match(ui,/function showEditor\(\)\{[^\n]*panel\.setAttribute\('data-view','editor'\)/);
+ assert.match(ui,/function showEditor\(drawers\)\{[^\n]*panel\.setAttribute\('data-view','editor'\)/);
 });
 
 test('Guide follows the current two-screen library, and the footer steps do not force invalid drafts to close',()=>{
@@ -288,7 +288,7 @@ test('Mobile library uses one compact action bar, collapsible search and shared 
  const lib=read('library-runtime.js'),css=read('style.css'),index=read('index.js'),guide=makeGuideSteps(true);
  assert.match(lib,/function saveState\(state\)/);
  assert.match(lib,/view\.saveState\(saving\?'busy':dirty\|\|saveFailed\?'dirty':'saved'\)/);
- assert.match(lib,/if\(target===filters\)\{if\(actions.parentNode!==filters\)filters.appendChild\(actions\)/);
+ assert.match(lib,/if\(actions.parentNode!==target\)target.appendChild\(actions\)/);
  assert.match(lib,/deleteLibraryRecords\(draft,chosen\)/);
  assert.match(lib,/chip\.dataset\.assignment=all\?'all':partial\?'partial':'none'/);
  assert.match(lib,/assignSelectedTag\(id,!all\)/);
@@ -296,10 +296,58 @@ test('Mobile library uses one compact action bar, collapsible search and shared 
  assert.match(lib,/dialog\.finish\(\);if\(!editor\)view\.resetEditor\(\);changed\(true\);renderList\(\)/);
  assert.doesNotMatch(lib,/button\('Удалить персонажа',promptTab/);
  assert.match(css,/\.ness-library-layout\{display:none!important\}/);
- assert.match(css,/\.ness-footer-library\{order:1;display:flex/);
+ assert.match(css,/\.ness-footer-library\{display:flex;flex:0 0 auto/);
  assert.match(css,/\.ness-library-workspace\{order:2/);
  assert.match(css,/overscroll-behavior:auto!important/);
  assert.doesNotMatch(index,/formField\(grid, 'Генерировать напрямую через NovelAI'/);
  assert.match(index,/function directGenerationEnabled\(\) \{\s*return Boolean\(settings\(\)\.novelai\.apiKey\)/);
  assert.ok(guide.some(s=>s.text.includes('SillyImages не используется')));
+});
+
+test('Mobile drawers reuse controls and the guide reveals their targets',()=>{
+ const lib=read('library-runtime.js'),board=read('appearance-board.js'),guide=read('onboarding.js');
+ assert.match(lib,/searchField\.hidden=Boolean\(mobile\?\.matches&&!searchOpen\)/);
+ assert.match(lib,/navDrawer\.append\(tabs\.bar,controls\);toolsDrawer\.prepend\(toolBar\)/);
+ assert.match(lib,/navDrawer\.hidden=drawer!=='nav';toolsDrawer\.hidden=drawer!=='tools'/);
+ assert.match(lib,/else\{form\.insertBefore\(tabs\.bar,tabs\.viewport\)/);
+ assert.match(board,/search\.dataset\.open=String\(tagSearchOpen\)/);
+ assert.match(guide,/new CustomEvent\('spi-guide-reveal'/);
+ assert.match(lib,/if\(dirty&&!document\.querySelector\('\[data-spi-tour\]'\)\)return await publishDraft\(false\)/);
+ assert.match(lib,/if\(dirty&&!\(await publishDraft\(true\)\)\)return;\s*finish\(\)/);
+ assert.match(lib,/if\(editor\.visibility\.flushPending\?\.\(\)===false\)throw Error/);
+});
+
+test('Exit handlers preserve the draft on a failed or invalid save, and skip writes in the guide',async()=>{
+ const lib=read('library-runtime.js');
+ const backSource=lib.slice(lib.indexOf('async function leaveEditor(){'),lib.indexOf('async function publishDraft('));
+ const closeSource=lib.slice(lib.indexOf('async function closeLibrary(){'),lib.indexOf('close.onclick=()=>void closeLibrary()'));
+ function harness({valid=true,success=true,dirty=true,guide=false}={}){
+  const events=[];
+  const create=new Function('events','valid','success','dirty','guide',
+   'let busy=false,done=false,discardAsked=false,editor={visibility:{closeBoard(){}}};'+
+   'const document={querySelector:()=>guide?{}:null},view={revealActions(){events.push("error")},resetEditor(){events.push("list")}},status=()=>{};'+
+   backSource+'\n'+closeSource+
+   '\nfunction tryFlush(){events.push("flush");return valid;}'+
+   'async function publishDraft(keep){events.push(keep?"save-close":"save-back");if(success&&!keep)events.push("list");return success;}'+
+   'function finish(){events.push("closed");}'+
+   'function closeTagPicker(){}function closeNessTooltip(){}function renderList(){}'+
+   'return {leaveEditor,closeLibrary};');
+  return {events,...create(events,valid,success,dirty,guide)};
+ }
+ let h=harness();await h.leaveEditor();assert.deepEqual(h.events,['flush','save-back','list']);
+ h=harness();await h.closeLibrary();assert.deepEqual(h.events,['flush','save-close','closed']);
+ h=harness({success:false});await h.leaveEditor();assert.deepEqual(h.events,['flush','save-back']);
+ h=harness({success:false});await h.closeLibrary();assert.deepEqual(h.events,['flush','save-close']);
+ h=harness({valid:false});await h.leaveEditor();assert.deepEqual(h.events,['flush','error']);
+ h=harness({valid:false});await h.closeLibrary();assert.deepEqual(h.events,['flush','error']);
+ h=harness({dirty:false});await h.closeLibrary();assert.deepEqual(h.events,['flush','closed']);
+ h=harness({guide:true});await h.leaveEditor();assert.deepEqual(h.events,['flush','list']);
+});
+
+test('Mobile disclosures fold after click dispatch rather than moving the tapped target on pointerdown',()=>{
+ const lib=read('library-runtime.js'),board=read('appearance-board.js');
+ assert.match(lib,/panel\.addEventListener\('click',outside\)/);
+ assert.match(lib,/panel\.removeEventListener\('click',outside\)/);
+ assert.match(lib,/panel\.addEventListener\('click',e=>\{if\(!searchToggle\.contains/);
+ assert.match(board,/frame\.addEventListener\('click',e=>\{\s*if\(!mobile\(\)\|\|!tagSearchOpen\)return/);
 });
