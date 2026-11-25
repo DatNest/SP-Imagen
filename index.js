@@ -21,7 +21,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.67';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.68';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -942,7 +942,7 @@ function openNovelAISettings({ back = false } = {}) {
 function openStyleLibrary({ back = false } = {}) {
     const rootSettings = settings();
     let novelai = rootSettings.novelai;
-    const { dialog, close, closed } = shell('SP Imagen · Стили', 'spi-style-window', { back });
+    const { dialog, closed } = shell('SP Imagen · Стили', 'spi-style-window', { back });
     const layout = document.createElement('div'); layout.className = 'spi-style-layout';
     const library = document.createElement('section'); library.className = 'spi-style-library';
     const editor = document.createElement('section'); editor.className = 'spi-style-editor';
@@ -962,87 +962,103 @@ function openStyleLibrary({ back = false } = {}) {
         saveSettings();
     };
     const current = () => novelai.styles.find(style => style.id === selectedId);
+    let editorStyleId;
     const syncEditor = () => {
         const style = current();
         nameField.parentElement.hidden = !style; valueField.parentElement.hidden = !style;
-        name.value = style?.name || ''; value.value = style?.value || '';
+        if (editorStyleId !== (style?.id || '')) {
+            editorStyleId = style?.id || '';
+            name.value = style?.name || ''; value.value = style?.value || '';
+        }
         editorStatus.textContent = style ? (novelai.activeStyleId === style.id ? 'Активный стиль · автосохранение' : 'Выбран для редактирования · автосохранение') : 'Выбери или создай стиль.';
     };
-    let noneStyleButton = null;
+    const header = document.createElement('div'); header.className = 'spi-style-header';
+    const heading = document.createElement('h3'); heading.textContent = 'Библиотека стилей'; header.append(heading);
+    const controls = document.createElement('div'); controls.className = 'spi-style-controls'; header.append(controls);
+    const rows = document.createElement('div'); rows.className = 'spi-style-rows';
+    library.append(header, rows);
+    const iconButton = (symbol, label, parent, action) => {
+        const node = button(symbol, parent, action); node.classList.add('spi-style-icon');
+        node.title = label; node.setAttribute('aria-label', label); return node;
+    };
+    const newStyle = iconButton('+', 'Новый стиль', controls, () => {
+        const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '' };
+        novelai.styles.push(style); selectedId = style.id; persist(); renderList(); syncEditor(); name.focus({preventScroll:true}); name.select();
+        revealSelected();
+    });
+    newStyle.classList.add('spi-style-new');
+    const noneStyleButton = iconButton('⊘', 'Без стиля', controls, () => {
+        if (!novelai.activeStyleId) return;
+        novelai.activeStyleId = ''; persist(); syncListState(); syncEditor();
+    });
+    noneStyleButton.dataset.styleNone = '';
     const syncListState = () => {
-        noneStyleButton?.classList.toggle('spi-active', !novelai.activeStyleId);
-        for (const row of library.querySelectorAll('.spi-style-row')) {
+        noneStyleButton.setAttribute('aria-pressed', String(!novelai.activeStyleId));
+        for (const row of rows.querySelectorAll('.spi-style-row')) {
             const id = row.dataset.styleId;
             const active = novelai.activeStyleId === id;
             row.classList.toggle('spi-selected', selectedId === id);
             const control = row.querySelector('[data-style-activate]');
             if (control) {
-                control.textContent = active ? '●' : '○';
+                const symbol = active ? '●' : '○';
+                if (control.textContent !== symbol) control.textContent = symbol;
                 control.title = active ? 'Выключить стиль' : 'Сделать активным';
+                control.setAttribute('aria-label', control.title);
+                control.setAttribute('aria-pressed', String(active));
             }
         }
     };
+    const revealSelected = () => {
+        const row = [...rows.children].find(node => node.dataset.styleId === selectedId);
+        if (!row) return;
+        const rect = row.getBoundingClientRect(), bounds = rows.getBoundingClientRect();
+        if (rect.bottom > bounds.bottom) rows.scrollTop += rect.bottom - bounds.bottom;
+        else if (rect.top < bounds.top) rows.scrollTop -= bounds.top - rect.top;
+    };
     const renderList = () => {
-        const scrollTop = library.scrollTop, scrollLeft = library.scrollLeft;
-        const previous=new Map([...library.querySelectorAll('.spi-style-row')].map(row=>[row.dataset.styleId,row]));
-        if(!noneStyleButton){
-        const heading = document.createElement('h3'); heading.textContent = 'Библиотека стилей'; library.append(heading);
-        button('+ Новый стиль', library, () => {
-            const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '' };
-            novelai.styles.push(style); selectedId = style.id; persist(); renderList(); syncEditor(); name.focus({preventScroll:true}); name.select();
-        }, true);
-        button('Импорт из Inline Images', library, () => {
-            const source = context().extensionSettings?.inline_image_gen;
-            const sourceStyles = Array.isArray(source?.styles) ? source.styles : [];
-            if (!sourceStyles.length) { editorStatus.textContent = 'В Inline Images не найдены стили.'; return; }
-            const signatures = new Set(novelai.styles.map(style => `${style.name}\n${style.value}`));
-            let added = 0, importedActive = '';
-            for (const item of sourceStyles) {
-                const candidate = { id: `spi-style-${Date.now()}-${added}-${Math.random().toString(36).slice(2, 8)}`, name: String(item?.name || '').trim() || `Стиль ${novelai.styles.length + 1}`, value: String(item?.value || '').trim() };
-                const signature = `${candidate.name}\n${candidate.value}`;
-                if (signatures.has(signature)) continue;
-                signatures.add(signature); novelai.styles.push(candidate); added++;
-                if (item?.id && item.id === source.activeStyleId) importedActive = candidate.id;
-            }
-            if (importedActive) novelai.activeStyleId = importedActive;
-            if (added) { selectedId = importedActive || novelai.styles.at(-1).id; persist(); renderList(); syncEditor(); }
-            editorStatus.textContent = added ? `Импортировано стилей: ${added}.` : 'Все стили Inline Images уже есть в SP Imagen.';
-        });
-        noneStyleButton = button('◉ Без стиля', library, () => { novelai.activeStyleId = ''; persist(); syncListState(); syncEditor(); });
-        }
-        noneStyleButton.classList.toggle('spi-active', !novelai.activeStyleId);
-        let position=4;
+        const scrollTop = rows.scrollTop;
+        const previous = new Map([...rows.children].map(row => [row.dataset.styleId, row]));
+        let position = 0;
         for (const style of novelai.styles) {
-            const retained=previous.get(style.id);if(retained){previous.delete(style.id);if(library.children[position]!==retained)library.insertBefore(retained,library.children[position]||null);position++;continue;}
-            const row = document.createElement('div'); row.className = `spi-style-row${selectedId === style.id ? ' spi-selected' : ''}`;
-            row.dataset.styleId = style.id;
-            const activate = button(novelai.activeStyleId === style.id ? '●' : '○', row, event => {
-                event.stopPropagation(); novelai.activeStyleId = novelai.activeStyleId === style.id ? '' : style.id; selectedId = style.id; persist(); syncListState(); syncEditor();
-            });
-            activate.dataset.styleActivate = '';
-            activate.title = novelai.activeStyleId === style.id ? 'Выключить стиль' : 'Сделать активным';
-            const summary = document.createElement('button'); summary.type = 'button'; summary.className = 'spi-style-summary';
-            const strong = document.createElement('strong'); strong.textContent = style.name;
-            const small = document.createElement('small'); small.textContent = style.value || 'Пустой стиль';
-            summary.append(strong, small); summary.onclick = () => { selectedId = style.id; syncListState(); syncEditor(); };
-            const duplicate = button('⧉', row, event => {
-                event.stopPropagation(); const copy = { ...clone(style), id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `${style.name} — копия` };
-                novelai.styles.push(copy); selectedId = copy.id; persist(); renderList(); syncEditor();
-            });
-            duplicate.title = 'Дублировать';
-            const remove = button('🗑', row, event => {
-                event.stopPropagation(); if (!confirm(`Удалить стиль «${style.name}»?`)) return;
-                novelai.styles = novelai.styles.filter(item => item.id !== style.id);
-                if (novelai.activeStyleId === style.id) novelai.activeStyleId = '';
-                if (selectedId === style.id) selectedId = novelai.styles[0]?.id || '';
-                persist(); renderList(); syncEditor();
-            });
-            remove.title = 'Удалить';
-            library.insertBefore(row,library.children[position++]||null);
+            const id = style.id;
+            let row = previous.get(id);
+            if (!row) {
+                row = document.createElement('div'); row.className = 'spi-style-row'; row.dataset.styleId = id;
+                const activate = iconButton('○', 'Сделать активным', row, event => {
+                    event.stopPropagation();
+                    novelai.activeStyleId = novelai.activeStyleId === id ? '' : id; selectedId = id; persist(); syncListState(); syncEditor();
+                });
+                activate.dataset.styleActivate = '';
+                const summary = document.createElement('button'); summary.type = 'button'; summary.className = 'spi-style-summary';
+                summary.append(document.createElement('strong'), document.createElement('small'));
+                summary.onclick = () => { if (selectedId === id) return; selectedId = id; syncListState(); syncEditor(); };
+                row.append(summary);
+                iconButton('⧉', 'Дублировать', row, event => {
+                    event.stopPropagation();
+                    const source = novelai.styles.find(item => item.id === id); if (!source) return;
+                    const copy = { ...clone(source), id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `${source.name} — копия` };
+                    novelai.styles.push(copy); selectedId = copy.id; persist(); renderList(); syncEditor(); revealSelected();
+                });
+                const remove = iconButton('', 'Удалить', row, event => {
+                    event.stopPropagation();
+                    const source = novelai.styles.find(item => item.id === id); if (!source || !confirm(`Удалить стиль «${source.name}»?`)) return;
+                    novelai.styles = novelai.styles.filter(item => item.id !== id);
+                    if (novelai.activeStyleId === id) novelai.activeStyleId = '';
+                    if (selectedId === id) selectedId = novelai.styles[0]?.id || '';
+                    persist(); renderList(); syncEditor();
+                });
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                for (const [key, val] of Object.entries({viewBox:'0 0 24 24',width:'17',height:'17',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) svg.setAttribute(key,val);
+                const path = document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d','M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7'); svg.append(path); remove.append(svg);
+            }
+            const title = row.querySelector('strong'), description = row.querySelector('small');
+            if (title.textContent !== style.name) title.textContent = style.name;
+            if (description.textContent !== (style.value || 'Пустой стиль')) description.textContent = style.value || 'Пустой стиль';
+            if (rows.children[position] !== row) rows.insertBefore(row, rows.children[position] || null);
+            position++; previous.delete(id);
         }
-        for(const row of previous.values())row.remove();syncListState();
-        library.scrollTop = scrollTop;
-        library.scrollLeft = scrollLeft;
+        for (const row of previous.values()) row.remove();
+        syncListState(); rows.scrollTop = scrollTop;
     };
     const saveEditor = () => {
         const style = current(); if (!style) return;
@@ -1053,8 +1069,7 @@ function openStyleLibrary({ back = false } = {}) {
     };
     name.addEventListener('input', saveEditor); value.addEventListener('input', saveEditor);
     renderList(); syncEditor(); layout.append(library, editor);
-    const actions = document.createElement('div'); actions.className = 'spi-dialog-actions'; button('Готово', actions, close, true);
-    dialog.append(layout, actions);
+    dialog.append(layout);
     return closed;
 }
 
