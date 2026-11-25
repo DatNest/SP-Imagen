@@ -938,13 +938,16 @@ async function openLibraryEditor(){
   const recordTagHost=el('div',undefined,identityCard,'ness-editor-meta-tags');
   function renderHeaderTags(){
     const scroll=recordTagHost.scrollLeft;
-    clear(recordTagHost);
-    const ids=draft.organizer.characters[id]?.tagIds||[];
+    const existing=new Map([...recordTagHost.children].filter(node=>node.dataset.tagId).map(node=>[node.dataset.tagId,node]));
+    const ids=draft.organizer.characters[id]?.tagIds||[];let position=0;
     for(const tag of draft.organizer.tags.filter(t=>ids.includes(t.id))){
-      const chip=button(tag.name,recordTagHost,undefined,'quiet ness-editor-meta-tag');chip.style.setProperty('--ness-tag-color',tag.color);
-      chip.title='Изменить теги записи';chip.onclick=()=>openRecordTags(id,chip);
+      let chip=existing.get(tag.id);
+      if(!chip){chip=button(tag.name,undefined,undefined,'quiet ness-editor-meta-tag');chip.dataset.tagId=tag.id;chip.title='Изменить теги записи';chip.onclick=()=>openRecordTags(id,chip);}
+      if(chip.textContent!==tag.name)chip.textContent=tag.name;chip.style.setProperty('--ness-tag-color',tag.color);
+      if(recordTagHost.children[position]!==chip)recordTagHost.insertBefore(chip,recordTagHost.children[position]||null);position++;existing.delete(tag.id);
     }
-    const plus=button('+',recordTagHost,undefined,'quiet ness-editor-meta-add');plus.title='Добавить тег записи';plus.setAttribute('aria-label','Добавить тег записи');plus.onclick=()=>openRecordTags(id,plus);
+    for(const chip of existing.values())chip.remove();
+    if(!recordTagHost.querySelector('.ness-editor-meta-add')){const plus=button('+',recordTagHost,undefined,'quiet ness-editor-meta-add');plus.title='Добавить тег записи';plus.setAttribute('aria-label','Добавить тег записи');plus.onclick=()=>openRecordTags(id,plus);}
     recordTagHost.scrollLeft=scroll;
   }
   renderHeaderTags();

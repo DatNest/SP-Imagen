@@ -1003,7 +1003,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   basic.setAttribute('aria-pressed',String(mode==='base'));
   marks.setAttribute('aria-pressed',String(mode==='skin'));
   nsfw.setAttribute('aria-pressed',String(mode==='nsfw'));
-  const sameBoard=layout==='board'&&boardView?.mode===mode&&boardView.renameMode===(toolMode==='edit');
+  const sameBoard=layout==='board'&&boardView?.mode===mode;
   if(!sameBoard){clear(content);textDraft=null;boardView=null;}
   const headings=availablePresets();let ribbon=activeRibbon();
   if(!ribbon||ribbon.dataset.mode!==mode){ribbon?.remove();ribbon=el('div',undefined,controls,'ness-tagboard-ribbon');ribbon.dataset.mode=mode;
@@ -1034,7 +1034,6 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   el('span','БИБЛИОТЕКА ТЕГОВ',heading,'ness-tagboard-overline');
   el('strong','Все теги · '+items().length,heading);
   el('p',toolHint(),heading,'ness-note');
-  const renameMode=toolMode==='edit';
   const search=el('input',undefined,left,'ness-input ness-tagboard-search');
   search.type='search';search.placeholder='Найти тег...';search.value=filter;
   const searchToggle=button('⌕',header,undefined,'quiet ness-tag-search-toggle');searchToggle.title='Найти тег';searchToggle.setAttribute('aria-label','Найти тег');
@@ -1059,15 +1058,21 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    row.dataset.tagId=tag.id;
    let field=null,chip=null;
    const marked=false,inherited=false;
-   if(renameMode){
+   function syncControl(){
+   if(toolMode==='edit'){
+    if(field)return;
+    chip?.remove();chip=null;
     field=el('input',undefined,row,'ness-input ness-tagboard-rename-input');
     field.value=tag.text;field.setAttribute('aria-label','Изменить '+tag.text);
     field.style.width=Math.max(3,Math.min(30,tag.text.length+1))+'ch';
     field.oninput=()=>{field.style.width=Math.max(3,Math.min(30,field.value.length+1))+'ch';};
-    const commitRename=()=>{if(field.value!==tag.text)renameTag(tag,field.value);if(field.value!==tag.text)field.value=tag.text;};
+    const input=field;
+    const commitRename=()=>{if(input.value!==tag.text)renameTag(tag,input.value);if(input.value!==tag.text)input.value=tag.text;};
     field.onchange=commitRename;field.onblur=commitRename;
     field.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();field.blur?.();}};
    }else{
+    if(chip)return;
+    if(field){const old=field;field=null;old.onblur=null;old.onchange=null;old.remove();}
     chip=button((marked?'✓ ':inherited?'✦ ':'＋ ')+tag.text,row,()=>{
      if(toolMode==='delete'){removeTag(tag,false);return;}
      if(toolMode==='transfer'){showTransfer(tag);return;}
@@ -1083,9 +1088,9 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
     chip.setAttribute('data-inherited',String(inherited));
     chip.title=toolMode==='delete'?'Удалить тег (можно отменить ↶)':toolMode==='move'?'Выбрать для изменения порядка':toolMode==='transfer'?'Перенести в раздел или режим':'Добавить или снять тег в выбранном ракурсе';
     if(toolMode==='move')chip.onpointerdown=e=>gripPointerDown(e,tag,row,chip);
-   }
+   }}
    return {row,sync(next){
-    const previous=tag.text;tag=next;
+    const previous=tag.text;tag=next;syncControl();
     row.hidden=!!filter&&!norm(tag.text).includes(norm(filter));
     if(field&&field.value!==tag.text&&(previous!==tag.text||field!==frame.ownerDocument?.activeElement)){field.value=tag.text;field.style.width=Math.max(3,Math.min(30,tag.text.length+1))+'ch';}
     if(field)field.setAttribute('aria-label','Изменить '+tag.text);
@@ -1186,7 +1191,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   el('p',preset==='always'?'Эти теги появляются во всех ракурсах данного режима.':'Слева — добавить или убрать. Справа — убрать через ×.',right,'ness-tagboard-right-hint');
   const details=el('details',undefined,content,'ness-tagboard-preview');
   el('summary','Предпросмотр строки',details);el('p',preview(),details,'ness-tagboard-preview-text');
-  boardView={mode,renameMode,sync(){
+  boardView={mode,sync(){
    syncCatalogue();syncToolMode();refreshSelection();
    tagFlow.scrollTop=viewportByMode[mode].tags;
    right.querySelector('.ness-tagboard-chosen-list').scrollTop=chosenScrollByPreset.get(mode+':'+preset)||0;

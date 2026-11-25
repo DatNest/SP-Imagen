@@ -815,3 +815,21 @@ test('Adding, deleting and moving tags retain the search, preview, section and u
  assert.ok(root.querySelectorAll('.ness-unified-chip').includes(chip));assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);
  board.undo();assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);assert.ok(root.querySelectorAll('.ness-unified-chip').includes(chip));
 });
+
+test('Rename mode replaces only tag controls, retaining search, groups and preview',()=>{
+ const ui=makeUI(),catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+ catalog.modes.base.sections=[{id:'first',title:'First',before:0}];
+ let state={base,ranges:[],selections:{}},nsfw={...initialNsfw};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,initialSkin:skin,readBaseState:()=>state,writeBaseState:x=>state=x,readNsfwState:()=>nsfw,writeNsfwState:x=>nsfw=x,changed:()=>{},readOnly:()=>false});
+ const root=board.element,search=root.querySelector('.ness-tagboard-search'),preview=root.querySelector('.ness-tagboard-preview'),row=root.querySelector('.ness-unified-tag-row');
+ const edit=root.querySelectorAll('button').find(x=>x.textContent==='✎');
+ assert.ok(edit);edit.onclick();
+ assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);
+ assert.strictEqual(root.querySelector('.ness-tagboard-preview'),preview);
+ assert.strictEqual(root.querySelector('.ness-unified-tag-row'),row);
+ const field=root.querySelector('.ness-tagboard-rename-input');assert.ok(field);
+ field.value='updated freckles';field.onchange();
+ edit.onclick();assert.strictEqual(root.querySelector('.ness-unified-tag-row'),row);
+ assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);
+ assert.ok(root.querySelectorAll('.ness-unified-chip').some(chip=>chip.textContent.includes('updated freckles')));
+});

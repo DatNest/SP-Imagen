@@ -578,15 +578,14 @@ export async function installSpImagenMediaSlots(options) {
     saveStyle.disabled = previewOnly;
 
     function refreshStyles(selected = 'current') {
-      styleSelect.replaceChildren();
-      const addOption = (key, text) => {
-        const option = doc.createElement('option'); option.value = key; option.textContent = text;
-        styleSelect.append(option);
-      };
-      addOption('current', 'Стиль этой картинки');
-      addOption('none', 'Без стиля');
-      addOption('manual', 'Свой текст');
-      for (const style of styles()) addOption(`saved:${style.id}`, style.name);
+      const choices=[['current','Стиль этой картинки'],['none','Без стиля'],['manual','Свой текст'],...styles().map(style=>['saved:'+style.id,style.name])];
+      const existing=new Map([...styleSelect.options].map(option=>[option.value,option]));
+      for(const [position,[id,name]] of choices.entries()){
+        let option=existing.get(id);if(!option){option=doc.createElement('option');option.value=id;}
+        if(option.textContent!==name)option.textContent=name;
+        if(styleSelect.children[position]!==option)styleSelect.insertBefore(option,styleSelect.children[position]||null);existing.delete(id);
+      }
+      for(const option of existing.values())option.remove();
       styleSelect.value = selected;
       if (styleSelect.selectedIndex < 0) styleSelect.value = 'manual';
     }
@@ -1184,7 +1183,7 @@ export async function installSpImagenMediaSlots(options) {
         slots[kind]={versions:[],selected:0,collapsed:true};
       slots[kind].label=String(item?.config?.profileName||slots[kind].label||LABEL[kind]).slice(0,100);
       addVersion(slots[kind], storedItem);
-      paint();
+      paintPost(index);
       // A chat-save timeout is NOT proof of failure: the host's save promise
       // might still finish. Keep the image attached rather than rolling back
       // a potentially successful save or silently losing the generated file.
@@ -1197,7 +1196,7 @@ export async function installSpImagenMediaSlots(options) {
         );
       } catch (error) {
         if (error?.code === 'SP_IMAGEN_CHAT_SAVE_TIMEOUT') {
-          paint();
+          paintPost(index);
           return { ...storedItem, savePending: true };
         }
         throw error;
@@ -1205,7 +1204,7 @@ export async function installSpImagenMediaSlots(options) {
       if (context().chat !== originalChat || context().chatId !== originalId || originalChat[index] !== message) {
         throw new Error('Чат изменился во время сохранения галереи.');
       }
-      paint();
+      paintPost(index);
       return storedItem;
     } catch (error) {
       // Confirmed save failures restore the previous state. Timeouts are
@@ -1275,14 +1274,14 @@ export async function installSpImagenMediaSlots(options) {
         !(item?.kind === kind && item?.src === selectedImage.src));
       slot.versions.splice(selected, 1);
       slot.selected = Math.min(selected, Math.max(0, slot.versions.length - 1));
-      paint();
+      paintPost(index);
       try {
         await current.saveChat();
       } catch (error) {
         slot.versions = before;
         slot.selected = oldSelected;
         if (legacyBefore) message.extra.sp_imagen_embeds = legacyBefore;
-        paint();
+        paintPost(index);
         throw error;
       }
       // Never delete an owned file still used by another version or RP message.
@@ -1305,7 +1304,7 @@ export async function installSpImagenMediaSlots(options) {
       }
     } finally {
       busy.delete(lock);
-      paint();
+      paintPost(index);
     }
   }
 
@@ -1351,7 +1350,7 @@ export async function installSpImagenMediaSlots(options) {
     const lock = `${current.chatId}|${index}|${kind}`;
     if (busy.has(lock)) throw new Error('Эта картинка уже генерируется.');
     busy.add(lock);
-    paint();
+    paintPost(index);
     try {
       // Repeat uses the NEW active style; an editor submission uses its explicitly
       // chosen style. Both reuse model/sampler settings saved with the image.
@@ -1375,7 +1374,7 @@ export async function installSpImagenMediaSlots(options) {
       }
     } finally {
       busy.delete(lock);
-      paint();
+      paintPost(index);
     }
   }
 

@@ -800,15 +800,16 @@ function openTextApiSettings({ back = false } = {}) {
     };
     for(const control of [mode,reasoningMode,jailbreak])control.addEventListener('change',refreshMode);
     const fillProfiles = (profiles, selected) => {
-        profile.replaceChildren();
-        const option = document.createElement('option'); option.value = ''; option.textContent = 'Выбери профиль'; profile.append(option);
-        for (const item of profiles) {
-            const child = document.createElement('option'); child.value = item.id; child.textContent = item.name; profile.append(child);
-        }
+        const choices=[['','Выбери профиль'],...profiles.map(item=>[String(item.id),item.name])];
         // The saved choice is preserved if discovery fails or the profile was renamed.
-        if (selected && !profiles.some(item => item.id === selected)) {
-            const saved = document.createElement('option'); saved.value = selected; saved.textContent = 'Сохранённый профиль (' + selected + ')'; profile.append(saved);
+        if(selected&&!profiles.some(item=>item.id===selected))choices.push([String(selected),'Сохранённый профиль ('+selected+')']);
+        const existing=new Map([...profile.options].map(option=>[option.value,option]));
+        for(const [position,[id,name]] of choices.entries()){
+            let option=existing.get(id);if(!option){option=document.createElement('option');option.value=id;}
+            if(option.textContent!==name)option.textContent=name;
+            if(profile.children[position]!==option)profile.insertBefore(option,profile.children[position]||null);existing.delete(id);
         }
+        for(const option of existing.values())option.remove();
         profile.value = selected || '';
     };
     let discoverRun = 0;
