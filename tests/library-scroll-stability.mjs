@@ -126,7 +126,7 @@ test('Desktop and mobile use one view, avatar data and the original editor draft
  assert.match(last,/\[data-view=list\] \.ness-library-editorpane,[\s\S]*?\[data-view=editor\] \.ness-library-listpane\{display:none\}/);
  assert.match(last,/\[data-view=editor\] \.ness-library-editorpane\{display:flex\}/);
  assert.match(lib,/if\(entry\.libraryIconData\)\{const img=el\('img',undefined,portrait\);img\.src=entry\.libraryIconData/);
- assert.match(lib,/function showEditor\(\)\{if\(panel\.getAttribute\('data-view'\)!=='editor'\)listScroll=list\.scrollTop/);
+ assert.match(lib,/function showEditor\(drawers\)\{if\(panel\.getAttribute\('data-view'\)!=='editor'\)listScroll=list\.scrollTop/);
  assert.match(lib,/function resetEditor\(\)\{[^}]*list\.scrollTop=listScroll/);
  assert.match(lib,/const back=button\('←',heading,\(\)=>void leaveEditor\(\)/);
  assert.match(lib,/async function leaveEditor\(\)\{[\s\S]*?view\.resetEditor\(\);renderList\(\);/);

@@ -706,16 +706,20 @@ async function openLibraryEditor(){
    entry.appearanceCatalog=catalog;
    if(ranges.length)entry.appearanceRanges=ranges;else delete entry.appearanceRanges;
    if(Object.keys(selections).length)entry.appearanceSelections=selections;else delete entry.appearanceSelections;
-   editor.clearAppearanceEdited();
   }
   aliases.commit();const names=aliases.values;
   if(JSON.stringify(names)!==JSON.stringify(entry.aliases||[]))entry.aliases=[...new Set(names)];
   if(!entry.name.trim()||!entry.base.trim())throw Error('У персонажа должны быть имя и постоянная внешность.');
-  const old=draft.organizer.characters[id],retained=[...tagIds].filter(t=>draft.organizer.tags.some(tag=>tag.id===t)),meta=retained.length?{tagIds:retained}:undefined;
+  const old=draft.organizer.characters[id],retained=[...tagIds].filter(t=>draft.organizer.tags.some(tag=>tag.id===t));
+  let meta=old;
+  if(JSON.stringify(old?.tagIds||[])!==JSON.stringify(retained)){
+   meta={...old};if(retained.length)meta.tagIds=retained;else delete meta.tagIds;
+   if(!Object.keys(meta).length)meta=undefined;
+  }
   if(meta)draft.organizer.characters[id]=meta;else delete draft.organizer.characters[id];
   if(kind.value!==group){delete draft[group][id];draft[kind.value][id]=entry;editor.group=kind.value;}else draft[group][id]=entry;
   if(JSON.stringify(entry)!==JSON.stringify(editor.original)||JSON.stringify(old)!==JSON.stringify(meta)||kind.value!==group)changed(entry.name!==editor.original.name||JSON.stringify(entry.aliases)!==JSON.stringify(editor.original.aliases)||kind.value!==group);
-  editor.original=cloneLibrary(entry);
+  editor.original=cloneLibrary(entry);editor.clearAppearanceEdited();
  }
  function tryFlush(){try{flushEditor();return true;}catch(e){status(e.message);return false;}}
  let rulesDialog=null,deleteDialog=null;
@@ -1176,7 +1180,8 @@ async function openLibraryEditor(){
  let onChatSwitch=()=>{};
  const previousFocus=document.activeElement,stopViewport=mountDialog(overlay,()=>onChatSwitch());virtualList.refresh();if(!window.matchMedia?.('(max-width:767px), (pointer:coarse)')?.matches)search.focus();
  async function leaveEditor(){
-  if(busy||done||!tryFlush())return false;
+  if(busy||done)return false;
+  if(!tryFlush()){view.revealActions();return false;}
   if(dirty&&!document.querySelector('[data-spi-tour]'))return await publishDraft(false);
   closeTagPicker();closeNessTooltip();editor?.visibility?.closeBoard?.();editor=null;view.resetEditor();renderList();return true;
  }
@@ -1196,15 +1201,16 @@ async function openLibraryEditor(){
  return await new Promise(resolve=>{
   const finish=()=>{if(done)return;done=true;editor?.visibility?.closeBoard?.();guideOpenFirstRecord=()=>false;rulesDialog?.finish();deleteDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();view.disposeView();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
   onChatSwitch=()=>finish(); // Discard stale modal state when the chat changes.
-  close.onclick=async()=>{if(busy||done)return;
+  async function closeLibrary(){if(busy||done)return;
    if(document.querySelector('[data-spi-tour]')){if(dirty&&!discardAsked){discardAsked=true;status('Сохрани изменения или нажми «Закрыть» ещё раз, чтобы отменить их.');return;}finish();return;}
    if(!tryFlush()){view.revealActions();return;}
    if(dirty&&!(await publishDraft(true)))return;
    finish();
-  };
+  }
+  close.onclick=()=>void closeLibrary();
   panel.querySelector('.ness-close-dialog').onclick=()=>close.click();
   const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'&&!rulesDialog&&!panel.querySelector('[data-ness-child-dialog]')){if(e.target===search&&view.searchIsOpen()){e.preventDefault();e.stopPropagation();view.closeSearch();return;}if(e.target?.classList?.contains('ness-tagboard-search'))return;e.preventDefault();e.stopPropagation();if(panel.querySelector('.ness-record-tag-popover'))closeTagPicker();else close.onclick();}};document.addEventListener('keydown',onKey,true);
-  save.onclick=()=>publishDraft(Boolean(editor));
+  save.onclick=()=>publishDraft(view.isMobile()&&Boolean(editor));
  });
 }
 

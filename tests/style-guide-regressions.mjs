@@ -216,7 +216,7 @@ test('Touch-screen library uses one-panel layout even when phone requests deskto
  assert.match(fallback,/\[data-view=editor\] \.ness-library-editorpane\{\s*display:flex;/);
  const ui=read('library-runtime.js');
  assert.match(ui,/panel\.setAttribute\('data-view','list'\)/);
- assert.match(ui,/function showEditor\(\)\{[^\n]*panel\.setAttribute\('data-view','editor'\)/);
+ assert.match(ui,/function showEditor\(drawers\)\{[^\n]*panel\.setAttribute\('data-view','editor'\)/);
 });
 
 test('Guide follows the current two-screen library, and the footer steps do not force invalid drafts to close',()=>{
@@ -315,4 +315,31 @@ test('Mobile drawers reuse controls and the guide reveals their targets',()=>{
  assert.match(lib,/if\(dirty&&!document\.querySelector\('\[data-spi-tour\]'\)\)return await publishDraft\(false\)/);
  assert.match(lib,/if\(dirty&&!\(await publishDraft\(true\)\)\)return;\s*finish\(\)/);
  assert.match(lib,/if\(editor\.visibility\.flushPending\?\.\(\)===false\)throw Error/);
+});
+
+test('Exit handlers preserve the draft on a failed or invalid save, and skip writes in the guide',async()=>{
+ const lib=read('library-runtime.js');
+ const backSource=lib.slice(lib.indexOf('async function leaveEditor(){'),lib.indexOf('async function publishDraft('));
+ const closeSource=lib.slice(lib.indexOf('async function closeLibrary(){'),lib.indexOf('close.onclick=()=>void closeLibrary()'));
+ function harness({valid=true,success=true,dirty=true,guide=false}={}){
+  const events=[];
+  const create=new Function('events','valid','success','dirty','guide',
+   'let busy=false,done=false,discardAsked=false,editor={visibility:{closeBoard(){}}};'+
+   'const document={querySelector:()=>guide?{}:null},view={revealActions(){events.push("error")},resetEditor(){events.push("list")}},status=()=>{};'+
+   backSource+'\n'+closeSource+
+   '\nfunction tryFlush(){events.push("flush");return valid;}'+
+   'async function publishDraft(keep){events.push(keep?"save-close":"save-back");if(success&&!keep)events.push("list");return success;}'+
+   'function finish(){events.push("closed");}'+
+   'function closeTagPicker(){}function closeNessTooltip(){}function renderList(){}'+
+   'return {leaveEditor,closeLibrary};');
+  return {events,...create(events,valid,success,dirty,guide)};
+ }
+ let h=harness();await h.leaveEditor();assert.deepEqual(h.events,['flush','save-back','list']);
+ h=harness();await h.closeLibrary();assert.deepEqual(h.events,['flush','save-close','closed']);
+ h=harness({success:false});await h.leaveEditor();assert.deepEqual(h.events,['flush','save-back']);
+ h=harness({success:false});await h.closeLibrary();assert.deepEqual(h.events,['flush','save-close']);
+ h=harness({valid:false});await h.leaveEditor();assert.deepEqual(h.events,['flush','error']);
+ h=harness({valid:false});await h.closeLibrary();assert.deepEqual(h.events,['flush','error']);
+ h=harness({dirty:false});await h.closeLibrary();assert.deepEqual(h.events,['flush','closed']);
+ h=harness({guide:true});await h.leaveEditor();assert.deepEqual(h.events,['flush','list']);
 });
