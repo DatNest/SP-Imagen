@@ -800,3 +800,18 @@ test('Section disclosure and selection of move tool retain the catalogue and cam
  section.onclick();root.querySelectorAll('button').find(x=>x.textContent==='✥').onclick();chip.onclick();
  assert.strictEqual(root.querySelector('.ness-unified-tagflow'),flow);assert.strictEqual(root.querySelector('.ness-tagboard-ribbon'),ribbon);assert.strictEqual(root.querySelector('.ness-unified-chip'),chip);
 });
+
+test('Adding, deleting and moving tags retain the search, preview, section and unrelated rows',()=>{
+ const ui=makeUI(),catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+ catalog.modes.base.sections=[{id:'first',title:'First',before:0},{id:'second',title:'Second',before:2}];
+ let state={base,ranges:[],selections:{}},nsfw={...initialNsfw};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,initialSkin:skin,readBaseState:()=>state,writeBaseState:x=>state=x,readNsfwState:()=>nsfw,writeNsfwState:x=>nsfw=x,changed:()=>{},readOnly:()=>false});
+ const root=board.element,search=root.querySelector('.ness-tagboard-search'),preview=root.querySelector('.ness-tagboard-preview'),section=root.querySelector('.ness-unified-section'),chip=root.querySelector('.ness-unified-chip');
+ const plus=root.querySelector('.ness-tagboard-add-plus');plus.onclick();
+ const field=root.querySelector('.ness-tagboard-inline-add-input');field.value='new feature';field.onkeydown({key:'Enter',preventDefault(){},stopPropagation(){}});
+ assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);assert.strictEqual(root.querySelector('.ness-tagboard-preview'),preview);assert.strictEqual(root.querySelector('.ness-unified-section'),section);assert.strictEqual(root.querySelector('.ness-unified-chip'),chip);
+ const tool=root.querySelectorAll('button').find(x=>x.textContent==='✥');tool.onclick();chip.onclick();
+ const arrow=root.querySelectorAll('button').find(x=>x.textContent==='→');arrow.onclick();
+ assert.ok(root.querySelectorAll('.ness-unified-chip').includes(chip));assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);
+ board.undo();assert.strictEqual(root.querySelector('.ness-tagboard-search'),search);assert.ok(root.querySelectorAll('.ness-unified-chip').includes(chip));
+});
