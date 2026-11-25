@@ -79,9 +79,17 @@ export function readPostDraft(ctx, index) {
     }
     return draft || null;
 }
-function refreshGallery() {
-    for (const host of [globalThis, globalThis.parent, globalThis.top]) {
-        try { host?.__nessImageSlotsV4?.refresh?.(); } catch { /* cross-frame or not installed */ }
+// The standalone gallery subscribes to the same module as the runtime.
+// Notify only the changed post; no legacy global, cross-frame lookup or full chat repaint.
+const draftListeners = new Set();
+export function subscribePostDraftChanges(listener) {
+    draftListeners.add(listener);
+    return () => draftListeners.delete(listener);
+}
+function notifyDraftChanged(ctx, index, message) {
+    for (const listener of [...draftListeners]) {
+        try { listener({chat:ctx.chat,chatId:ctx.chatId,index,message}); }
+        catch (error) { console.warn('[SP Imagen] Не удалось обновить кнопки черновика',error); }
     }
 }
 const saving = new WeakMap();
@@ -109,7 +117,7 @@ export function savePostDraft(ctx, index, changes, { replace = false } = {}) {
     message.extra[DRAFT_FIELD] = draft;
     keepLocal(ctx.chatId,index,message,draft);
     saveChatSoon(ctx);
-    refreshGallery();
+    notifyDraftChanged(ctx,index,message);
     return draft;
 }
 export function discardPostDraft(ctx, index) {
@@ -118,7 +126,7 @@ export function discardPostDraft(ctx, index) {
     if (message.extra) delete message.extra[DRAFT_FIELD];
     keepLocal(ctx.chatId,index,message,null);
     saveChatSoon(ctx);
-    refreshGallery();
+    notifyDraftChanged(ctx,index,message);
 }
 export function clearDraftsForOtherPost(_ctx,_index) {
     // No-op for compatibility: switching RP posts must never delete a saved draft.
