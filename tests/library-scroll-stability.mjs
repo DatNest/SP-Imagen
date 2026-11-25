@@ -21,7 +21,8 @@ function virtualListHarness(columns=()=>1,{clampDuringClear=false,source=lib}={}
  };
  const createElement=()=>({
   style:{},children:[],
-  appendChild(node){this.children.push(node);return node;},
+  appendChild(node){return this.insertBefore(node,null);},
+  insertBefore(node,before){node.remove?.();const at=this.children.indexOf(before);this.children.splice(at<0?this.children.length:at,0,node);node.parent=this;node.remove=()=>{if(node.parent){const list=node.parent.children,index=list.indexOf(node);if(index>=0)list.splice(index,1);node.parent=null;if(clampDuringClear&&list.length===0)container.scrollTop=0;}};return node;},
   setAttribute(){}
  });
  const createUiKit=()=>({
@@ -82,7 +83,7 @@ test('Virtual row geometry agrees with CSS on desktop and phone, with no margin-
 });
 
 test('Camera ribbon restores its position after buttons and selection count badges exist',()=>{
- const position=board.indexOf('const headings=availablePresets(),ribbon=el(');
+ const position=board.indexOf('const headings=availablePresets();let ribbon=activeRibbon()');
  const render=board.slice(position,board.indexOf("if(layout==='text')",position));
  assert.ok(render.includes('for(const [id,label] of Object.entries(headings))'));
  const buttons=render.indexOf('for(const [id,label] of Object.entries(headings))');
@@ -179,4 +180,14 @@ test('Responsive identity reserves a separate pencil track and type selector wid
  assert.match(responsive,/@container spi-library \(max-width:760px\)\{[\s\S]*?\.ness-tagboard-columns\{display:flex;flex-direction:column/);
  assert.match(responsive,/@media\(pointer:coarse\)\{[\s\S]*?\.ness-editor-back\{[^}]*min-height:44px!important/);
  assert.match(responsive,/@media\(max-height:500px\)\{[\s\S]*?\.ness-tagboard-controls\{position:relative;top:auto/);
+});
+
+test('Both virtual lists retain overlapping DOM rows across scroll and data refresh',()=>{
+ for(const source of [lib,readFileSync(new URL('../runtime.js',import.meta.url),'utf8')]){
+  const ui=virtualListHarness(()=>1,{source}),items=Array.from({length:100},(_,i)=>i);
+  ui.list.setItems(items);const retained=ui.rows.find(x=>x.id===4);
+  ui.list.setItems(items.slice());assert.strictEqual(ui.rows.find(x=>x.id===4),retained);
+  ui.scrollTo(68*4);assert.strictEqual(ui.rows.find(x=>x.id===4),retained);
+  ui.list.dispose();
+ }
 });

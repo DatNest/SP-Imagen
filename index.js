@@ -21,7 +21,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.66';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.67';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -1062,6 +1062,7 @@ function openHub(page = 'home') {
     }
     let currentPage = page;
     const render = nextPage => {
+        if(body.childElementCount&&currentPage===nextPage)return;
         currentPage = nextPage;
         body.replaceChildren();
         backButton.hidden = currentPage === 'home';

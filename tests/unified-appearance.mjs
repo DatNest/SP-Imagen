@@ -789,3 +789,14 @@ test('Section plus adds to the exact named section even when neighboring section
   assert.equal(sectionTagCount(board.getCatalog().modes[mode],'middle'),1);
  }
 });
+
+test('Section disclosure and selection of move tool retain the catalogue and camera ribbon',()=>{
+ const ui=makeUI(),catalog=normalizeAppearanceModeCatalog({},base,skin,initialNsfw,[]);
+ catalog.modes.base.sections=[{id:'first',title:'First',before:0}];
+ let state={base,ranges:[],selections:{}},nsfw={...initialNsfw};
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,initialSkin:skin,readBaseState:()=>state,writeBaseState:x=>state=x,readNsfwState:()=>nsfw,writeNsfwState:x=>nsfw=x,changed:()=>{},readOnly:()=>false});
+ const root=board.element,section=root.querySelector('.ness-unified-section-toggle'),ribbon=root.querySelector('.ness-tagboard-ribbon'),flow=root.querySelector('.ness-unified-tagflow'),chip=root.querySelector('.ness-unified-chip');
+ section.onclick();assert.strictEqual(root.querySelector('.ness-unified-section-toggle'),section);assert.strictEqual(root.querySelector('.ness-unified-chip'),chip);
+ section.onclick();root.querySelectorAll('button').find(x=>x.textContent==='✥').onclick();chip.onclick();
+ assert.strictEqual(root.querySelector('.ness-unified-tagflow'),flow);assert.strictEqual(root.querySelector('.ness-tagboard-ribbon'),ribbon);assert.strictEqual(root.querySelector('.ness-unified-chip'),chip);
+});
