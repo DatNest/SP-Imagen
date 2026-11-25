@@ -1316,7 +1316,7 @@ export function skinAppearanceInstruction(records){
   +'Skin tags are inserted by the library after the base appearance and before clothing, not written by you. This is an extension-control marker, not an unresolved placeholder: it overrides any general placeholder prohibition. All body marks are now in the region-specific skin catalogue; do not duplicate them as unscoped appearance.\n'
   +'Skin-equipped character IDs and available parts:\n'+names;
 }
-export function insertSkinAppearance(prompt,records){
+export function insertSkinAppearance(prompt,records,baseMarkerPrompt=''){
  const source=String(prompt||'');
  const openings=[...source.matchAll(/\[\[NESS_SKIN\b/gi)],seenMarkers=new Set(),ignoredMarkers=new Set();
  if(!openings.length&&/\bNESS_SKIN\s*:/i.test(source))
@@ -1351,7 +1351,14 @@ export function insertSkinAppearance(prompt,records){
   if(chosen.length===1&&chosen[0]==='none')return '';
   if(!chosen.length||chosen.some(p=>!Object.hasOwn(SKIN_PRESETS,p)))
    throw Error('Режиссёр выбрал неизвестную область кожи персонажа '+id+'.');
-  const line=formatSkinParts(record.skinTags,chosen);
+  let line=formatSkinParts(record.skinTags,chosen);
+  const marker=[...String(baseMarkerPrompt||'').matchAll(/\[\[NESS_VIS:([a-z][a-z0-9_]*):([a-z_]+)\]\]/g)].find(m=>m[1]===id);
+  if(marker&&marker[2]!=='none'&&record.appearanceFormat!=='prose'){
+   const configured=hasConfiguredAppearanceViews({appearanceRanges:record.ranges,appearanceSelections:record.selections});
+   const baseText=configured?visibleAppearanceRanges(record.ranges||[],marker[2],record.selections||{},true).map(r=>r.text).join(', '):record.base;
+   const baseKeys=new Set(parseBaseTags(String(baseText||'')).map(t=>norm(t.text)));
+   line=parseBaseTags(line).filter(t=>!baseKeys.has(norm(t.text))).map(t=>t.text).join(', ');
+  }
   return line?line+'; ':'';
  });
  if(result.includes('[[NESS_SKIN:'))throw Error('Режиссёр оставил неподставленную [[NESS_SKIN]] ОТКРЫТОЙ КОЖИ; проверь ID, названия открытых областей и закрывающие ]]. Это НЕ ракурс базовой внешности.');
