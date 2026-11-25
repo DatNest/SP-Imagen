@@ -849,7 +849,7 @@ test('Overlap warning is optional, cross-mode and never permits reassigning Alwa
  assert.ok(modal());assert.ok(!(state.selections.head||[]).length);
  modal().querySelectorAll('button').find(x=>x.textContent==='Отмена').onclick();
  assert.equal(modal(),null);assert.ok(!(state.selections.head||[]).length);
- chip('freckles').onclick();modal().querySelector('input').checked=true;
+ chip('freckles').onclick();modal().querySelector('.ness-tag-warning-setting').children[0].checked=true;
  modal().querySelectorAll('button').find(x=>x.textContent==='Добавить').onclick();
  assert.equal(enabled,false);assert.equal(state.selections.head[0].text,'freckles');
  assert.equal(state.selections.face[0].text,'freckles');
