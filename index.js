@@ -922,7 +922,7 @@ function openNovelAISettings({ back = false } = {}) {
     formField(grid,'Токен NAISTERA',proxyWrap,'Токен из бота NAISTERA, не ключ NovelAI.');
     const proxyEndpoint=input(NAISTERA_ORIGIN);proxyEndpoint.readOnly=true;formField(grid,'Адрес NAISTERA',proxyEndpoint);
     const proxyModel=select(NAISTERA_MODELS,proxy.model);formField(grid,'Модель',proxyModel);
-    const proxySteps=input(Number.isFinite(proxy.steps)?proxy.steps:'','number');proxySteps.min='1';proxySteps.max='28';formField(grid,'Steps',proxySteps);
+    const proxySteps=input(Number.isFinite(proxy.steps)?proxy.steps:'','number');proxySteps.min='1';proxySteps.max='50';formField(grid,'Steps',proxySteps);
     const proxyCfg=input(Number.isFinite(proxy.cfgScale)?proxy.cfgScale:'');proxyCfg.inputMode='decimal';formField(grid,'CFG scale',proxyCfg,'От 0 до 10; через точку или запятую.');
     const proxyRescale=input(Number.isFinite(proxy.cfgRescale)?proxy.cfgRescale:'');proxyRescale.inputMode='decimal';formField(grid,'CFG rescale',proxyRescale,'От 0 до 1; через точку или запятую.');
     const proxySampler=select(NOVELAI_SAMPLERS,proxy.sampler);formField(grid,'Sampler',proxySampler);
@@ -937,7 +937,6 @@ function openNovelAISettings({ back = false } = {}) {
             show(proxyRescale.parentElement,!medium);show(proxyNegative.parentElement,!medium);
             show(proxySteps.parentElement,!medium);show(proxySampler.parentElement,!medium);
             proxyIntro.textContent='NAISTERA · генерация расходует квоту или кредиты сервиса. Защита Anlas не применяется.'+(medium?' Medium: 14 Steps, Euler Ancestral.':'');
-            proxySteps.max=proxyModel.value==='novelai-v4.5'?'28':'23';
         }
     };
     model.addEventListener('change',updateProvider);proxyModel.addEventListener('change',updateProvider);provider.addEventListener('change',()=>{status.textContent='';updateProvider();});updateProvider();
@@ -953,8 +952,9 @@ function openNovelAISettings({ back = false } = {}) {
         try {
             if(provider.value==='naistera'){
                 status.textContent='Проверяю NAISTERA…';
+                const selected=proxyModel.value;
                 const models=await checkNaisteraConnection(readProxy());
-                status.textContent='Доступные модели: '+models.map(id=>NAISTERA_MODELS[id]).join(', ');return;
+                status.textContent=(models.includes(selected)?'Подключение работает. ':'Выбранная модель недоступна. ')+'Доступные модели: '+models.map(id=>NAISTERA_MODELS[id]).join(', ');return;
             }
             const subscription = await checkNovelAISubscription(readDraft());
             const tier = subscription?.tier === 3 ? 'Opus' : `уровень ${subscription?.tier ?? '?'}`;
@@ -967,7 +967,7 @@ function openNovelAISettings({ back = false } = {}) {
     button('Сохранить', actions, () => {
         if(provider.value==='naistera'){
             const next=readProxy();
-            try{validateNaisteraSettings(next);if(next.model!=='novelai-v5-medium'&&next.steps>(next.model==='novelai-v4.5'?28:23))throw Error('Steps превышает лимит модели.');}
+            try{validateNaisteraSettings(next);}
             catch(error){status.textContent=String(error?.message||error);return;}
             const root=settings();root.naistera=next;root.imageProvider='naistera';saveSettings();close();return;
         }
