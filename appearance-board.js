@@ -4,7 +4,7 @@
  */
 import { NESS_APPEARANCE_ALWAYS, NESS_APPEARANCE_PRESETS } from './shared-data.js';
 import { openExplanation } from './onboarding.js';
-import { findTagConflicts, MODE_LABELS, BASE_INHERITANCE, duplicateWarningsEnabled, setDuplicateWarnings } from './appearance-overlap.js';
+import { findTagConflicts, MODE_LABELS, duplicateWarningsEnabled, setDuplicateWarnings } from './appearance-overlap.js';
 import { createAppearanceFigure } from './appearance-figure.js';
 import { normalizeAppearanceRanges, normalizeAppearanceSelections, visibleAppearanceRanges, hasConfiguredAppearanceViews } from './appearance-visibility.js';
 import { normalizeAppearanceModeCatalog, NSFW_AREAS, repositionModeTag, modeTokens, fromModeTokens } from './appearance-mode-state.js';
@@ -981,7 +981,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
    if(!chip)continue;
    const elsewhere=locations.filter(x=>x.mode!==mode||x.preset!==preset);
    chip.dataset.assignedElsewhere=String(elsewhere.length>0);
-   if(!toolMode)chip.title=elsewhere.length?elsewhere.map(x=>MODE_LABELS[x.mode]+' → '+x.label).join('\n'):'Добавить или снять тег';
+   if(!toolMode)chip.title=alwaysKeys.has(identity)?'Уже добавляется из «Всегда»':elsewhere.length?elsewhere.map(x=>MODE_LABELS[x.mode]+' → '+x.label).join('\n'):'Добавить или снять тег';
    const inherited=!!shared&&!marked&&shared.has(identity),permanent=alwaysKeys.has(identity);
    chip.setAttribute('aria-disabled',String(!toolMode&&permanent&&!marked));
    const prefix=marked?'✓ ':permanent?'✦ ':inherited?'↳ ':elsewhere.length?'↗ ':'＋ ';
