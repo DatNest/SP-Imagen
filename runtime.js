@@ -1127,7 +1127,6 @@ async function previewFinalPrompt(config, origin) {
       config.prompt=edited;
       savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
      }else discardPostDraft(now,origin.index);
-     getMediaSlots?.()?.refresh?.();
     }
     close(false);
    }finally{asking=false;}
@@ -1148,7 +1147,6 @@ async function previewFinalPrompt(config, origin) {
    catch(layoutError){error.textContent=String(layoutError?.message||layoutError);error.style.display='block';return;}
    config.prompt=edited;
    savePostDraft(now,origin.index,{kind:origin.kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
-   getMediaSlots?.()?.refresh?.();
    close(true);
   };
  });
@@ -1923,7 +1921,6 @@ v.sp_imagen_wardrobe_count = String(wardrobeCount);
             parser:parserDraftFromVariables(v),review:reviewSnapshot()
           });
           else discardPostDraft(live,index);
-          getMediaSlots?.()?.refresh?.();
         }
         delete v.sp_imagen_resume_review;
         close('cancelled');
@@ -2279,7 +2276,6 @@ const target=beforeChat[targetIndex];
 // without spending a second director call.
 rememberPostPrompts(st,targetIndex,{kind,finalPrompt:config.prompt});
 savePostDraft(st,targetIndex,{kind,stage:'prompt',final:{config:JSON.parse(JSON.stringify(config))}});
-getMediaSlots?.()?.refresh?.();
 if(v.sp_imagen_skip_prompt_preview===undefined?runtimeSettings.previewEnabled:v.sp_imagen_skip_prompt_preview!==true){
  progress.set('Проверка перед NovelAI', 'Подтверди готовый промпт. Пока запрос NovelAI не отправлен.');
  const accepted=await previewFinalPrompt(config,{chat:beforeChat,id:beforeId,count:beforeCount,index:targetIndex,kind,message:target});

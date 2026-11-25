@@ -1,6 +1,6 @@
 // Generated from modules/media_slots.js.
 import { withOperationDeadline } from './operation-timeout.js';
-import { readPostDraft, discardPostDraft } from './post-drafts.js';
+import { readPostDraft, discardPostDraft, subscribePostDraftChanges } from './post-drafts.js';
 import { collectPostPrompts } from './post-prompt-state.js';
 import { openExplanation } from './onboarding.js';
 import { getRequestHeaders } from '../../../../script.js';
@@ -304,6 +304,7 @@ export async function installSpImagenMediaSlots(options) {
     .generate[aria-expanded="true"], .generate:focus-visible { opacity: 1; }
     .generate, .tool { min-inline-size: 32px; min-block-size: 32px; text-align: center; }
     .menu-empty {font-size:12px;line-height:1.45;opacity:.85;padding:8px;}
+    .recovery-option {font-weight:600;border:1px solid var(--ms-line);margin-block-end:.2em;}
     .option-row {display:flex;align-items:center;min-inline-size:0;gap:.25em;}
     .option-row>.option {flex:1 1 auto;min-inline-size:0;}
     .menu-help {flex:none;display:inline-grid;place-items:center;inline-size:30px;block-size:30px;padding:0;border:1px solid var(--ms-line);border-radius:50%;color:inherit;background:transparent;font-weight:700;cursor:pointer;}
@@ -339,7 +340,7 @@ export async function installSpImagenMediaSlots(options) {
     .heading { display:flex; width:100%; justify-content:space-between; align-items:center; gap:.6em; border-radius:.35em; padding:.35em .45em; font-weight:600; }
     .heading-meta { display:flex; gap:.65em; align-items:center; font-size:.9em; opacity:.85; }
     .heading-chevron { min-inline-size:1.1em; text-align:center; }
-    .frame[hidden], .bar[hidden], .draft-status[hidden], .draft-icon[hidden] { display:none !important; }
+    .frame[hidden], .bar[hidden], .draft-status[hidden], .draft-icon[hidden], .post-tools>button[hidden] { display:none !important; }
     .card {
       min-inline-size: 0;
       padding: .45em;
@@ -711,7 +712,33 @@ export async function installSpImagenMediaSlots(options) {
       guideDemo.clearOnStar = false;
     }
 
+    // Reconcile the indicators on demand as well, e.g. after a restored browser backup.
+    const live=context();
+    if(live.chat?.[view.index]!==view.message)return;
+    updatePostPromptIcon(view,slotsOf(view.message));
+    updatePostDraftControls(view);
     const { node, root } = component('floating');
+    if(guideDemo?.view!==view){
+      const draft=readPostDraft(live,view.index);
+      if(draft){
+        const resume=element('button','option recovery-option','↪ Продолжить черновик');
+        resume.addEventListener('click',()=>{
+          closeToolsMenu(true);
+          void executeCommand('sp_ness_resume_post',view);
+        });
+        root.append(resume);
+      }
+      if(promptSources(view,slotsOf(view.message)).length){
+        const inspect=element('button','option recovery-option','▤ Сохранённые промпты');
+        inspect.addEventListener('click',()=>{
+          closeToolsMenu(true);
+          if(context().chat?.[view.index]!==view.message)return;
+          const actual=promptSources(view,slotsOf(view.message));
+          if(actual.length)showPromptPopup(view.promptButton||view.toggle,actual[0].text,'Промпты этого RP-поста',actual);
+        });
+        root.append(inspect);
+      }
+    }
     const available=getExtension?.()?.getVisibleGenerationProfiles?.()||KINDS.map(id=>({id,name:LABEL[id]}));
     if(!available.length){const note=element('div','menu-empty','Включи хотя бы один профиль в настройках SP Imagen.');root.append(note);}
     for (const item of available) {
@@ -882,6 +909,8 @@ export async function installSpImagenMediaSlots(options) {
       view.tools.append(button);view.promptButton=button;
     }
     view.promptButton.title='Сохранено этапов: '+sources.length+'. Открыть промпты этого поста';
+    view.promptButton.setAttribute('aria-label',view.promptButton.title);
+    view.promptButton.hidden=guideDemo?.view===view;
   }
 
   function updatePostDraftControls(view) {
@@ -911,7 +940,6 @@ export async function installSpImagenMediaSlots(options) {
         if(live.chat?.[view.index]!==view.message)return;
         if(!host.confirm('Удалить сохранённый черновик этого поста? Картинки в галерее останутся.'))return;
         discardPostDraft(live,view.index);
-        paintPost(view.index);
       }));
       view.tools.append(button);view.discardDraftButton=button;
     }
@@ -957,6 +985,12 @@ export async function installSpImagenMediaSlots(options) {
     const current=context(),view=mounted.get(index);
     if(!view||!view.node.isConnected||!view.anchor.isConnected||view.message!==current.chat?.[index]){paint();return;}
     updatePost(view,slotsOf(view.message),current.chatId);
+  }
+
+  function onDraftChanged({chat,chatId,index,message}){
+    const current=context();
+    if(current.chat!==chat||current.chatId!==chatId||current.chat?.[index]!==message)return;
+    paintPost(index);
   }
 
   function paint() {
@@ -1400,7 +1434,13 @@ export async function installSpImagenMediaSlots(options) {
     if (generationChat && pendingGenerationClicks.has(generationChat)) return;
     if (generationChat) pendingGenerationClicks.add(generationChat);
     try { await runAction(() => extension.run(command, kind, request)); }
-    finally { if (generationChat) pendingGenerationClicks.delete(generationChat); }
+    finally {
+      if (generationChat) {
+        pendingGenerationClicks.delete(generationChat);
+        const live=context();
+        if(request&&live.chat===generationChat&&live.chatId===request.chatId&&live.chat?.[request.index]===request.message)paintPost(request.index);
+      }
+    }
   }
 
   function installMenuCommands(force = false) {
@@ -1465,7 +1505,10 @@ export async function installSpImagenMediaSlots(options) {
     subscribe(name, messageChanged);
   }
 
+  const unsubscribeDrafts=subscribePostDraftChanges(onDraftChanged);
+
   function dispose() {
+    unsubscribeDrafts();
     endGuideDemo();
     closeToolsMenu();
     closePromptPopup();
@@ -1489,8 +1532,8 @@ export async function installSpImagenMediaSlots(options) {
   const manager = {
     installed: true,
     version: 65,
-    controlsRevision: 27,
-    bundleVersion: '2.9.68',
+    controlsRevision: 28,
+    bundleVersion: '2.9.69',
     guideStep,
     endGuideDemo,
     get supportedKinds(){return availableKinds();},
