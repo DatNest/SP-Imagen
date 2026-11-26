@@ -92,3 +92,9 @@ test('Recovery inserts into the existing empty recovery section before adjacent 
  assert.equal(result.added,2);
  assert.deepEqual(result.data.characters.a.appearanceCatalog.modes.skin.sections,[{id:'r',title:'Восстановленные',before:1},{id:'empty',title:'Empty',before:3}]);
 });
+
+test('Saving the recovery draft uses the preserving path instead of remigrating unrelated records',()=>{
+ const src=readFileSync(new URL('../library-runtime.js',import.meta.url),'utf8');
+ assert.match(src,/draft=result.data;view.resetEditor\(\);recoveryPending=true/);
+ assert.match(src,/saveMasterLibrary\(draft,baseline,\{preserveUserFields:recoveryPending\}\)/);
+});
