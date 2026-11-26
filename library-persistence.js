@@ -55,6 +55,11 @@ export function createLibraryStore({transport,legacy=()=>({}),locks=globalThis.n
   get raw(){return state?.current||'';},
   get history(){return [...(state?.history||[])];},
   refresh:()=>exclusive(refreshUnlocked),
+  recoveryHistory:()=>exclusive(async()=>{
+   const items=[...(state?.history||[])];let skipped=0;
+   try{const raw=await transport.read(BACKUP_FILE);if(raw!==null){const backup=decode(raw);items.push(backup.current,...backup.history);}}catch{skipped++;}
+   return {history:[...new Set(items.filter(raw=>raw&&raw!==state?.current))],skipped};
+  }),
   commit:(raw,expected)=>exclusive(async()=>{
    validateRaw(raw);const current=await refreshUnlocked();
    if(current!==asRaw(expected))throw Error('Библиотека уже изменилась в другом окне. Открой редактор заново.');
