@@ -739,7 +739,7 @@ async function openLibraryEditor(){
  const warningStorage=()=>{try{return window.localStorage;}catch{return undefined;}};
  let tagWarnings=duplicateWarningsEnabled(warningStorage());
  const setTagWarnings=value=>{tagWarnings=Boolean(value);setDuplicateWarnings(warningStorage(),tagWarnings);};
- let rulesDialog=null,deleteDialog=null,recoveryDialog=null;
+ let rulesDialog=null,deleteDialog=null,recoveryDialog=null,recoveryPending=false;
  async function openTagRecovery(){
   if(busy||done||recoveryDialog||!tryFlush())return;
   closeTagPicker();setBusy(true);
@@ -771,7 +771,7 @@ async function openLibraryEditor(){
      if(masterLibraryRaw()!==baseline)throw Error('Библиотека изменилась. Открой редактор заново.');
      const result=recoverLostTags(draft,report,[...chosen.values()]);
      if(!result.added){dialog.finish();status('Новые теги не добавлены.');return;}
-     editor?.visibility?.closeBoard?.();editor=null;draft=result.data;view.resetEditor();
+     editor?.visibility?.closeBoard?.();editor=null;draft=result.data;view.resetEditor();recoveryPending=true;
      changed(true);renderTags();renderList();dialog.finish();
      status('Восстановлено тегов: '+result.added+'. Нажми «Сохранить». Предыдущая сохранённая библиотека останется в резервной копии.');
     }catch(e){error.textContent=e.message;error.hidden=false;}
@@ -1325,7 +1325,7 @@ async function openLibraryEditor(){
   if(busy||done||!tryFlush())return false;
   closeTagPicker();saving=true;saveFailed=false;setBusy(true);
   try{
-   const result=await saveMasterLibrary(draft,baseline);draft=result.data;baseline=result.raw;
+   const result=await saveMasterLibrary(draft,baseline,{preserveUserFields:recoveryPending});draft=result.data;baseline=result.raw;recoveryPending=false;
    if(!keepEditor){editor?.visibility?.closeBoard?.();editor=null;view.resetEditor();}
    dirty=false;discardAsked=false;revision++;renderTags();
    try{await activateNessProfile('images');status(keepEditor?'Разметка сохранена.':'Библиотека SP Imagen сохранена.');}
