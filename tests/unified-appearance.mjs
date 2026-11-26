@@ -861,7 +861,7 @@ test('Overlap warning is optional, cross-mode and never permits reassigning Alwa
  select('upper_front');chip('freckles').onclick();assert.equal(modal(),null);
 });
 
-test('Section plus retains input during cross-mode warning, cancels, retries and commits once through the library child dialog',()=>{
+test('Section plus retains input during partial-match warning, cancels, retries and commits once through the library child dialog',()=>{
  const ui=makeUI(),raw='154 cm, adult, adult body, humanoid hybrid;',tags=parseBaseTags(raw);
  const catalogue=normalizeAppearanceModeCatalog({},raw,{}, {},[]);
  catalogue.modes.base.sections=[{id:'silhouette',title:'Рост и силуэт',before:0}];
@@ -919,5 +919,34 @@ test('Existing tag typed into plus is assigned without duplication; current and 
  field.value='bad, tag';submit();assert.match(msg(),/по одному/);
  field.value='  ';submit();assert.match(msg(),/название/);
  field.onkeydown({key:'Escape',preventDefault(){},stopPropagation(){}});
+ assert.equal(root.querySelector('.ness-tagboard-inline-add-input'),null);
+});
+
+test('Cross-mode additions survive a failed warning open and a subsequent confirmation',()=>{
+ const ui=makeUI(),raw='blue eyes, shoulder freckles;',tags=parseBaseTags(raw);
+ let state={base:raw,ranges:[],selections:{upper_front:[tags[1]]}},nsfw={},attempts=0,child=null;
+ const catalog=normalizeAppearanceModeCatalog({},raw,{},nsfw,[]);
+ catalog.modes.skin.sections=[{id:'marks',title:'Marks',before:0}];
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,readBaseState:()=>state,writeBaseState:x=>state=x,readNsfwState:()=>nsfw,writeNsfwState:x=>nsfw=x,readWarningPreference:()=>true,changed:()=>{},readOnly:()=>false,openWarningDialog:onClose=>{
+  if(++attempts===1)throw Error('Dialog unavailable');
+  const body=ui.el('div',undefined,ui.parent),actions=ui.el('div',undefined,ui.parent);
+  child={body,actions,finish(){body.remove();actions.remove();child=null;onClose();}};
+  return child;
+ }});
+ const root=board.element;
+ root.querySelectorAll('button').find(x=>x.textContent==='Под одеждой').onclick();
+ root.querySelector('.ness-tagboard-add-plus').onclick();
+ const field=root.querySelector('.ness-tagboard-inline-add-input'),apply=root.querySelector('.ness-tagboard-add-confirm');
+ field.value='freckles on shoulders';
+ apply.onclick();
+ assert.match(root.querySelector('.ness-tagboard-add-status').textContent,/Dialog unavailable/);
+ assert.equal(field.value,'freckles on shoulders');assert.equal(board.flushPending(),true);
+ assert.equal(board.getSkin().tags.length,0);
+ apply.onclick();assert.ok(child);
+ assert.equal(child.body.querySelector('.ness-tag-duplicate-match').children[0].textContent,'shoulder freckles');
+ child.actions.querySelectorAll('button').find(x=>x.textContent==='Добавить').onclick();
+ assert.equal(board.getSkin().tags[0].text,'freckles on shoulders');
+ assert.equal(board.getSkin().selections.upper_front.length,1);
+ assert.equal(state.selections.upper_front[0].text,'shoulder freckles');
  assert.equal(root.querySelector('.ness-tagboard-inline-add-input'),null);
 });
