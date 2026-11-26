@@ -1025,6 +1025,7 @@ async function openLibraryEditor(){
     initialMode:'base',
     initialHelpPinned:appearanceHintPinned,
     readWarningPreference:()=>tagWarnings,writeWarningPreference:setTagWarnings,
+    openWarningDialog:onClose=>createNessChildDialog(document,panel,{title:'Возможное повторение тега',marker:'data-appearance-duplicate',onClose}),
     onHelpChange:(pinned,peek)=>{
       appearanceHintPinned=pinned;
       pinHint.setAttribute('aria-checked',String(pinned));
@@ -1107,7 +1108,7 @@ async function openLibraryEditor(){
       skin:inlineBoard.getSkin(),sections:inlineBoard.getSections(),
       catalog:inlineBoard.getCatalog(),nsfw:nsfwState
     };},
-    flushPending:()=>inlineBoard.flushPending(),closeBoard:()=>drawers.dispose(),refresh:()=>inlineBoard.refresh()
+    flushPending:()=>inlineBoard.flushPending(),closeBoard:()=>{inlineBoard.closeBoard();drawers.dispose();},refresh:()=>inlineBoard.refresh()
   };
   fields.base.oninput=()=>{
     const newBase=fields.base.value,oldBase=appearanceState.base;
@@ -1257,12 +1258,12 @@ async function openLibraryEditor(){
   }
   close.onclick=()=>void closeLibrary();
   panel.querySelector('.ness-close-dialog').onclick=()=>close.click();
-  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'&&!rulesDialog&&!panel.querySelector('[data-ness-child-dialog]')){if(e.target===search&&view.searchIsOpen()){e.preventDefault();e.stopPropagation();view.closeSearch();return;}if(e.target?.classList?.contains('ness-tagboard-search'))return;e.preventDefault();e.stopPropagation();if(panel.querySelector('.ness-record-tag-popover'))closeTagPicker();else close.onclick();}};document.addEventListener('keydown',onKey,true);
+  const onKey=e=>{if(document.querySelector('.spi-guide-explain-overlay'))return;if(e.key==='Escape'&&!rulesDialog&&!panel.querySelector('[data-ness-child-dialog]')){if(e.target===search&&view.searchIsOpen()){e.preventDefault();e.stopPropagation();view.closeSearch();return;}if(e.target?.closest?.('.ness-tagboard-search,.ness-tagboard-inline-add-input,.ness-tagboard-rename-input,.ness-tagboard-section-input,[data-group-name],.ness-tagboard-context-menu[open],.ness-tag-duplicate-dialog[open]'))return;e.preventDefault();e.stopPropagation();if(panel.querySelector('.ness-record-tag-popover'))closeTagPicker();else close.onclick();}};document.addEventListener('keydown',onKey,true);
   save.onclick=()=>publishDraft(view.isMobile()&&Boolean(editor));
  });
 }
 
 // Module: library_exports
-return {bundleVersion:'2.9.76',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
+return {bundleVersion:'2.9.77',openLibraryEditor,openFirstVisibleRecordForGuide:()=>guideOpenFirstRecord(),routeImages,utilities:{loadMasterLibrary,saveMasterLibrary,validateMasterLibrary,libraryEntries,masterLibraryRaw,restoreLibraryBodyFields}};
 
 }
