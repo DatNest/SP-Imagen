@@ -860,3 +860,64 @@ test('Overlap warning is optional, cross-mode and never permits reassigning Alwa
  select('upper_back');chip('freckles').onclick();assert.equal(modal(),null);
  select('upper_front');chip('freckles').onclick();assert.equal(modal(),null);
 });
+
+test('Section plus retains input during cross-mode warning, cancels, retries and commits once through the library child dialog',()=>{
+ const ui=makeUI(),raw='154 cm, adult, adult body, humanoid hybrid;',tags=parseBaseTags(raw);
+ const catalogue=normalizeAppearanceModeCatalog({},raw,{}, {},[]);
+ catalogue.modes.base.sections=[{id:'silhouette',title:'Рост и силуэт',before:0}];
+ let state={base:raw,ranges:[],selections:{always:tags}},enabled=true,child=null;
+ const openWarningDialog=onClose=>{
+  const root=ui.el('div',undefined,ui.parent,'child'),body=ui.el('div',undefined,root),actions=ui.el('div',undefined,root);
+  let closed=false;
+  child={root,body,actions,finish:()=>{if(closed)return;closed=true;root.remove();child=null;onClose();}};
+  return child;
+ };
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalogue,readBaseState:()=>state,writeBaseState:x=>state=x,readWarningPreference:()=>enabled,writeWarningPreference:x=>enabled=x,openWarningDialog,changed:()=>{},readOnly:()=>false});
+ const root=board.element,select=id=>root.querySelector('.ness-tagboard-ribbon').querySelectorAll('.ness-button').find(x=>x.dataset.presetId===id).onclick();
+ select('always');
+ root.querySelector('.ness-tagboard-add-plus').onclick();
+ const field=root.querySelector('.ness-tagboard-inline-add-input'),apply=root.querySelector('.ness-tagboard-add-confirm');
+ field.value='unmistakably adult';
+ const before=JSON.stringify(board.getCatalog()),oldState=JSON.stringify(state);
+ apply.onclick();assert.ok(child);assert.equal(board.flushPending(),false);
+ field.onkeydown({key:'Enter',preventDefault(){},stopPropagation(){}});
+ assert.equal(JSON.stringify(board.getCatalog()),before);
+ assert.equal(JSON.stringify(state),oldState);
+ child.actions.querySelectorAll('button').find(x=>x.textContent==='Отмена').onclick();
+ assert.equal(child,null);assert.equal(field.value,'unmistakably adult');assert.equal(board.flushPending(),true);
+ field.onkeydown({key:'Enter',preventDefault(){},stopPropagation(){}});
+ assert.ok(child);
+ const accept=child.actions.querySelectorAll('button').find(x=>x.textContent==='Добавить');
+ child.body.querySelector('.ness-tag-warning-setting').children[0].checked=true;
+ accept.onclick();accept.onclick();
+ assert.equal(child,null);assert.equal(enabled,false);
+ assert.equal(root.querySelector('.ness-tagboard-inline-add-input'),null);
+ assert.equal(root.querySelector('.ness-tagboard-add-status').textContent,'Тег добавлен.');
+ assert.equal(board.getCatalog().modes.base.tags.filter(x=>x.text==='unmistakably adult').length,1);
+ assert.equal(state.selections.always.filter(x=>x.text==='unmistakably adult').length,1);
+ board.undo();assert.equal(JSON.stringify(board.getCatalog()),before);assert.equal(JSON.stringify(state),oldState);
+});
+
+test('Existing tag typed into plus is assigned without duplication; current and Always tags have local feedback',()=>{
+ const ui=makeUI(),raw='blue eyes, freckles, long hair;',tags=parseBaseTags(raw);
+ let state={base:raw,ranges:[],selections:{always:[tags[0]],head:[tags[1]]}};
+ const catalog=normalizeAppearanceModeCatalog({},raw,{}, {},[]);
+ catalog.modes.base.sections=[{id:'first',title:'First',before:0},{id:'second',title:'Second',before:2}];
+ const board=createAppearanceBoard({ui,parent:ui.parent,initialCatalog:catalog,readBaseState:()=>state,writeBaseState:x=>state=x,readWarningPreference:()=>false,changed:()=>{},readOnly:()=>false});
+ const root=board.element;
+ const plus=root.querySelectorAll('.ness-tagboard-add-plus')[1];plus.onclick();
+ let field=root.querySelector('.ness-tagboard-inline-add-input');
+ const submit=()=>root.querySelector('.ness-tagboard-add-confirm').onclick();
+ const msg=()=>root.querySelector('.ness-tagboard-add-status').textContent;
+ field.value='blue eyes';submit();assert.match(msg(),/Всегда/);assert.equal(state.selections.face,undefined);assert.equal(field.value,'blue eyes');
+ field.value='freckles';submit();assert.equal(msg(),'Назначен существующий тег.');assert.equal(root.querySelector('.ness-tagboard-inline-add-input'),null);
+ assert.deepEqual(state.selections.face.map(x=>x.text),['freckles']);
+ assert.deepEqual(state.selections.head.map(x=>x.text),['freckles']);
+ assert.equal(board.getCatalog().modes.base.tags.length,3);
+ assert.equal(sectionTagCount(board.getCatalog().modes.base,'first'),2);
+ plus.onclick();field=root.querySelector('.ness-tagboard-inline-add-input');field.value='freckles';submit();assert.match(msg(),/уже назначен/);
+ field.value='bad, tag';submit();assert.match(msg(),/по одному/);
+ field.value='  ';submit();assert.match(msg(),/название/);
+ field.onkeydown({key:'Escape',preventDefault(){},stopPropagation(){}});
+ assert.equal(root.querySelector('.ness-tagboard-inline-add-input'),null);
+});
