@@ -209,11 +209,11 @@ test('All test formats keep spatial scene staging and fine character details in 
   assert.match(instructions,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
   assert.match(instructions,/participants[’']? (?:and their )?relative positions/);
   assert.match(instructions,kind==='snapshot'?/central action or interaction connecting them/:/central shared interaction/);
-  assert.match(instructions,kind==='snapshot'?/action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/:/position relative to other characters, one action \(at most two simultaneous, compatible actions\), facial expression and in-scene gaze target/);
+  assert.match(instructions,kind==='snapshot'?/action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/:/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   assert.doesNotMatch(instructions,/two focused sentences|roughly two purposeful sentences|a few focused sentences|Keep one short phrase per panel/);
   if(kind==='snapshot')assert.match(instructions,/participants’ relative positions clear in scene/);
   else assert.match(instructions,/spatially coherent across panels/);
-   assert.match(instructions,/Reference (?:each|the) panel and (?:the )?position established in scene/);
+   assert.match(instructions,kind==='snapshot'?/Reference (?:each|the) panel and (?:the )?position established in scene/:/in character actions, repeat Panel N: panel type/);
   const data=sample();
   data.scene=stagedScene;
   if(kind==='snapshot')data.bubbles=[];
