@@ -2022,3 +2022,9 @@
 .ness-tag-duplicate-match{display:grid;gap:2px;padding:7px 9px;border:1px solid var(--SmartThemeBorderColor,#666);border-radius:7px;overflow-wrap:anywhere}
 .ness-tag-duplicate-match small{opacity:.8}
 .ness-tag-duplicate-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+
+#sp-imagen-review-panel .ness-tagboard-add-slot{flex-wrap:wrap}
+#sp-imagen-review-panel .ness-tagboard-add-status{flex-basis:100%;font-size:11px;line-height:1.35;color:var(--ness-muted);white-space:normal;overflow-wrap:anywhere}
+#sp-imagen-review-panel .ness-tagboard-add-status[data-error=true]{color:var(--ness-text);border-inline-start:2px solid var(--ness-accent);padding-inline-start:5px}
+#sp-imagen-review-panel .ness-tagboard-add-status[hidden]{display:none!important}
+#sp-imagen-review-panel [data-appearance-duplicate] .ness-tag-duplicate-list{max-height:38dvh;overflow:auto}
