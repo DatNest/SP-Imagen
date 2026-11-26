@@ -8,6 +8,7 @@ import { createAppearanceBoard, normalizeSkinTags, normalizeAppearanceSections, 
 import { openCharacterIconEditor } from './character-icon-editor.js';
 import { LEGACY_BODY_FIELDS, prepareBodyAppearance } from './legacy-body-migration.js';
 import { applyCommittedIcon } from './library-persistence.js';
+import { auditLostTags, recoverLostTags, RECOVERY_MODES } from './tag-recovery.js';
 import { bulkTagState, setBulkTag, deleteLibraryRecords } from './library-bulk-actions.js';
 // Generated from NESS_GEN2_STUDIO/modules.
 export function createSpImagenLibraryRuntime({ getExtension, libraryStore } = {}){
@@ -738,7 +739,87 @@ async function openLibraryEditor(){
  const warningStorage=()=>{try{return window.localStorage;}catch{return undefined;}};
  let tagWarnings=duplicateWarningsEnabled(warningStorage());
  const setTagWarnings=value=>{tagWarnings=Boolean(value);setDuplicateWarnings(warningStorage(),tagWarnings);};
- let rulesDialog=null,deleteDialog=null;
+ let rulesDialog=null,deleteDialog=null,recoveryDialog=null;
+ async function openTagRecovery(){
+  if(busy||done||recoveryDialog||!tryFlush())return;
+  closeTagPicker();setBusy(true);
+  try{
+   await libraryStore?.refresh();
+   if(done)return;
+   if(masterLibraryRaw()!==baseline)throw Error('Библиотека изменилась. Открой редактор заново.');
+   const old=origin.extensionSettings?.variables?.global?.[MASTER_BACKUP_KEY];
+   const report=auditLostTags(draft,[...(libraryStore?.history||[]),...(old?[old]:[])]);
+   const dialog=createNessChildDialog(document,panel,{title:'Проверка потерянных тегов',marker:'data-tag-recovery',onClose:()=>{recoveryDialog=null;}});
+   recoveryDialog=dialog;
+   const totals=Object.fromEntries(['missing','elsewhere','unassigned','assigned'].map(k=>[k,report.rows.filter(x=>x.status===k).length]));
+   el('p','Отсутствуют: '+totals.missing+' · В другом режиме: '+totals.elsewhere+' · Без назначения: '+totals.unassigned+' · Уже назначены: '+totals.assigned,dialog.body,'ness-note');
+   el('p','Проверено копий: '+report.backupCount+(report.skipped?' · Не прочитано: '+report.skipped:'')+'. Старые удалённые теги тоже могут попасть в список. Ничего не выбрано автоматически.',dialog.body,'ness-note');
+   const controls=el('div',undefined,dialog.body,'ness-recovery-controls');
+   const query=input('');query.placeholder='Имя или тег';query.setAttribute('aria-label','Поиск потерянных тегов');controls.appendChild(query);
+   const filter=choice([['missing','Отсутствующие'],['elsewhere','В другом режиме'],['unassigned','Без назначения'],['assigned','Уже назначенные'],['all','Все результаты']],'missing');filter.setAttribute('aria-label','Состояние тегов');controls.appendChild(filter);
+   const list=el('div',undefined,dialog.body,'ness-recovery-list');
+   const chosen=new Map(),modeByRow=new Map();let page=0;
+   const rowKey=row=>JSON.stringify([row.id,row.identity]);
+   const labels={missing:'Отсутствует',elsewhere:'В другом режиме',unassigned:'Без назначения',assigned:'Уже назначен'};
+   const apply=button('Восстановить (0)',dialog.actions,()=>{
+    if(!chosen.size||busy||done)return;
+    try{
+     if(masterLibraryRaw()!==baseline)throw Error('Библиотека изменилась. Открой редактор заново.');
+     const result=recoverLostTags(draft,report,[...chosen.values()]);
+     if(!result.added){dialog.finish();status('Новые теги не добавлены.');return;}
+     editor?.visibility?.closeBoard?.();editor=null;draft=result.data;view.resetEditor();
+     changed(true);renderTags();renderList();dialog.finish();
+     status('Восстановлено тегов: '+result.added+'. Нажми «Сохранить». Предыдущая сохранённая библиотека останется в резервной копии.');
+    }catch(e){error.textContent=e.message;error.hidden=false;}
+   },'primary');
+   const error=el('p','',dialog.body,'ness-note');error.hidden=true;error.setAttribute('role','alert');
+   const update=()=>{apply.disabled=!chosen.size;apply.textContent='Восстановить ('+chosen.size+')';};
+   function draw(){
+    clear(list);const q=query.value.trim().toLowerCase(),rows=report.rows.filter(row=>(filter.value==='all'||row.status===filter.value)&&(!q||(row.name+' '+row.text).toLowerCase().includes(q)));
+    const size=60,max=Math.max(0,Math.ceil(rows.length/size)-1);page=Math.max(0,Math.min(page,max));
+    if(!rows.length)el('p','Ничего не найдено.',list,'ness-note');
+    let previous='';
+    for(const row of rows.slice(page*size,(page+1)*size)){
+     if(previous!==row.id){el('strong',row.name,list,'ness-recovery-person');previous=row.id;}
+     const item=el('div',undefined,list,'ness-recovery-item'),k=rowKey(row),selectable=['missing','elsewhere'].includes(row.status);
+     const heading=el('div',undefined,item,'ness-recovery-item-head');
+     const label=el('label',undefined,heading,'ness-tag-warning-setting');
+     let check=null,modeSelect=null;
+     if(selectable){check=el('input',undefined,label);check.type='checkbox';check.checked=chosen.has(k);}
+     el('span',row.text,label);
+     el('small',labels[row.status],heading,'ness-note');
+     if(selectable){
+      const initial=modeByRow.has(k)?modeByRow.get(k):row.needsMode?'':row.mode;
+      modeSelect=choice([['','Выбрать режим'],...Object.entries(RECOVERY_MODES)],initial);
+      modeSelect.setAttribute('aria-label','Режим восстановления: '+row.text);item.appendChild(modeSelect);
+      const sync=()=>{
+       modeByRow.set(k,modeSelect.value);
+       if(check.checked&&modeSelect.value)chosen.set(k,{id:row.id,identity:row.identity,mode:modeSelect.value});else chosen.delete(k);
+       if(check.checked&&!modeSelect.value)check.checked=false;
+       update();
+      };
+      check.onchange=sync;modeSelect.onchange=sync;
+     }
+     if(row.locations.length)el('small','Сейчас: '+row.locations.map(l=>RECOVERY_MODES[l.mode]+(l.assigned?' · назначен':' · без назначения')).join('; '),item,'ness-note');
+     const source=el('details',undefined,item);el('summary','Источники ('+row.sources.length+')',source);
+     for(const text of row.sources)el('small',text,source,'ness-recovery-source');
+    }
+    if(max>0){
+     const nav=el('div',undefined,list,'ness-row');
+     const prev=button('‹',nav,()=>{page--;draw();},'quiet');prev.disabled=page===0;
+     el('span',(page+1)+' / '+(max+1),nav,'ness-note');
+     const next=button('›',nav,()=>{page++;draw();},'quiet');next.disabled=page===max;
+    }
+    update();
+   }
+   query.oninput=()=>{page=0;draw();};filter.onchange=()=>{page=0;draw();};
+   button('Снять выбор',dialog.actions,()=>{chosen.clear();draw();},'quiet');
+   button('Закрыть',dialog.actions,dialog.finish,'quiet');
+   draw();
+  }catch(e){status('Проверка не выполнена: '+e.message);}
+  finally{setBusy(false);if(recoveryDialog){const apply=recoveryDialog.actions.querySelector('button');if(apply)apply.disabled=true;}}
+ }
+
  const rulesButton=button('◈',view.addTag.parentNode,()=>{
   if(busy||done||rulesDialog||!tryFlush())return;
   closeTagPicker();
@@ -756,6 +837,8 @@ async function openLibraryEditor(){
    control.maxLength=1200;control.setAttribute('data-appearance-rule',id);inputs[id]=control;
    button('Вернуть стандартное',row,()=>{control.value=standard;},'quiet');
   }
+  const recoveryLink=button('Проверить потерянные теги',dialog.body,()=>{dialog.finish();void openTagRecovery();},'quiet ness-tag-recovery-link');
+  recoveryLink.title='Проверить старые поля, архивы и резервные копии';
   button('Отмена',dialog.actions,dialog.finish);
   button('Применить',dialog.actions,()=>{
    setTagWarnings(warningCheck.checked);
@@ -1248,7 +1331,7 @@ async function openLibraryEditor(){
   finally{saving=false;setBusy(false);renderList();}
  }
  return await new Promise(resolve=>{
-  const finish=()=>{if(done)return;done=true;editor?.visibility?.closeBoard?.();guideOpenFirstRecord=()=>false;rulesDialog?.finish();deleteDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();view.disposeView();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
+  const finish=()=>{if(done)return;done=true;editor?.visibility?.closeBoard?.();guideOpenFirstRecord=()=>false;rulesDialog?.finish();deleteDialog?.finish();recoveryDialog?.finish();closeTagPicker();if(searchTimer!==null)clearTimeout(searchTimer);virtualList.dispose();view.disposeView();document.removeEventListener('keydown',onKey,true);stopViewport();overlay.remove();previousFocus?.focus?.();resolve('Библиотека закрыта');};
   onChatSwitch=()=>finish(); // Discard stale modal state when the chat changes.
   async function closeLibrary(){if(busy||done)return;
    if(document.querySelector('[data-spi-tour]')){if(dirty&&!discardAsked){discardAsked=true;status('Сохрани изменения или нажми «Закрыть» ещё раз, чтобы отменить их.');return;}finish();return;}
