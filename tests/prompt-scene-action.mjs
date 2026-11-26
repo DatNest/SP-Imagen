@@ -67,3 +67,37 @@ test('Legacy director templates require explicit gaze targets and distinct page 
   }
  }
 });
+
+test('Comic and Story Page list panel types and repeat the matching labels in character actions',()=>{
+ for(const kind of ['comic','story_page']){
+  for(const p of [SP_IMAGEN_PROMPTS['sp_ness_'+kind+'_director'],SP_IMAGEN_NO_TEXT_DIRECTORS[kind]]){
+   assert.match(p,/List the actual panel types immediately after the panel count/);
+   assert.match(p,/repeat the same panel number and type/);
+  }
+  const sample=SP_IMAGEN_PROMPTS['sp_ness_'+kind+'_director'].match(/\nSAMPLE:\n([\s\S]*?)\n\nSAMPLE AND LIBRARY MARKERS/)[1];
+  const [scene,...actors]=sample.split(' | ');
+  const labels=new Map([...scene.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)].map(m=>[m[1],m[2]]));
+  assert.equal(labels.size,3);
+  assert.match(scene,/3 panels, [^;]+panel/);
+  for(const actor of actors){
+   const actions=[...actor.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)];
+   assert.ok(actions.length);
+   assert.equal(actions.length,(actor.match(/Panel \d+:/g)||[]).length);
+   for(const m of actions)assert.equal(m[2],labels.get(m[1]));
+  }
+  for(const includeText of [true,false]){
+   const p=experimentalDirectorPrompt(kind,{includeText});
+   assert.match(p,/List the actual panel types immediately after the panel count/);
+   const json=JSON.parse(p.split('\nSAMPLE:\n')[1].split('\n\nReturn one valid JSON object.')[0]);
+   assert.match(json.opening,/2 panels, splash panel, inset panel/);
+   const types=new Map([...json.scene.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)].map(m=>[m[1],m[2]]));
+   assert.equal(types.size,2);
+   for(const actor of json.characters){
+    const actions=[...actor.action.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)];
+    assert.ok(actions.length);
+    assert.equal(actions.length,(actor.action.match(/Panel \d+:/g)||[]).length);
+    for(const m of actions)assert.equal(m[2],types.get(m[1]));
+   }
+  }
+ }
+});
