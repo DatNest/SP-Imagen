@@ -2028,3 +2028,17 @@
 #sp-imagen-review-panel .ness-tagboard-add-status[data-error=true]{color:var(--ness-text);border-inline-start:2px solid var(--ness-accent);padding-inline-start:5px}
 #sp-imagen-review-panel .ness-tagboard-add-status[hidden]{display:none!important}
 #sp-imagen-review-panel [data-appearance-duplicate] .ness-tag-duplicate-list{max-height:38dvh;overflow:auto}
+
+#sp-imagen-review-panel .ness-tag-recovery-link{align-self:flex-start;border:0!important;background:transparent!important;color:var(--ness-muted)!important;font-size:11px;text-decoration:underline;text-underline-offset:3px;padding:4px 0!important;min-height:24px;opacity:.85}
+#sp-imagen-review-panel .ness-tag-recovery-link:hover,#sp-imagen-review-panel .ness-tag-recovery-link:focus-visible{opacity:1;color:var(--ness-text)!important}
+#sp-imagen-review-panel .ness-recovery-controls{display:flex;gap:6px;flex-wrap:wrap}
+#sp-imagen-review-panel .ness-recovery-controls>*{flex:1 1 140px;min-width:0}
+#sp-imagen-review-panel .ness-recovery-list{display:grid;gap:6px}
+#sp-imagen-review-panel .ness-recovery-person{padding-top:7px;overflow-wrap:anywhere}
+#sp-imagen-review-panel .ness-recovery-item{display:grid;gap:5px;border:1px solid var(--ness-border);border-radius:8px;padding:8px;min-width:0;overflow-wrap:anywhere}
+#sp-imagen-review-panel .ness-recovery-item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap}
+#sp-imagen-review-panel .ness-recovery-item-head label{flex:1;min-width:0}
+#sp-imagen-review-panel .ness-recovery-item .ness-note{margin:0!important}
+#sp-imagen-review-panel .ness-recovery-item select{max-width:100%;width:100%}
+#sp-imagen-review-panel .ness-recovery-item summary{font-size:11px;color:var(--ness-muted);cursor:pointer}
+#sp-imagen-review-panel .ness-recovery-source{display:block;color:var(--ness-muted);padding:3px 0}
