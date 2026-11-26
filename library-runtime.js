@@ -794,7 +794,7 @@ async function openLibraryEditor(){
      el('small',labels[row.status],heading,'ness-note');
      if(selectable){
       const initial=modeByRow.has(k)?modeByRow.get(k):row.needsMode?'':row.mode;
-      modeSelect=choice([['','Выбрать режим'],...Object.entries(RECOVERY_MODES)],initial);
+      modeSelect=choice([['','Выбрать режим'],...Object.entries(RECOVERY_MODES).filter(([mode])=>!row.locations.some(l=>l.mode===mode))],initial);
       modeSelect.setAttribute('aria-label','Режим восстановления: '+row.text);item.appendChild(modeSelect);
       const sync=()=>{
        modeByRow.set(k,modeSelect.value);
