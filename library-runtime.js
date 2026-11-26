@@ -748,7 +748,10 @@ async function openLibraryEditor(){
    if(done)return;
    if(masterLibraryRaw()!==baseline)throw Error('Библиотека изменилась. Открой редактор заново.');
    const old=origin.extensionSettings?.variables?.global?.[MASTER_BACKUP_KEY];
-   const report=auditLostTags(draft,[...(libraryStore?.history||[]),...(old?[old]:[])]);
+   const available=await libraryStore?.recoveryHistory?.()||{history:libraryStore?.history||[],skipped:0};
+   if(done)return;
+   const report=auditLostTags(draft,[...available.history,...(old?[old]:[])]);
+   report.skipped+=available.skipped;
    setBusy(false);
    const dialog=createNessChildDialog(document,panel,{title:'Проверка потерянных тегов',marker:'data-tag-recovery',onClose:()=>{recoveryDialog=null;}});
    recoveryDialog=dialog;
