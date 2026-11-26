@@ -24,7 +24,7 @@ test('Official Comic and Story Page samples conform to the actual BASE, characte
   assert.doesNotMatch(example,/(\[[^\]]*(?:continue|outfit|duplicate|text content)[^\]]*\]|Speech bubble 2\.\.\.)/iu);
   assert.doesNotMatch(prompt,/legacy bubble-after-cast example|despite their legacy placement|even though the legacy sample places them afterward/i);
   assert.match(prompt,/Each panel establishes the camera, visible background, participants' relative positions and central shared interaction/);
-  assert.match(prompt,/Refer to the panel and established position, then detail that character's explicit in-scene gaze target, body pose/);
+  assert.match(prompt,/position relative to other characters, one action \(at most two simultaneous, compatible actions\), facial expression and in-scene gaze target/);
   if(kind==='comic')assert.match(example,/Text: Привет!\n\nI love you$/);
   else assert.match(example,/Text: I love you\n\nПривет!$/);
  }
@@ -34,7 +34,7 @@ test('Original textless Comic and Story Page preserve their output contract and 
  for(const kind of ['comic','story_page']){
   const p=SP_IMAGEN_NO_TEXT_DIRECTORS[kind];
   assert.match(p,/Each panel anchors its camera, visible background, participants' relative positions and central shared interaction/);
-  assert.match(p,/Refer to the panel and established position, then detail that character's explicit in-scene gaze target, body pose/);
+  assert.match(p,/position relative to other characters, one action \(at most two simultaneous, compatible actions\), facial expression and in-scene gaze target/);
   assert.doesNotMatch(p,/SAMPLE:\n/,'No new example was added to textless modes');
   assert.match(p,/VISUAL STORYTELLING — WITHOUT LETTERING/);
  }
@@ -44,7 +44,7 @@ test('Experimental JSON-samples teach scene spatial anchors and character-specif
  for(const kind of ['snapshot','comic','story_page']){
   const p=experimentalDirectorPrompt(kind,{postCount:3});
   assert.match(p,kind==='snapshot'?/spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction/:/position on the page, camera angle and crop, visible exterior\/interior, named participants and their relative positions to each other, and central shared interaction/);
-  assert.match(p,kind==='snapshot'?/panel-specific body poses, expressions, gestures, gaze, hand and prop details/:/panel-specific position, body pose, expression, gestures, gaze target, clothing and hair movement, hand and prop details/);
+  assert.match(p,kind==='snapshot'?/panel-specific body poses, expressions, gestures, gaze, hand and prop details/:/position relative to other characters, one action \(at most two simultaneous, compatible actions\), facial expression and in-scene gaze target/);
   assert.match(p,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
   assert.match(p,/Reference (?:each|the) panel and (?:the )?position established in scene/);
   assert.match(p,/NSFW \/ INTIMACY CONTINUITY:/);
@@ -73,6 +73,7 @@ test('Comic and Story Page list panel types and repeat the matching labels in ch
   for(const p of [SP_IMAGEN_PROMPTS['sp_ness_'+kind+'_director'],SP_IMAGEN_NO_TEXT_DIRECTORS[kind]]){
    assert.match(p,/List the actual panel types immediately after the panel count/);
    assert.match(p,/repeat the same panel number and type/);
+   assert.match(p,/Include only visible details; no action chains/);
   }
   const sample=SP_IMAGEN_PROMPTS['sp_ness_'+kind+'_director'].match(/\nSAMPLE:\n([\s\S]*?)\n\nSAMPLE AND LIBRARY MARKERS/)[1];
   const [scene,...actors]=sample.split(' | ');
@@ -88,6 +89,8 @@ test('Comic and Story Page list panel types and repeat the matching labels in ch
   for(const includeText of [true,false]){
    const p=experimentalDirectorPrompt(kind,{includeText});
    assert.match(p,/List the actual panel types immediately after the panel count/);
+   assert.match(p,/at most two simultaneous, compatible actions/);
+   assert.match(p,/Include only visible details; no action chains/);
    const json=JSON.parse(p.split('\nSAMPLE:\n')[1].split('\n\nReturn one valid JSON object.')[0]);
    assert.match(json.opening,/2 panels, splash panel, inset panel/);
    const types=new Map([...json.scene.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)].map(m=>[m[1],m[2]]));
