@@ -1,4 +1,4 @@
-import {normalizeAppearanceCatalog,parseBaseTags,normalizeSkinTags,NSFW_PRESETS,SKIN_PRESETS} from './appearance-board.js';
+import {normalizeAppearanceCatalog,parseBaseTags,normalizeSkinTags,NSFW_PRESETS} from './appearance-board.js';
 import {LEGACY_BODY_FIELDS,splitLegacyBodyTags,prepareBodyAppearance} from './legacy-body-migration.js';
 import {normalizeAppearanceRanges,normalizeAppearanceSelections,visibleAppearanceRanges} from './appearance-visibility.js';
 import {NESS_APPEARANCE_PRESETS} from './shared-data.js';
@@ -82,9 +82,10 @@ export function auditLostTags(data,backups=[]){
   for(const c of candidates.values()){
    const locations=modes.filter(m=>inv[m].has(c.identity)).map(m=>({mode:m,assigned:inv[m].get(c.identity)}));
    const suggestions=[...c.suggested];
-   const mode=suggestions.length===1?suggestions[0]:locations.length===1?locations[0].mode:'base';
-   const status=!locations.length?'missing':suggestions.length&&suggestions.every(m=>!locations.some(l=>l.mode===m))?'elsewhere':locations.some(l=>l.assigned)?'assigned':'unassigned';
-   rows.push({...c,sources:[...c.sources],suggested:suggestions,mode,locations,status,needsMode:suggestions.length!==1&&!locations.length});
+   const missingModes=suggestions.filter(m=>!locations.some(l=>l.mode===m));
+   const mode=missingModes.length===1?missingModes[0]:'';
+   const status=!locations.length?'missing':missingModes.length?'elsewhere':locations.some(l=>l.assigned)?'assigned':'unassigned';
+   rows.push({...c,sources:[...c.sources],suggested:suggestions,mode,locations,status,needsMode:!mode});
   }
  }
  return {rows,backupCount:parsed.length,skipped};
@@ -107,23 +108,18 @@ export function recoverLostTags(data,report,choices){
   }
   const target=current.catalog.modes[mode];
   if(target.tags.length>=700)throw Error('Достигнут лимит тегов: '+record.name);
-  let section=target.sections.find(s=>s.title==='Восстановленные'&&s.before===target.tags.length);
+  let section=target.sections.find(s=>s.title==='Восстановленные');
   if(!section){
-   const index=target.sections.findIndex(s=>s.title==='Восстановленные');
-   if(index>=0){
-    const end=target.sections[index+1]?.before??target.tags.length;
-    section=target.sections[index];
-    const used=new Set(target.tags.map(t=>t.id));let n=0,id;do{id='recovered'+(++n);}while(used.has(id));
-    target.tags.splice(end,0,{id,text:row.text});
-    for(let i=index+1;i<target.sections.length;i++)target.sections[i].before++;
-    current.inventory[mode].set(row.identity,false);added++;continue;
-   }
    if(target.sections.length>=60)throw Error('Достигнут лимит разделов: '+record.name);
    const ids=new Set(target.sections.map(s=>s.id));let n=0,id;do{id='recovery'+(++n);}while(ids.has(id));
-   target.sections.push({id,title:'Восстановленные',before:target.tags.length});
+   section={id,title:'Восстановленные',before:target.tags.length};target.sections.push(section);
   }
+  const ordered=[...target.sections].sort((a,b)=>a.before-b.before),index=ordered.indexOf(section);
+  const position=ordered[index+1]?.before??target.tags.length;
   const used=new Set(target.tags.map(t=>t.id));let n=0,id;do{id='recovered'+(++n);}while(used.has(id));
-  target.tags.push({id,text:row.text});current.inventory[mode].set(row.identity,false);added++;
+  target.tags.splice(position,0,{id,text:row.text});
+  for(const later of ordered.slice(index+1))later.before++;
+  current.inventory[mode].set(row.identity,false);added++;
  }
  for(const [id,state] of byId)if(state.catalog)find(next,id).appearanceCatalog=state.catalog;
  return {data:next,added};
