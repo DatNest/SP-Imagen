@@ -749,6 +749,7 @@ async function openLibraryEditor(){
    if(masterLibraryRaw()!==baseline)throw Error('Библиотека изменилась. Открой редактор заново.');
    const old=origin.extensionSettings?.variables?.global?.[MASTER_BACKUP_KEY];
    const report=auditLostTags(draft,[...(libraryStore?.history||[]),...(old?[old]:[])]);
+   setBusy(false);
    const dialog=createNessChildDialog(document,panel,{title:'Проверка потерянных тегов',marker:'data-tag-recovery',onClose:()=>{recoveryDialog=null;}});
    recoveryDialog=dialog;
    const totals=Object.fromEntries(['missing','elsewhere','unassigned','assigned'].map(k=>[k,report.rows.filter(x=>x.status===k).length]));
@@ -817,7 +818,7 @@ async function openLibraryEditor(){
    button('Закрыть',dialog.actions,dialog.finish,'quiet');
    draw();
   }catch(e){status('Проверка не выполнена: '+e.message);}
-  finally{setBusy(false);if(recoveryDialog){const apply=recoveryDialog.actions.querySelector('button');if(apply)apply.disabled=true;}}
+  finally{if(busy)setBusy(false);}
  }
 
  const rulesButton=button('◈',view.addTag.parentNode,()=>{
