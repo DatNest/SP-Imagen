@@ -24,7 +24,7 @@ test('Official Comic and Story Page samples conform to the actual BASE, characte
   assert.doesNotMatch(example,/(\[[^\]]*(?:continue|outfit|duplicate|text content)[^\]]*\]|Speech bubble 2\.\.\.)/iu);
   assert.doesNotMatch(prompt,/legacy bubble-after-cast example|despite their legacy placement|even though the legacy sample places them afterward/i);
   assert.match(prompt,/Each panel establishes the camera, visible background, participants' relative positions and central shared interaction/);
-  assert.match(prompt,/position relative to other characters, one action \(at most two simultaneous, compatible actions\), facial expression and in-scene gaze target/);
+  assert.match(prompt,/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   if(kind==='comic')assert.match(example,/Text: Привет!\n\nI love you$/);
   else assert.match(example,/Text: I love you\n\nПривет!$/);
  }
@@ -34,7 +34,7 @@ test('Original textless Comic and Story Page preserve their output contract and 
  for(const kind of ['comic','story_page']){
   const p=SP_IMAGEN_NO_TEXT_DIRECTORS[kind];
   assert.match(p,/Each panel anchors its camera, visible background, participants' relative positions and central shared interaction/);
-  assert.match(p,/position relative to other characters, one action \(at most two simultaneous, compatible actions\), facial expression and in-scene gaze target/);
+  assert.match(p,/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   assert.doesNotMatch(p,/SAMPLE:\n/,'No new example was added to textless modes');
   assert.match(p,/VISUAL STORYTELLING — WITHOUT LETTERING/);
  }
@@ -44,9 +44,9 @@ test('Experimental JSON-samples teach scene spatial anchors and character-specif
  for(const kind of ['snapshot','comic','story_page']){
   const p=experimentalDirectorPrompt(kind,{postCount:3});
   assert.match(p,kind==='snapshot'?/spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction/:/position on the page, camera angle and crop, visible exterior\/interior, named participants and their relative positions to each other, and central shared interaction/);
-  assert.match(p,kind==='snapshot'?/panel-specific body poses, expressions, gestures, gaze, hand and prop details/:/position relative to other characters, one action \(at most two simultaneous, compatible actions\), facial expression and in-scene gaze target/);
+  assert.match(p,kind==='snapshot'?/panel-specific body poses, expressions, gestures, gaze, hand and prop details/:/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   assert.match(p,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
-  assert.match(p,/Reference (?:each|the) panel and (?:the )?position established in scene/);
+  assert.match(p,kind==='snapshot'?/Reference (?:each|the) panel and (?:the )?position established in scene/:/in character actions, repeat Panel N: panel type/);
   assert.match(p,/NSFW \/ INTIMACY CONTINUITY:/);
   assert.ok(p.includes(experimentalLegacyIntimacy(kind)),'NSFW material remains the original from shipped templates');
   assert.match(p,/"borders":/);
@@ -71,9 +71,9 @@ test('Legacy director templates require explicit gaze targets and distinct page 
 test('Comic and Story Page list panel types and repeat the matching labels in character actions',()=>{
  for(const kind of ['comic','story_page']){
   for(const p of [SP_IMAGEN_PROMPTS['sp_ness_'+kind+'_director'],SP_IMAGEN_NO_TEXT_DIRECTORS[kind]]){
-   assert.match(p,/List the actual panel types immediately after the panel count/);
-   assert.match(p,/repeat the same panel number and type/);
-   assert.match(p,/Include only visible details; no action chains/);
+   assert.match(p,/Format (?:the )?opening as:/);
+   assert.match(p,/repeat Panel N: panel type/);
+   assert.match(p,/Include only visible details/);
   }
   const sample=SP_IMAGEN_PROMPTS['sp_ness_'+kind+'_director'].match(/\nSAMPLE:\n([\s\S]*?)\n\nSAMPLE AND LIBRARY MARKERS/)[1];
   const [scene,...actors]=sample.split(' | ');
@@ -89,9 +89,9 @@ test('Comic and Story Page list panel types and repeat the matching labels in ch
   }
   for(const includeText of [true,false]){
    const p=experimentalDirectorPrompt(kind,{includeText});
-   assert.match(p,/List the actual panel types immediately after the panel count/);
-   assert.match(p,/at most two simultaneous, compatible actions/);
-   assert.match(p,/Include only visible details; no action chains/);
+   assert.match(p,/Format (?:the )?opening as:/);
+   assert.match(p,/maximum two compatible simultaneous actions/);
+   assert.match(p,/Include only visible details/);
    const json=JSON.parse(p.split('\nSAMPLE:\n')[1].split('\n\nReturn one valid JSON object.')[0]);
    assert.match(json.opening,/^(?:comic|story) page; 2 panels: splash panel, inset panel$/);
    const types=new Map([...json.scene.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)].map(m=>[m[1],m[2]]));
