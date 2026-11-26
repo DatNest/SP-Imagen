@@ -325,7 +325,7 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
  const sections=characters.map(x=>{
   const unique=characters.filter(a=>sameName(a.name,x.name)).length===1;
   const spokenPanels=panelLocal&&unique?[...new Set(printedItems.filter(b=>b.type==='bubble'&&sameName(b.speaker,x.name)).map(b=>b.panel))]:[];
-  const cues=spokenPanels.map(n=>'Panel '+n+': visible speech balloon beside '+x.name+", tail pointing toward "+x.name+"'s mouth");
+  const cues=spokenPanels.map(n=>{const label=panels?.[n-1]?.description.match(/^([a-z -]+ panel),/i)?.[1];return 'Panel '+n+': '+(label?label+', ':'')+'visible speech balloon beside '+x.name+", tail pointing toward "+x.name+"'s mouth";});
   const action=boundary(x.action);
   // Preserve the action description; place generated balloon cues before trailing Action Tags.
   const trailing=action.match(/(?:^|,\s*|;\s*)((?:source|target|mutual)#[^,;\r\n]+(?:,\s*(?:source|target|mutual)#[^,;\r\n]+)*)$/iu);
