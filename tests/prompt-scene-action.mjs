@@ -79,7 +79,8 @@ test('Comic and Story Page list panel types and repeat the matching labels in ch
   const [scene,...actors]=sample.split(' | ');
   const labels=new Map([...scene.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)].map(m=>[m[1],m[2]]));
   assert.equal(labels.size,3);
-  assert.match(scene,/3 panels, [^;]+panel/);
+  assert.match(scene,/(?:comic|story) page; 3 panels: [^;]+panel[^;]*;/);
+  assert.doesNotMatch(scene,/Panel \d+: (?:large|small|wide|narrow) panel,/);
   for(const actor of actors){
    const actions=[...actor.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)];
    assert.ok(actions.length);
@@ -92,7 +93,7 @@ test('Comic and Story Page list panel types and repeat the matching labels in ch
    assert.match(p,/at most two simultaneous, compatible actions/);
    assert.match(p,/Include only visible details; no action chains/);
    const json=JSON.parse(p.split('\nSAMPLE:\n')[1].split('\n\nReturn one valid JSON object.')[0]);
-   assert.match(json.opening,/2 panels, splash panel, inset panel/);
+   assert.match(json.opening,/^(?:comic|story) page; 2 panels: splash panel, inset panel$/);
    const types=new Map([...json.scene.matchAll(/Panel (\d+): ([a-z -]+ panel),/g)].map(m=>[m[1],m[2]]));
    assert.equal(types.size,2);
    for(const actor of json.characters){
