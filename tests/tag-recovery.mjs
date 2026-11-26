@@ -77,3 +77,18 @@ test('Recovery audit is opt-in in framing settings and restores through the ordi
  const open=src.slice(src.indexOf('async function openTagRecovery(){'),src.indexOf('const rulesButton='));
  assert.doesNotMatch(open,/saveMasterLibrary\(/);
 });
+
+test('An absent historical mode copy is reported even when the same tag is assigned in another historical mode',()=>{
+ const data=make({name:'Example',base:'blue eyes',appearanceCatalog:catalog()});
+ const previous=make({name:'Old name',base:'blue eyes',appearanceCatalog:{modes:{skin:{tags:[{id:'s',text:'blue eyes'}]}}}});
+ const row=auditLostTags(data,[previous]).rows.find(x=>x.text==='blue eyes');
+ assert.equal(row.status,'elsewhere');assert.equal(row.mode,'skin');assert.deepEqual(row.locations,[{mode:'base',assigned:true}]);
+});
+test('Recovery inserts into the existing empty recovery section before adjacent empty sections',()=>{
+ const c=catalog();c.modes.skin.sections=[{id:'r',title:'Восстановленные',before:1},{id:'empty',title:'Empty',before:1}];
+ const data=make({name:'Example',base:'blue eyes',appearanceCatalog:c,legacyBodyArchive:{shinMarks:'old mark; another old mark'}});
+ const report=auditLostTags(data);
+ const result=recoverLostTags(data,report,report.rows.filter(x=>x.mode==='skin'&&x.status==='missing').map(x=>({id:x.id,identity:x.identity,mode:'skin'})));
+ assert.equal(result.added,2);
+ assert.deepEqual(result.data.characters.a.appearanceCatalog.modes.skin.sections,[{id:'r',title:'Восстановленные',before:1},{id:'empty',title:'Empty',before:3}]);
+});
