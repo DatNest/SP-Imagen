@@ -494,6 +494,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function changeMany(tags,assign,recordHistory=true){
   if(readOnly()||!tags.length)return;
   const relevant=tags.filter(t=>isChosen(t,preset)!==assign&&(!assign||!fromAlways(t)));
+  if(mode==='skin'&&assign&&skin.tags.length+relevant.filter(t=>!skinTag(t)).length>600){warn('Достигнут лимит тегов открытой кожи.');return;}
   if(!relevant.length)return;
   if(recordHistory)record();
   if(mode==='skin'){
@@ -672,7 +673,8 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function addGroup(){
   if(readOnly())return;
   const inputNode=content.querySelector('[data-group-name]'),title=validLabel(inputNode?.value);
-  if(!title)return;
+  if(!title){warn('Введи название раздела.');return;}
+  if(sectionsForMode().length>=60){warn('Достигнут лимит разделов режима.');return;}
   record();
   const id='g'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),divider={id,title,before:items().length};
   sectionsForMode().push(divider);
@@ -704,7 +706,13 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
   if(mode==='skin'&&!skinTag({text})&&skin.tags.length>=600){onError('Достигнут лимит тегов открытой кожи.');return false;}
   if(!confirmed){
    let added=false;
-   confirmAssignment(text,()=>{added=addTag(text,insertAt,sectionId,true,onAdded,onError,onCancel);if(added)onAdded(existing?'Назначен существующий тег.':'Тег добавлен.');},onCancel);
+   confirmAssignment(text,()=>{
+    try{
+     added=addTag(text,insertAt,sectionId,true,onAdded,onError,onCancel);
+     if(added)onAdded(existing?'Назначен существующий тег.':'Тег добавлен.');
+     else onCancel();
+    }catch(error){console.error('[SP Imagen] Добавление тега:',error);onError('Не удалось добавить тег: '+(error?.message||String(error)));onCancel();}
+   },onCancel);
    return added;
   }
   if(existing){changeMany([existing],true);return true;}
@@ -802,6 +810,7 @@ export function createAppearanceBoard({ui,parent,readBaseState,writeBaseState,re
  function renameTag(tag,next){
   const text=String(next||'').trim().replace(/[,;]+$/,'').trim();
   if(!text||text===tag.text||readOnly())return;
+  if(text.length>1200){warn('Тег слишком длинный (до 1200 символов).');return;}
   if(/[,\r\n]/.test(text)){warn('В одном теге нельзя использовать запятую.');return;}
   if(items().some(x=>x!==tag&&norm(x.text)===norm(text))){warn('Такой тег уже есть в этом режиме.');return;}
   if(mode==='base'&&appearanceFormat==='prose'&&parseBaseTags(baseState().base).some(t=>norm(t.text)===norm(tag.text))){warn('Для обычного текста меняй фразу в текстовом режиме, чтобы сохранить абзац.');return;}
