@@ -18,12 +18,12 @@ test('Official Comic and Story Page samples conform to the actual BASE, characte
   assert.ok(balloon>=0 && balloon<firstActor && firstActor<nextActor && nextActor<text,
    'Balloon stays in BASE; two cast entries precede terminal Text: '+kind);
   assert.equal((example.match(/\|\s*(?:boy|girl|cat|other)\s*,/gu)||[]).length,2);
-  assert.match(example.slice(0,firstActor),/Speech bubble 1:.*?tail pointing to Clark, Clark saying "Привет!"/s);
+  assert.match(example.slice(0,firstActor),/Speech bubble 1:.*?tail to Clark, saying "Привет!"/s);
   assert.equal(example.split('\n\nText: ').length-1,1);
   assert.ok(example.includes('Panel 1:')&&example.includes('Panel 2:')&&example.includes('Panel 3:'));
   assert.doesNotMatch(example,/(\[[^\]]*(?:continue|outfit|duplicate|text content)[^\]]*\]|Speech bubble 2\.\.\.)/iu);
   assert.doesNotMatch(prompt,/legacy bubble-after-cast example|despite their legacy placement|even though the legacy sample places them afterward/i);
-  assert.match(prompt,/Each panel establishes the camera, visible background, participants' relative positions and central shared interaction/);
+  assert.match(prompt,/Per panel: type, placement, framing, participant positions, key visual beat/);
   assert.match(prompt,/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   if(kind==='comic')assert.match(example,/Text: Привет!\n\nI love you$/);
   else assert.match(example,/Text: I love you\n\nПривет!$/);
@@ -33,7 +33,7 @@ test('Official Comic and Story Page samples conform to the actual BASE, characte
 test('Original textless Comic and Story Page preserve their output contract and separate scene/action responsibilities',()=>{
  for(const kind of ['comic','story_page']){
   const p=SP_IMAGEN_NO_TEXT_DIRECTORS[kind];
-  assert.match(p,/Each panel anchors its camera, visible background, participants' relative positions and central shared interaction/);
+  assert.match(p,/Per panel: type, placement, framing, participant positions, key visual beat/);
   assert.match(p,/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   assert.doesNotMatch(p,/SAMPLE:\n/,'No new example was added to textless modes');
   assert.match(p,/VISUAL STORYTELLING — WITHOUT LETTERING/);
@@ -43,7 +43,7 @@ test('Original textless Comic and Story Page preserve their output contract and 
 test('Experimental JSON-samples teach scene spatial anchors and character-specific action without changing slot structure',()=>{
  for(const kind of ['snapshot','comic','story_page']){
   const p=experimentalDirectorPrompt(kind,{postCount:3});
-  assert.match(p,kind==='snapshot'?/continuous scene, camera, visible setting, participants’ relative positions and central shared interaction/:/position on the page, camera angle and crop, visible exterior\/interior, named participants and their relative positions to each other, and central shared interaction/);
+  assert.match(p,kind==='snapshot'?/continuous scene, camera, visible setting, participants’ relative positions and central shared interaction/:/type, placement, camera framing, named participant positions and key visual beat/);
   assert.match(p,kind==='snapshot'?/body poses, expressions, gestures, gaze, hand and prop details/:/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   assert.match(p,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
   assert.match(p,kind==='snapshot'?/Reference the position established in scene/:/in character actions, repeat Panel N: panel type/);
@@ -59,11 +59,11 @@ test('Experimental JSON-samples teach scene spatial anchors and character-specif
 
 test('Legacy director templates require explicit gaze targets and distinct page shots',()=>{
  for(const [kind,prompt] of [...Object.entries(SP_IMAGEN_PROMPTS).map(([key,value])=>[key.replace(/^sp_ness_|_director$/g,''),value]),...Object.entries(SP_IMAGEN_NO_TEXT_DIRECTORS)]){
-  assert.match(prompt,/In every character entry, explicitly specify a gaze target within the scene/);
+  assert.match(prompt,kind==='snapshot'?/In every character entry, explicitly specify a gaze target within the scene/:/facial expression and gaze target/);
   if(kind==='snapshot')assert.doesNotMatch(prompt,/rather than reusing the same shot from panel to panel/);
   else{
-   assert.match(prompt,/rather than reusing the same shot from panel to panel/);
-   assert.match(prompt,/For every panel showing the character’s eyes, specify the in-scene gaze target/);
+   assert.match(prompt,/Vary framing and focal emphasis across panels/);
+   assert.match(prompt,/Specify gaze when eyes are visible/);
   }
  }
 });
