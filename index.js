@@ -906,17 +906,24 @@ function openNovelAISettings({ back = false } = {}) {
     const endpoint = input(OFFICIAL_NOVELAI_ORIGIN);
     endpoint.readOnly = true;
     formField(grid, 'Защищённый адрес NovelAI', endpoint, 'Фиксирован: ключ отправляется только на официальный сервер. Сторонние адреса запрещены.');
-    const model = select(NOVELAI_MODELS, draft.model); formField(grid, 'Модель', model);
+    const initialModel=novelAIModelControls(draft.model);
+    const model = select(NOVELAI_MODEL_CHOICES, initialModel.model); formField(grid, 'Model', model);
+    const dataset=select({anime:'Anime',furry:'Furry'},draft.mode);formField(grid,'Mode',dataset);
+    const effort=select({medium:'Medium',high:'High'},initialModel.effort);const effortField=formField(grid,'Effort',effort,'Medium доступен только для V5 Full.');
+    const modelId=()=>novelAIModelFromControls(model.value,effort.value);
+    const note=document.createElement('p');note.className='spi-status';note.textContent='Параметры без активного пресета. Индивидуальные настройки и негативы находятся в «Стилях».';
+    grid.append(note);
     const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution); formField(grid, 'Размер', resolution, 'При защите Anlas используется Normal.');
     const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50'; formField(grid, 'Steps', steps);
     const cfg = input(Number.isFinite(draft.cfgScale) ? draft.cfgScale : ''); cfg.inputMode = 'decimal'; formField(grid, 'CFG scale', cfg, 'От 0 до 10; дробные числа через точку или запятую.');
     const rescale = input(Number.isFinite(draft.cfgRescale) ? draft.cfgRescale : ''); rescale.inputMode = 'decimal'; formField(grid, 'CFG rescale', rescale, 'От 0 до 1; дробные числа через точку или запятую.');
     const sampler = select(NOVELAI_SAMPLERS, draft.sampler); formField(grid, 'Sampler', sampler);
     const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
-    const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
-    const negativeField=formField(grid, 'Негативный промпт', negative, 'Настраивается для Full/Curated; в V5 Full Medium NovelAI использует собственный фиксированный Undesired Content.');
-    const updateModelFields=()=>{negativeField.parentElement.hidden=model.value==='nai-diffusion-5-full-medium';};
-    model.addEventListener('change',updateModelFields);updateModelFields();
+    const updateModelFields=()=>{
+      effortField.parentElement.hidden=model.value!==V5_FULL_MODEL;
+      const medium=modelId()===MEDIUM_MODEL;
+      for(const field of [steps,rescale,sampler])field.disabled=medium;
+    };
     const directFields=[...grid.children].filter(node=>node!==providerField);
     const proxyIntro=document.createElement('p');proxyIntro.className='spi-status';proxyIntro.textContent='NAISTERA · генерация расходует квоту или кредиты сервиса. Защита Anlas не применяется.';grid.append(proxyIntro);
     const proxyToken=input(proxy.apiKey,'password');proxyToken.autocomplete='off';
@@ -929,26 +936,26 @@ function openNovelAISettings({ back = false } = {}) {
     const proxyCfg=input(Number.isFinite(proxy.cfgScale)?proxy.cfgScale:'');proxyCfg.inputMode='decimal';formField(grid,'CFG scale',proxyCfg,'От 0 до 10; через точку или запятую.');
     const proxyRescale=input(Number.isFinite(proxy.cfgRescale)?proxy.cfgRescale:'');proxyRescale.inputMode='decimal';formField(grid,'CFG rescale',proxyRescale,'От 0 до 1; через точку или запятую.');
     const proxySampler=select(NOVELAI_SAMPLERS,proxy.sampler);formField(grid,'Sampler',proxySampler);
-    const proxyNegative=document.createElement('textarea');proxyNegative.className='spi-short-area';proxyNegative.value=proxy.negativePrompt;formField(grid,'Негативный промпт',proxyNegative);
     const proxyFields=[...grid.children].filter(node=>node!==providerField&&!directFields.includes(node));
+    const quick=input('', 'checkbox');quick.checked=state.quickStyleSwitch;formField(grid,'Плавающий переключатель пресетов',quick);
     const show=(node,visible)=>{node.hidden=!visible;node.style.display=visible?'':'none';};
     const updateProvider=()=>{
         const isProxy=provider.value==='naistera', medium=proxyModel.value==='novelai-v5-medium';
         directFields.forEach(node=>show(node,!isProxy));proxyFields.forEach(node=>show(node,isProxy));
-        if(!isProxy)show(negativeField.parentElement,model.value!=='nai-diffusion-5-full-medium');
+        if(!isProxy){show(effortField.parentElement,model.value===V5_FULL_MODEL);updateModelFields();}
         else {
-            show(proxyRescale.parentElement,!medium);show(proxyNegative.parentElement,!medium);
+            show(proxyRescale.parentElement,!medium);
             show(proxySteps.parentElement,!medium);show(proxySampler.parentElement,!medium);
             proxyIntro.textContent='NAISTERA · генерация расходует квоту или кредиты сервиса. Защита Anlas не применяется.'+(medium?' Medium: 14 Steps, Euler Ancestral.':'');
         }
     };
-    model.addEventListener('change',updateProvider);proxyModel.addEventListener('change',updateProvider);provider.addEventListener('change',()=>{status.textContent='';updateProvider();});updateProvider();
-    const readProxy=()=>normalizeNaisteraSettings({apiKey:proxyToken.value,model:proxyModel.value,steps:proxySteps.value,cfgScale:proxyCfg.value,cfgRescale:proxyRescale.value,sampler:proxySampler.value,negativePrompt:proxyNegative.value});
+    model.addEventListener('change',updateProvider);effort.addEventListener('change',updateProvider);proxyModel.addEventListener('change',updateProvider);provider.addEventListener('change',()=>{status.textContent='';updateProvider();});updateProvider();
+    const readProxy=()=>normalizeNaisteraSettings({apiKey:proxyToken.value,model:proxyModel.value,steps:proxySteps.value,cfgScale:proxyCfg.value,cfgRescale:proxyRescale.value,sampler:proxySampler.value,negativePrompt:proxy.negativePrompt});
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: true, neverSpendAnlas: neverSpend.checked,
-        apiKey: token.value, endpoint: OFFICIAL_NOVELAI_ORIGIN, model: model.value, resolution: resolution.value,
+        apiKey: token.value, endpoint: OFFICIAL_NOVELAI_ORIGIN, model: modelId(), mode:dataset.value, resolution: resolution.value,
         steps: Number(steps.value), cfgScale: cfg.value, cfgRescale: rescale.value,
-        sampler: sampler.value, seed: Number(seed.value), negativePrompt: negative.value,
+        sampler: sampler.value, seed: Number(seed.value),
     });
     button('Проверить подключение', actions, async event => {
         const control = event.currentTarget; control.disabled = true; status.textContent = 'Проверяю подписку NovelAI…';
@@ -972,7 +979,7 @@ function openNovelAISettings({ back = false } = {}) {
             const next=readProxy();
             try{validateNaisteraSettings(next);}
             catch(error){status.textContent=String(error?.message||error);return;}
-            const root=settings();root.naistera=next;root.imageProvider='naistera';saveSettings();close();return;
+            const root=settings();root.naistera=next;root.imageProvider='naistera';root.quickStyleSwitch=quick.checked;saveSettings();close();return;
         }
         const next = readDraft();
         const cfgErrors = cfgValidationErrors(next);
@@ -980,7 +987,7 @@ function openNovelAISettings({ back = false } = {}) {
         try { officialNovelAIEndpoint(next.endpoint); }
         catch(error){status.textContent=String(error?.message||error);return;}
         if (!next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Для автономной генерации требуется токен NovelAI.'; token.focus(); return; }
-        const root = settings(); root.novelai = next; root.imageProvider='novelai'; saveSettings(); close();
+        const root = settings(); root.novelai = next; root.imageProvider='novelai'; root.quickStyleSwitch=quick.checked; saveSettings(); close();
     }, true);
     requestAnimationFrame(() => (provider.value==='naistera'?proxyToken:token).focus());
     } catch (error) {
