@@ -249,8 +249,9 @@ async function verifyFreeAccess(settings, signal) {
 
 export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', profileId, baseLettering, signal }) {
     const settings = resolveRequestSettings(input);
-    const fullPrompt = applyNovelAIMode([String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', '),settings.mode);
-    if (!fullPrompt) throw new Error('Промпт изображения пуст.');
+    const combined = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
+    if (!combined) throw new Error('Промпт изображения пуст.');
+    const fullPrompt = applyNovelAIMode(combined,settings.mode);
     officialNovelAIEndpoint(settings.endpoint);
     const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio, profileId, baseLettering);
     if (settings.neverSpendAnlas) await verifyFreeAccess(settings, signal);
