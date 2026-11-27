@@ -62,8 +62,8 @@ test('Legacy director templates require explicit gaze targets and distinct page 
   assert.match(prompt,kind==='snapshot'?/In every character entry, explicitly specify a gaze target within the scene/:/facial expression and gaze target/);
   if(kind==='snapshot')assert.doesNotMatch(prompt,/rather than reusing the same shot from panel to panel/);
   else{
-   assert.match(prompt,/rather than reusing the same shot from panel to panel/);
-   assert.match(prompt,/For every panel showing the character’s eyes, specify the in-scene gaze target/);
+   assert.match(prompt,/Vary framing and focal emphasis across panels/);
+   assert.match(prompt,/Specify gaze when eyes are visible/);
   }
  }
 });
