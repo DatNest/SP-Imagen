@@ -1,5 +1,6 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
 import { resolveImageStyle } from './image-style-selection.js';
+import { activeGenerationStyle, normalizeStylePresets, presetFromSettings, resolveGenerationPreset, publicGenerationSettings } from './generation-presets.js';
 import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles, promoteBuiltInProfiles, primaryProfileId, isStructuredDirectorPrompt } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
@@ -16,7 +17,7 @@ import { pageTextEnabled } from './page-text-mode.js';
 import { experimentalProfileFor, experimentalDirectorPrompt } from './experimental-director.js';
 import { decidePromptUpdate } from './update-policy.js';
 import { NAISTERA_MODELS, NAISTERA_ORIGIN, normalizeNaisteraSettings, validateNaisteraSettings, checkNaisteraConnection, generateNaistera, imageProvider, publicNaisteraSettings } from './naistera.js';
-import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings, cfgValidationErrors, resolveSnapshotCfg } from './novelai.js';
+import { NOVELAI_MODELS, NOVELAI_MODEL_CHOICES, V5_FULL_MODEL, MEDIUM_MODEL, novelAIModelControls, novelAIModelFromControls, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings, cfgValidationErrors, resolveSnapshotCfg } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
 import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } from './security-network.js';
 
@@ -100,6 +101,7 @@ function settings() {
     value.novelai = normalizeNovelAISettings(value.novelai);
     value.naistera = normalizeNaisteraSettings(value.naistera);
     value.imageProvider = value.imageProvider === 'naistera' ? 'naistera' : 'novelai';
+    normalizeStylePresets(value);
     value.textApi = normalizeTextApiSettings(value.textApi);
     value.prompts ??= {};
     value.codePrompts ??= {};
@@ -113,6 +115,7 @@ function settings() {
 
 function saveSettings() {
     context().saveSettingsDebounced?.();
+    refreshQuickStyleSwitch();
 }
 
 // A backup contains only bundled prompt slots. User-created profiles are never replaced.
@@ -1362,16 +1365,16 @@ function activeStyle(novelai = settings().novelai) {
     return novelai.styles.find(style => style.id === novelai.activeStyleId) || null;
 }
 
-function directGenerationEnabled(config, reuseSnapshot = false) {
-    const state=settings();
-    return Boolean(state[imageProvider(state,config,reuseSnapshot)]?.apiKey);
+function directGenerationEnabled(config, reuseSnapshot = false, useActiveStyle = false) {
+    const {settings:resolved}=resolveGenerationPreset(settings(),config,{reuseSnapshot,useActiveStyle});
+    return Boolean(resolved.apiKey);
 }
 
 function listImageStyles() {
-    return settings().novelai.styles.map(style => ({id: style.id, name: style.name, value: style.value}));
+    return settings().novelai.styles.map(style => clone(style));
 }
 
-function saveImageStyle({name, value}) {
+function saveImageStyle({name, value, preset}) {
     const title = String(name || '').trim().slice(0, 90);
     const description = String(value || '').trim().slice(0, 20000);
     if (!title) throw new Error('Укажи название нового стиля.');
@@ -1379,7 +1382,7 @@ function saveImageStyle({name, value}) {
     const state = settings();
     const duplicate = state.novelai.styles.some(style => style.name.toLocaleLowerCase() === title.toLocaleLowerCase());
     if (duplicate) throw new Error('Стиль с таким названием уже есть. Укажи другое название.');
-    const style = {id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: title, value: description};
+    const style = {id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: title, value: description, preset:preset?.settings?presetFromSettings(state,preset.provider,preset.settings):presetFromSettings(state,resolveGenerationPreset(state).provider,resolveGenerationPreset(state).settings)};
     // Never change activeStyleId here: saving a style from a single image must not
     // apply it to the user's other images or chats.
     state.novelai.styles.push(style);
@@ -1388,9 +1391,9 @@ function saveImageStyle({name, value}) {
 }
 
 function snapshotGenerationConfig(config, kind='snapshot') {
-    const state=settings(), saved=state.novelai, provider=imageProvider(state);
-    const {apiKey, endpoint, enabled, styles, activeStyleId, ...directSettings}=saved;
-    const publicSettings=provider==='naistera'?publicNaisteraSettings(state.naistera):directSettings;
+    const state=settings(), saved=state.novelai;
+    const {provider,settings:resolved}=resolveGenerationPreset(state);
+    const publicSettings=publicGenerationSettings(provider,resolved);
     const profile=profileById(settings(),kind);
     if(profile?.parser?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
     const style=profile?.parser?.options?.useArtStyle===false
@@ -1404,10 +1407,9 @@ function snapshotGenerationConfig(config, kind='snapshot') {
 
 async function generateImage(config, { reuseSnapshot = false, useActiveStyle = false, signal } = {}) {
     const state=settings();
-    const provider=imageProvider(state,config,reuseSnapshot);
+    const {provider,settings:requestSettings,snapshot}=resolveGenerationPreset(state,config,{reuseSnapshot,useActiveStyle});
     const saved=state.novelai;
-    if (!directGenerationEnabled(config,reuseSnapshot)) throw new Error('Проверь подключение '+(provider==='naistera'?'NAISTERA':'NovelAI')+' в SP Imagen.');
-    const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
+    if (!requestSettings.apiKey) throw new Error('Проверь подключение '+(provider==='naistera'?'NAISTERA':'NovelAI')+' в SP Imagen.');
     const profileId = config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot';
     const profile = profileById(settings(),profileId);
     const style = resolveImageStyle({
@@ -1417,13 +1419,10 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
         allowArtStyle:profile?.parser?.options?.useArtStyle!==false,
     });
     if(provider==='naistera'){
-        const current=state.naistera;
-        const requestSettings=normalizeNaisteraSettings({...current,...(snapshot?.settings?resolveSnapshotCfg(current,snapshot.settings):{}),apiKey:current.apiKey});
         if(!snapshot&&profile?.parser?.options?.useNegativePrompt===false)requestSettings.negativePrompt='';
         const result=await generateNaistera({settings:requestSettings,prompt:config.prompt,style:style.value,aspectRatio:config.aspect_ratio||'2:3',signal});
         return {src:result.src,config:{...config,spImagenDirect:{version:1,provider,style:clone(style),settings:publicNaisteraSettings(result.settings),generatedSeed:result.seed}}};
     }
-    const requestSettings = snapshot?.settings ? { ...saved, ...resolveSnapshotCfg(saved, snapshot.settings), apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
     if (!snapshot && profile?.parser?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
@@ -1435,7 +1434,7 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
         signal,
     });
     const publicSettings = {
-        model: result.settings.model, neverSpendAnlas: result.settings.neverSpendAnlas,
+        model: result.settings.model, mode: result.settings.mode, neverSpendAnlas: result.settings.neverSpendAnlas,
         resolution: result.settings.resolution, steps: result.settings.steps,
         cfgScale: result.settings.cfgScale, cfgRescale: result.settings.cfgRescale,
         sampler: result.settings.sampler, noiseSchedule: result.settings.noiseSchedule,
