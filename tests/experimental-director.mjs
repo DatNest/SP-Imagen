@@ -465,9 +465,9 @@ test('Page instructions are direct, sectioned and contain no assembly commentary
 test('All test directors prioritize compact visual information while retaining essential details',()=>{
  for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
   const prompt=experimentalDirectorPrompt(kind,{includeText});
-  assert.equal(prompt.split('Use compact, precise tags and short natural-language phrases.').length-1,1);
+  assert.equal(prompt.split(kind==='snapshot'?'Use compact, precise tags and short natural-language phrases.':'Use precise tags and minimal phrases.').length-1,1);
   if(kind!=='snapshot')assert.ok(prompt.includes('retaining essential panel and speaker anchors'));
-  assert.ok(prompt.includes('Preserve all relevant visual specifics, supplied library markers and exact printed words.'));
+  assert.ok(prompt.includes(kind==='snapshot'?'Preserve all relevant visual specifics, supplied library markers and exact printed words.':'Preserve appearance, wardrobe, weights, library markers, Action Tags and exact printed text.'));
  }
 });
 
@@ -576,7 +576,7 @@ test('All three built-in director formats require in-scene gaze; page formats va
   if(kind==='snapshot')assert.doesNotMatch(prompt,/rather than reusing the same shot from panel to panel/);
   else{
    assert.match(prompt,/Use varied framing, purposeful crops and clear reading order/);
-   assert.match(prompt,/Give each panel a distinct action, reaction, or detail/);
+   assert.match(prompt,/Give each panel a distinct action, reaction or detail/);
    assert.match(prompt,/Include only visible details/);
    assert.match(prompt,kind==='comic'?/complementary views of one established instant/:/established beats in chronological reading order/);
    assert.match(sample.scene,/over-the-shoulder/);
