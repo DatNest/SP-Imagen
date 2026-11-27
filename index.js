@@ -887,18 +887,19 @@ function openNovelAISettings({back=false,tab='connection'}={}){
     const window=shell('SP Imagen · Настройки NovelAI','spi-connection-window spi-style-window spi-novelai-tabs',{back});
     const tabs=document.createElement('div');tabs.className='spi-novelai-tabbar';tabs.setAttribute('role','tablist');
     const body=document.createElement('div');body.className='spi-novelai-tabbody';
-    window.dialog.append(tabs,body);
+    window.dialog.append(tabs,body);body.id='spi-novelai-tabpanel';body.setAttribute('role','tabpanel');
     let active='',connectionDirty=()=>false;
     const show=(next,force=false)=>{
         if(active===next)return;
         if(!force&&active==='connection'&&connectionDirty()&&!confirm('Перейти без сохранения изменений подключения?'))return;
         active=next;body.replaceChildren();
         for(const [id,node] of controls){node.setAttribute('aria-selected',String(id===next));node.tabIndex=id===next?0:-1;}
+        body.setAttribute('aria-labelledby','spi-novelai-tab-'+next);
         if(next==='styles')openStyleLibrary({host:{dialog:body,closed:window.closed}});
         else connectionDirty=renderNovelAIConnection({dialog:body,close:window.close,closed:window.closed,onSaved:()=>show('styles',true)});
     };
     const controls=new Map([['connection','Подключение'],['styles','Стили']].map(([id,label])=>{
-        const node=button(label,tabs,()=>show(id));node.setAttribute('role','tab');return [id,node];
+        const node=button(label,tabs,()=>show(id));node.setAttribute('role','tab');node.id='spi-novelai-tab-'+id;node.setAttribute('aria-controls',body.id);return [id,node];
     }));
     tabs.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const next=e.key==='Home'?'connection':e.key==='End'?'styles':active==='connection'?'styles':'connection';show(next);controls.get(active)?.focus();}});
     show(tab,true);
@@ -1063,7 +1064,7 @@ function openStyleLibrary({ back = false, host = null } = {}) {
     const negativeField=formField(editor,'Негативный промпт',negative);
     const mediumNote=document.createElement('p');mediumNote.className='spi-status';mediumNote.textContent='Medium: 14 Steps, Euler Ancestral, фиксированный негатив NovelAI. Твой негатив сохранён, но не отправляется.';
     editor.append(presetGrid,mediumNote);
-    const quick=input('', 'checkbox');quick.checked=rootSettings.quickStyleSwitch;formField(editor,'Плавающий переключатель пресетов',quick);
+    const quick=input('', 'checkbox');quick.checked=rootSettings.quickStyleSwitch;formField(editor,'Плавающий переключатель пресетов',quick);quick.parentElement.classList.add('spi-quick-style-setting');
     quick.onchange=()=>{rootSettings.quickStyleSwitch=quick.checked;saveSettings();};
     editor.prepend(editorTitle);
     editor.append(editorStatus);
@@ -1345,6 +1346,11 @@ async function showGuideSection(view) {
             if(button?.getAttribute('aria-pressed')!=='true')button?.click();
         }
         return;
+    }
+    const novelaiWindow=document.querySelector('.spi-novelai-tabs');
+    if(novelaiWindow&&['novelai','styles'].includes(view)){
+        const tab=novelaiWindow.querySelector('#spi-novelai-tab-'+(view==='styles'?'styles':'connection'));
+        if(tab?.getAttribute('aria-selected')!=='true')tab?.click();return;
     }
     // All previous feature panels are dismissed by their existing close handlers.
     const otherOverlays = [...document.querySelectorAll('.spi-overlay')].filter(node => !node.querySelector('.spi-hub'));
