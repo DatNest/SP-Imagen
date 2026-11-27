@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {experimentalProfileFor,experimentalDirectorPrompt,parseExperimentalDirector,normalizeExperimentalDirectorSlots,normalizeExperimentalSceneLabels,experimentalLegacyIntimacy,EXPERIMENTAL_DIRECTOR_IDS} from '../experimental-director.js';
+import {experimentalProfileFor,experimentalDirectorPrompt,directorRatioInstruction,parseExperimentalDirector,normalizeExperimentalDirectorSlots,normalizeExperimentalSceneLabels,experimentalLegacyIntimacy,EXPERIMENTAL_DIRECTOR_IDS} from '../experimental-director.js';
 import {generationFormats,baseKindFor,promoteBuiltInProfiles,primaryProfileId,isStructuredDirectorPrompt} from '../profiles.js';
 import {pageTextEnabled} from '../page-text-mode.js';
 import {validateImagePromptLayout} from '../image-prompt.js';
@@ -209,11 +209,11 @@ test('All test formats keep spatial scene staging and fine character details in 
   assert.match(instructions,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
   assert.match(instructions,/participants[’']? (?:and their )?relative positions/);
   assert.match(instructions,kind==='snapshot'?/central action or interaction connecting them/:/central shared interaction/);
-  assert.match(instructions,kind==='snapshot'?/action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/:/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
+  assert.match(instructions,kind==='snapshot'?/action contains each character’s detailed body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/:/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   assert.doesNotMatch(instructions,/two focused sentences|roughly two purposeful sentences|a few focused sentences|Keep one short phrase per panel/);
   if(kind==='snapshot')assert.match(instructions,/participants’ relative positions clear in scene/);
   else assert.match(instructions,/spatially coherent across panels/);
-   assert.match(instructions,kind==='snapshot'?/Reference (?:each|the) panel and (?:the )?position established in scene/:/in character actions, repeat Panel N: panel type/);
+   assert.match(instructions,kind==='snapshot'?/Reference the position established in scene/:/in character actions, repeat Panel N: panel type/);
   const data=sample();
   data.scene=stagedScene;
   if(kind==='snapshot')data.bubbles=[];
@@ -582,4 +582,38 @@ test('All three built-in director formats require in-scene gaze; page formats va
    assert.match(sample.scene,/over-the-shoulder/);
   }
  }
+});
+
+test('Current fixed aspect ratio controls director examples, composition and ordinary gallery repeats',()=>{
+ for(const kind of ['snapshot','comic','story_page']){
+  for(const ratio of ['1:1','2:3','3:2','9:16']){
+   const prompt=experimentalDirectorPrompt(kind,{aspectRatio:ratio});
+   const sample=JSON.parse(prompt.slice(prompt.indexOf('SAMPLE:\n')+8,prompt.lastIndexOf('\n\n'+(kind==='snapshot'?'FINAL:':'Return one valid JSON object.'))));
+   assert.equal(sample.aspect_ratio,ratio);
+   const instructions=directorRatioInstruction(kind,ratio);
+   assert.ok(instructions.includes('aspect_ratio to '+ratio));
+   assert.match(instructions,ratio==='1:1'?/square canvas/:ratio==='3:2'?/horizontal canvas/:/vertical canvas/);
+  }
+  assert.equal(directorRatioInstruction(kind,'auto'),'');
+ }
+ const ordinary=experimentalDirectorPrompt('snapshot').split('For established adult intimacy')[0];
+ assert.doesNotMatch(ordinary,/page type, number of panels|spatial staging of the panels|For each panel|panel-specific body poses|Reference each panel/);
+ assert.match(ordinary,/one continuous illustration with a unified camera perspective/);
+ const runtime=read('runtime.js'),client=read('index.js');
+ assert.match(runtime,/directorRatioInstruction\(baseKind,ratioOverride\)/);
+ assert.match(runtime,/aspectRatio:ratioOverride/);
+ assert.match(runtime,/if\(ratioOverride!=='auto'\)config.aspect_ratio=ratioOverride/);
+ assert.match(client,/if\(reuseSnapshot&&useActiveStyle\)\{/);
+ assert.match(client,/api.utilities.loadGen2Settings\(\).aspectRatio\?\.\[baseKind\]/);
+ assert.match(client,/config=\{\.\.\.config,aspect_ratio:ratio\}/);
+});
+test('NovelAI receives the chosen vertical aspect ratio as actual portrait dimensions',async()=>{
+ const original=globalThis.fetch,calls=[];
+ globalThis.fetch=async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:true,headers:{get:()=> 'application/json'},json:async()=>({images:[{image:'iVBORw0KGgo='}]})}};
+ try{
+  for(const ratio of ['2:3','9:16']){
+   await generateNovelAI({settings:{...defaultNovelAISettings(),apiKey:'TEST',neverSpendAnlas:false},prompt:'1boy, 1girl, shared medium two-shot',aspectRatio:ratio});
+   assert.ok(calls.at(-1).parameters.height>calls.at(-1).parameters.width);
+  }
+ }finally{globalThis.fetch=original;}
 });
