@@ -883,17 +883,38 @@ function openTextApiSettings({ back = false } = {}) {
     return closed;
 }
 
-function openNovelAISettings({ back = false } = {}) {
+function openNovelAISettings({back=false,tab='connection'}={}){
+    const window=shell('SP Imagen · Настройки NovelAI','spi-connection-window spi-style-window spi-novelai-tabs',{back});
+    const tabs=document.createElement('div');tabs.className='spi-novelai-tabbar';tabs.setAttribute('role','tablist');
+    const body=document.createElement('div');body.className='spi-novelai-tabbody';
+    window.dialog.append(tabs,body);
+    let active='',connectionDirty=()=>false;
+    const show=(next,force=false)=>{
+        if(active===next)return;
+        if(!force&&active==='connection'&&connectionDirty()&&!confirm('Перейти без сохранения изменений подключения?'))return;
+        active=next;body.replaceChildren();
+        for(const [id,node] of controls){node.setAttribute('aria-selected',String(id===next));node.tabIndex=id===next?0:-1;}
+        if(next==='styles')openStyleLibrary({host:{dialog:body,closed:window.closed}});
+        else connectionDirty=renderNovelAIConnection({dialog:body,close:window.close,closed:window.closed,onSaved:()=>show('styles',true)});
+    };
+    const controls=new Map([['connection','Подключение'],['styles','Стили']].map(([id,label])=>{
+        const node=button(label,tabs,()=>show(id));node.setAttribute('role','tab');return [id,node];
+    }));
+    tabs.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const next=e.key==='Home'?'connection':e.key==='End'?'styles':active==='connection'?'styles':'connection';show(next);controls.get(active)?.focus();}});
+    show(tab,true);
+    return window.closed;
+}
+function renderNovelAIConnection({dialog,close,closed,onSaved}) {
     const state = settings();
-    const draft = clone(state.novelai || defaultNovelAISettings());
-    const proxy = normalizeNaisteraSettings(state.naistera);
-    const { dialog, close, closed } = shell('SP Imagen · Подключение NovelAI', 'spi-connection-window', { back });
+    const selected=activeGenerationStyle(state),effective=resolveGenerationPreset(state);
+    const draft = clone({...state.novelai,...(effective.provider==='novelai'?effective.settings:{})});
+    const proxy = normalizeNaisteraSettings({...state.naistera,...(effective.provider==='naistera'?effective.settings:{})});
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const status = document.createElement('p'); status.className = 'spi-status'; status.setAttribute('role', 'status');
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
     dialog.append(grid, status, actions);
     try {
-    const provider = select({novelai:'NovelAI напрямую',naistera:'NAISTERA'},state.imageProvider);
+    const provider = select({novelai:'NovelAI напрямую',naistera:'NAISTERA'},effective.provider);
     formField(grid,'Способ подключения',provider);
     const providerField=provider.parentElement;
     const intro=document.createElement('p');intro.className='spi-status';intro.textContent='SP Imagen самостоятельно генерирует изображения через NovelAI. SillyImages не используется.';grid.append(intro);
@@ -911,7 +932,7 @@ function openNovelAISettings({ back = false } = {}) {
     const dataset=select({anime:'Anime',furry:'Furry'},draft.mode);formField(grid,'Mode',dataset);
     const effort=select({medium:'Medium',high:'High'},initialModel.effort);const effortField=formField(grid,'Effort',effort,'Medium доступен только для V5 Full.');
     const modelId=()=>novelAIModelFromControls(model.value,effort.value);
-    const note=document.createElement('p');note.className='spi-status';note.textContent='Параметры без активного пресета. Индивидуальные настройки и негативы находятся в «Стилях».';
+    const note=document.createElement('p');note.className='spi-status';note.textContent=selected?'Параметры активного пресета: '+selected.name+'. Негатив — во вкладке «Стили».':'Базовые параметры без пресета. Негатив — во вкладке «Стили».';
     grid.append(note);
     const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution); formField(grid, 'Размер', resolution, 'При защите Anlas используется Normal.');
     const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50'; formField(grid, 'Steps', steps);
@@ -973,13 +994,18 @@ function openNovelAISettings({ back = false } = {}) {
         } catch (error) { status.textContent = String(error?.message || error); }
         finally { control.disabled = false; }
     });
+    const initial=JSON.stringify([readDraft(),readProxy(),provider.value,quick.checked]);
+    const dirty=()=>initial!==JSON.stringify([readDraft(),readProxy(),provider.value,quick.checked]);
     button('Отмена', actions, close);
     button('Сохранить', actions, () => {
         if(provider.value==='naistera'){
             const next=readProxy();
             try{validateNaisteraSettings(next);}
             catch(error){status.textContent=String(error?.message||error);return;}
-            const root=settings();root.naistera=next;root.imageProvider='naistera';root.quickStyleSwitch=quick.checked;saveSettings();close();return;
+            const root=settings();const style=activeGenerationStyle(root);
+            if(style){root.naistera.apiKey=next.apiKey;style.preset=presetFromSettings(root,'naistera',{...next,negativePrompt:style.preset.settings.negativePrompt});}
+            else{root.naistera=next;root.imageProvider='naistera';}
+            root.novelai.apiKey=token.value.trim();root.novelai.neverSpendAnlas=neverSpend.checked;root.quickStyleSwitch=quick.checked;saveSettings();onSaved();return;
         }
         const next = readDraft();
         const cfgErrors = cfgValidationErrors(next);
@@ -987,21 +1013,24 @@ function openNovelAISettings({ back = false } = {}) {
         try { officialNovelAIEndpoint(next.endpoint); }
         catch(error){status.textContent=String(error?.message||error);return;}
         if (!next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Для автономной генерации требуется токен NovelAI.'; token.focus(); return; }
-        const root = settings(); root.novelai = next; root.imageProvider='novelai'; root.quickStyleSwitch=quick.checked; saveSettings(); close();
+        const root=settings();const style=activeGenerationStyle(root);
+        if(style){root.novelai.apiKey=next.apiKey;root.novelai.neverSpendAnlas=next.neverSpendAnlas;style.preset=presetFromSettings(root,'novelai',{...next,negativePrompt:style.preset.settings.negativePrompt});}
+        else{root.novelai={...next,styles:root.novelai.styles,activeStyleId:root.novelai.activeStyleId};root.imageProvider='novelai';}
+        root.naistera.apiKey=proxyToken.value.trim();root.quickStyleSwitch=quick.checked;saveSettings();onSaved();
     }, true);
-    requestAnimationFrame(() => (provider.value==='naistera'?proxyToken:token).focus());
+    return dirty;
     } catch (error) {
         status.textContent = 'Не удалось открыть настройки: ' + String(error?.message || error);
         button('Закрыть', actions, close);
         console.error('[SP Imagen] NovelAI settings', error);
     }
-    return closed;
+    return ()=>false;
 }
 
-function openStyleLibrary({ back = false } = {}) {
+function openStyleLibrary({ back = false, host = null } = {}) {
     const rootSettings = settings();
     let novelai = rootSettings.novelai;
-    const { dialog, closed } = shell('SP Imagen · Стили', 'spi-style-window', { back });
+    const { dialog, closed } = host || shell('SP Imagen · Стили', 'spi-style-window', { back });
     const layout = document.createElement('div'); layout.className = 'spi-style-layout';
     const library = document.createElement('section'); library.className = 'spi-style-library';
     const editor = document.createElement('section'); editor.className = 'spi-style-editor';
@@ -1232,8 +1261,7 @@ function openHub(page = 'home') {
         } else {
             button('Генерация', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings()))).dataset.spiAction = 'generation';
             button('Текстовая модель', body, () => void openTextApiSettings({ back: true })).dataset.spiAction = 'text-api';
-            button('NovelAI', body, () => void openNovelAISettings({ back: true })).dataset.spiAction = 'novelai';
-            button('Стили', body, () => void openStyleLibrary({ back: true })).dataset.spiAction = 'styles';
+            button('Настройки NovelAI', body, () => void openNovelAISettings({ back: true })).dataset.spiAction = 'novelai';
         }
         // A quiet, always-accessible entry, not another large menu button.
         const quick = document.createElement('button');
@@ -1340,7 +1368,7 @@ async function showGuideSection(view) {
     if (view === 'prompts') openPromptCenter();
     else if (view === 'text-api') void openTextApiSettings().catch(error => console.warn('[SP Imagen] guide text API:',error));
     else if (view === 'novelai') void openNovelAISettings().catch(error => console.warn('[SP Imagen] guide NovelAI:',error));
-    else if (view === 'styles') void openStyleLibrary().catch(error => console.warn('[SP Imagen] guide styles:',error));
+    else if (view === 'styles') void openNovelAISettings({tab:'styles'}).catch(error => console.warn('[SP Imagen] guide styles:',error));
     else if (isLibrary) {
         const api = await getLibraryRuntime();
         void api.openLibraryEditor().catch(error => console.warn('[SP Imagen] guide library:',error));
