@@ -16,8 +16,8 @@ import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
 import { pageTextEnabled } from './page-text-mode.js';
 import { experimentalProfileFor, experimentalDirectorPrompt } from './experimental-director.js';
 import { decidePromptUpdate } from './update-policy.js';
-import { NAISTERA_MODELS, NAISTERA_ORIGIN, normalizeNaisteraSettings, validateNaisteraSettings, checkNaisteraConnection, generateNaistera, imageProvider, publicNaisteraSettings } from './naistera.js';
-import { NOVELAI_MODELS, NOVELAI_MODEL_CHOICES, V5_FULL_MODEL, MEDIUM_MODEL, novelAIModelControls, novelAIModelFromControls, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings, cfgValidationErrors, resolveSnapshotCfg } from './novelai.js';
+import { NAISTERA_MODELS, NAISTERA_ORIGIN, normalizeNaisteraSettings, validateNaisteraSettings, checkNaisteraConnection, generateNaistera, publicNaisteraSettings } from './naistera.js';
+import { NOVELAI_MODELS, NOVELAI_MODEL_CHOICES, V5_FULL_MODEL, MEDIUM_MODEL, novelAIModelControls, novelAIModelFromControls, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings, cfgValidationErrors } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
 import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } from './security-network.js';
 
@@ -1192,7 +1192,7 @@ function openStyleLibrary({ back = false } = {}) {
       }
       editorStatus.textContent='Настройки пресета сохранены.';
     };
-    presetProvider.onchange=()=>{loadPreset(presetFromSettings(rootSettings,presetProvider.value));savePreset();};
+    presetProvider.onchange=()=>{const keepNegative=negative.value;loadPreset(presetFromSettings(rootSettings,presetProvider.value,{negativePrompt:keepNegative}));savePreset();};
     for(const field of [presetModel,presetMode,effort,proxyModel,resolution,steps,cfg,rescale,sampler,seed]){
       field.addEventListener('change',()=>{syncPresetFields();savePreset();});
     }
