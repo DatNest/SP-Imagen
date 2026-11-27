@@ -23,7 +23,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.79';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.80';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -1521,6 +1521,14 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
     if (!requestSettings.apiKey) throw new Error('Проверь подключение '+(provider==='naistera'?'NAISTERA':'NovelAI')+' в SP Imagen.');
     const profileId = config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot';
     const profile = profileById(settings(),profileId);
+    if(reuseSnapshot&&useActiveStyle){
+        const origin=context();
+        const api=await getRuntime();
+        if(context().chat!==origin.chat||context().chatId!==origin.chatId)throw Error('Чат изменился до отправки изображения.');
+        const baseKind=baseKindFor(state,profileId);
+        const ratio=api.utilities.loadGen2Settings().aspectRatio?.[baseKind];
+        if(['1:1','2:3','3:2','9:16'].includes(ratio))config={...config,aspect_ratio:ratio};
+    }
     const style = resolveImageStyle({
         activeStyle:activeStyle(saved),
         snapshotStyle:snapshot?.style,

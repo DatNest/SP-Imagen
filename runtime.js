@@ -9,7 +9,7 @@ import { createDialogHeader, createOwnedDialogShell, mountOwnedDialog } from './
 import { NESS_FIELD_HELP, NESS_HELP_LABELS, NESS_THEME_LABELS, MASTER_LIBRARY_KEY, MASTER_SNAPSHOT_KEY, MASTER_BACKUP_KEY, cloneLibrary, safeLibraryId } from './shared-data.js';
 import { parseImageHtml } from './image-transport.js';
 import { normalizeImagePrompt, limitComicDialogue, validateImagePromptLayout } from './image-prompt.js';
-import { experimentalDirectorPrompt, parseExperimentalDirector } from './experimental-director.js';
+import { experimentalDirectorPrompt, parseExperimentalDirector, directorRatioInstruction } from './experimental-director.js';
 import { pageTextEnabled, verifyTextlessImagePrompt } from './page-text-mode.js';
 import { createSpImagenProgress } from './progress-ui.js';
 import { savePostDraft, readPostDraft, discardPostDraft, clearDraftsForOtherPost, postFingerprint } from './post-drafts.js';
@@ -2195,7 +2195,7 @@ const appearancePunctuation=codePrompt('appearance_punctuation');
 const npcLanguage=String(v.sp_imagen_tracker_npcs||'').trim()?(includeText?codePrompt('npc_language'):NPC_LANGUAGE_VISUAL_ONLY):'';
 const useDialogueSettings=includeText && profile?.parser?.options?.useDialogueSettings!==false;
 const ratioOverride=runtimeSettings.aspectRatio?.[baseKind]||'auto';
-const ratioInstruction=ratioOverride==='auto'?'':'\n\nIMAGE RATIO: Set aspect_ratio to '+ratioOverride+' in the required JSON. Keep the original output contract unchanged.';
+const ratioInstruction=directorRatioInstruction(baseKind,ratioOverride);
 const sharedRules=getExtension?.()?.getGlobalDirectorRules?.()||[];
 const experimental=director.structured===true;
 const maxLines=baseKind==='comic'?runtimeSettings.dialogue.comicLines:runtimeSettings.dialogue.storyLines;
@@ -2203,12 +2203,12 @@ const maxWords=baseKind==='comic'?runtimeSettings.dialogue.comicWords:runtimeSet
 const experimentalRules=sharedRules.filter(rule=>rule?.enabled!==false&&String(rule?.prompt||'').trim())
  .map(rule=>String(rule.prompt)).join('\n\n');
 const systemPrompt=experimental
- ? (director.source==='custom'?director.prompt+'\n\nCURRENT GENERATION SETTINGS (override any example/default limits): Use the last '+directorSettings.posts[baseKind]+' RP posts. '+(includeText?'Maximum '+(useDialogueSettings?maxLines:8)+' speech lines, '+(useDialogueSettings?maxWords:40)+' words per line.':'bubbles and lettering must both be empty arrays.')+(profile?.parser?.instructions?.trim()?'\n\nCUSTOM PROFILE — SCENE PARSING INSTRUCTIONS\n'+profile.parser.instructions:''):experimentalDirectorPrompt(baseKind,{includeText,postCount:directorSettings.posts[baseKind],maxLines:useDialogueSettings?maxLines:8,maxWords:useDialogueSettings?maxWords:40}))
+ ? (director.source==='custom'?director.prompt+'\n\nCURRENT GENERATION SETTINGS (override any example/default limits): Use the last '+directorSettings.posts[baseKind]+' RP posts. '+(includeText?'Maximum '+(useDialogueSettings?maxLines:8)+' speech lines, '+(useDialogueSettings?maxWords:40)+' words per line.':'bubbles and lettering must both be empty arrays.')+(profile?.parser?.instructions?.trim()?'\n\nCUSTOM PROFILE — SCENE PARSING INSTRUCTIONS\n'+profile.parser.instructions:''):experimentalDirectorPrompt(baseKind,{includeText,postCount:directorSettings.posts[baseKind],maxLines:useDialogueSettings?maxLines:8,maxWords:useDialogueSettings?maxWords:40,aspectRatio:ratioOverride}))
    +appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))
    +skinAppearanceInstruction(visibility)
    +(npcLanguage?'\n\nNPC DESCRIPTIONS: keep names, bodies, and outfits in descriptive JSON fields in English.'+(includeText?' Keep in-image words in the source language.':''):'')
    +(experimentalRules?'\n\nADDITIONAL ARTISTIC DIRECTIONS: apply these while filling the JSON slots, but never alter JSON field names/schema or append extra output.\n'+experimentalRules:'')
-   +(ratioOverride!=='auto'?'\n\nSet the aspect_ratio JSON property to '+ratioOverride+'.':'')
+   +ratioInstruction
  : configuredDirectorPrompt(director.prompt,baseKind,directorSettings,useDialogueSettings)+identityInstruction+appearancePunctuation+appearanceVisibilityInstruction(visibility,prepared?.rules,codePrompt('visibility_markers'))+skinAppearanceInstruction(visibility)+npcLanguage+directorProfileGuidance({extraPrompts:sharedRules},profile)+ratioInstruction;
 const directorMessages=[{role:'system',content:systemPrompt},{role:'user',content:Object.entries(filteredSource).map(([k,x])=>k+':\n'+x).join('\n\n====\n\n')}];
 // A fresh director request already includes the complete required format. Never
