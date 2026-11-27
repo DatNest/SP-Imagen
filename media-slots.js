@@ -563,7 +563,7 @@ export async function installSpImagenMediaSlots(options) {
     const extension = getExtension?.();
     const styles = () => extension?.listImageStyles?.() || [];
     const initialStyle = clone(config?.spImagenDirect?.style || {id:'', name:'Без стиля', value:''});
-    let chosenStyle = clone(initialStyle);
+    let chosenStyle = clone(initialStyle), chosenPreset = null;
     const styleField = element('div', 'prompt-field');
     const styleLabel = element('label', '', 'Стиль только для этой картинки');
     const styleChoices = element('div', 'editor-style-row');
@@ -574,7 +574,7 @@ export async function installSpImagenMediaSlots(options) {
     styleInput.maxLength = 20000;
     styleInput.spellcheck = false;
     styleInput.placeholder = 'Например: warm colors, soft lineart, watercolor textures';
-    const styleHelp = element('small', '', 'Можно выбрать сохранённый стиль или вписать новый. Общий активный стиль не изменится.');
+    const styleHelp = element('small', '', 'Сохранённый пресет применяет также модель, негатив и настройки. Свой текст сохраняет параметры этой картинки. Общий активный пресет не изменится.');
     const saveStyle = element('button', 'editor-save-style', '+ Добавить этот стиль в мои стили');
     saveStyle.disabled = previewOnly;
 
@@ -597,6 +597,7 @@ export async function installSpImagenMediaSlots(options) {
       else if (styleSelect.value.startsWith('saved:')) {
         chosenStyle = clone(styles().find(style => `saved:${style.id}` === styleSelect.value) || {id:'',name:'Без стиля',value:''});
       } else return;
+      chosenPreset=styleSelect.value.startsWith('saved:')?clone(chosenStyle.preset||null):null;
       styleInput.value = chosenStyle.value;
     });
     styleInput.addEventListener('input', () => {
@@ -657,9 +658,9 @@ export async function installSpImagenMediaSlots(options) {
     styleSaveConfirm.addEventListener('click', () => {
       try {
         if (previewOnly) return;
-        const saved = extension?.saveImageStyle?.({name:styleName.value, value:styleInput.value});
+        const saved = extension?.saveImageStyle?.({name:styleName.value, value:styleInput.value,preset:chosenPreset||(config?.spImagenDirect?.settings?{provider:config.spImagenDirect.provider||'novelai',settings:config.spImagenDirect.settings}:undefined)});
         if (!saved) throw new Error('Сохранение стиля недоступно.');
-        chosenStyle = clone(saved);
+        chosenStyle = clone(saved);chosenPreset=clone(saved.preset||null);
         refreshStyles(`saved:${saved.id}`);
         styleSaveLayer.hidden = true;
         saveStyle.focus({preventScroll:true});
@@ -686,6 +687,7 @@ export async function installSpImagenMediaSlots(options) {
         if (!next.prompt) throw new Error('Промпт не может быть пустым.');
         next.spImagenDirect ||= {version:1, provider:'novelai', settings:{}};
         next.spImagenDirect.style = {...clone(chosenStyle), value:styleInput.value.trim()};
+        if(chosenPreset){next.spImagenDirect.provider=chosenPreset.provider;next.spImagenDirect.settings=clone(chosenPreset.settings);}
         await regenerate(index, kind, next);
         closePromptPopup();
       } catch (error) {
@@ -1378,16 +1380,15 @@ export async function installSpImagenMediaSlots(options) {
     // images that never stored a kind in their direct-generation snapshot.
     config.kind = kind;
     const extension = getExtension?.();
-    if (!extension?.directGenerationEnabled?.(config,true) || typeof extension.generateImage !== 'function') {
-      throw new Error('Для повторной генерации проверь подключение исходного провайдера в SP Imagen.');
+    if (!extension?.directGenerationEnabled?.(config,true,overrideConfig===null) || typeof extension.generateImage !== 'function') {
+      throw new Error('Для повторной генерации проверь подключение выбранного провайдера в SP Imagen.');
     }
     const lock = `${current.chatId}|${index}|${kind}`;
     if (busy.has(lock)) throw new Error('Эта картинка уже генерируется.');
     busy.add(lock);
     paintPost(index);
     try {
-      // Repeat uses the NEW active style; an editor submission uses its explicitly
-      // chosen style. Both reuse model/sampler settings saved with the image.
+      // Repeat applies the active preset; explicit editor submission uses its saved or chosen preset.
       // Never await chat metadata before a paid NAI request: a stalled save must
       // not prevent sending the actual image prompt.
       const generated = await extension.generateImage(config, {
