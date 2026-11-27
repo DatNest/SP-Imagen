@@ -336,13 +336,21 @@ export function parseExperimentalDirector(raw,{kind='comic',includeText=true,max
   const action=boundary(x.action);
   // Preserve the action description; place generated balloon cues before trailing Action Tags.
   const trailing=action.match(/(?:^|,\s*|;\s*)((?:source|target|mutual)#[^,;\r\n]+(?:,\s*(?:source|target|mutual)#[^,;\r\n]+)*)$/iu);
-  const body=trailing?boundary(action.slice(0,trailing.index)):action;
+  let body=trailing?boundary(action.slice(0,trailing.index)):action;
+  // Reuse an existing numbered action entry instead of repeating its panel label.
+  const remaining=[];
+  for(let i=0;i<cues.length;i++){
+   const n=spokenPanels[i];
+   const re=new RegExp('(^|;\\s*)(Panel '+n+':[^;]*)','iu');
+   if(re.test(body))body=body.replace(re,(_,prefix,entry)=>prefix+entry+(/\\bspeaking\\b/iu.test(entry)?', speech bubble':', speaking, speech bubble'));
+   else remaining.push(cues[i]);
+  }
   return '| '+x.subject+', '+x.name
    +(x.appearance?', '+boundary(x.appearance):'')
    +(x.wardrobe?'; '+boundary(x.wardrobe):'')
    +(body?'; '+body:'')
-   +(cues.length?'; '+cues.join('; '):'')
-   +(trailing?(cues.length?'; ':body?', ':'; ')+trailing[1]:'');
+   +(remaining.length?'; '+remaining.join('; '):'')
+   +(trailing?(remaining.length?'; ':body?', ':'; ')+trailing[1]:'');
  });
  // Exact words are copied once, in the same panel reading order as the visual items.
  const printed=printedItems.map(x=>x.words);
