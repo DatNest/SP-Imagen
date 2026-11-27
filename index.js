@@ -1012,8 +1012,56 @@ function openStyleLibrary({ back = false } = {}) {
     const nameField = formField(editor, 'Название', name);
     const valueField = formField(editor, 'Стиль-префикс', value);
     nameField.parentElement.hidden = true; valueField.parentElement.hidden = true;
+    const presetGrid=document.createElement('div');presetGrid.className='spi-preset-grid';
+    const presetProvider=select({novelai:'NovelAI напрямую',naistera:'NAISTERA'},rootSettings.imageProvider);
+    const providerField=formField(presetGrid,'Подключение',presetProvider);
+    const presetModel=select(NOVELAI_MODEL_CHOICES,V5_FULL_MODEL);
+    const modelField=formField(presetGrid,'Model',presetModel);
+    const presetMode=select({anime:'Anime',furry:'Furry'},'anime');
+    const modeField=formField(presetGrid,'Mode',presetMode);
+    const effort=select({medium:'Medium',high:'High'},'high');
+    const effortField=formField(presetGrid,'Effort',effort);
+    const proxyModel=select(NAISTERA_MODELS,'novelai-v5');
+    const proxyModelField=formField(presetGrid,'Model',proxyModel);
+    const resolution=select({small:'Small',normal:'Normal',big:'Big'},'normal');
+    const resolutionField=formField(presetGrid,'Размер',resolution);
+    const steps=input(23,'number');steps.min='1';steps.max='50';formField(presetGrid,'Steps',steps);
+    const cfg=input(7);cfg.inputMode='decimal';formField(presetGrid,'CFG scale',cfg);
+    const rescale=input(0);rescale.inputMode='decimal';formField(presetGrid,'CFG rescale',rescale);
+    const sampler=select(NOVELAI_SAMPLERS,'k_euler_ancestral');formField(presetGrid,'Sampler',sampler);
+    const seed=input(-1,'number');seed.min='-1';seed.max='4294967295';const seedField=formField(presetGrid,'Seed',seed);
+    const negative=document.createElement('textarea');negative.className='spi-style-negative';negative.placeholder='bad anatomy, low quality, ...';
+    const negativeField=formField(editor,'Негативный промпт',negative);
+    const mediumNote=document.createElement('p');mediumNote.className='spi-status';mediumNote.textContent='Medium: 14 Steps, Euler Ancestral, фиксированный негатив NovelAI. Твой негатив сохранён, но не отправляется.';
+    editor.append(presetGrid,mediumNote);
+    const quick=input('', 'checkbox');quick.checked=rootSettings.quickStyleSwitch;formField(editor,'Плавающий переключатель пресетов',quick);
+    quick.onchange=()=>{rootSettings.quickStyleSwitch=quick.checked;saveSettings();};
     editor.prepend(editorTitle);
     editor.append(editorStatus);
+    const show=(control,on)=>{control.parentElement.hidden=!on;};
+    function syncPresetFields(){
+      const direct=presetProvider.value==='novelai',full=direct&&presetModel.value===V5_FULL_MODEL;
+      const medium=direct?novelAIModelFromControls(presetModel.value,effort.value)===MEDIUM_MODEL:proxyModel.value==='novelai-v5-medium';
+      show(modelField,direct);show(modeField,direct);show(effortField,full);show(proxyModelField,!direct);
+      show(resolutionField,direct);show(seedField,direct);
+      for(const field of [steps,rescale,sampler])field.disabled=medium;
+      negative.disabled=medium;mediumNote.hidden=!medium;
+    }
+    function loadPreset(preset){
+      const p=preset||presetFromSettings(rootSettings),v=p.settings;
+      presetProvider.value=p.provider;
+      if(p.provider==='novelai'){
+       const controls=novelAIModelControls(v.model);presetModel.value=controls.model;effort.value=controls.effort;
+       presetMode.value=v.mode||'anime';resolution.value=v.resolution||'normal';seed.value=v.seed??-1;
+      }else proxyModel.value=v.model;
+      steps.value=v.steps;cfg.value=v.cfgScale;rescale.value=v.cfgRescale;sampler.value=v.sampler;negative.value=v.negativePrompt||'';
+      syncPresetFields();
+    }
+    function readPreset(previous){
+      const direct=presetProvider.value==='novelai',provider=presetProvider.value;
+      const model=direct?novelAIModelFromControls(presetModel.value,effort.value):proxyModel.value;
+      return presetFromSettings(rootSettings,provider,{...(previous?.provider===provider?previous.settings:{}),model,steps:Number(steps.value),cfgScale:cfg.value,cfgRescale:rescale.value,sampler:sampler.value,negativePrompt:negative.value,...(direct?{mode:presetMode.value,resolution:resolution.value,seed:Number(seed.value)}:{})});
+    }
     let selectedId = novelai.activeStyleId || novelai.styles[0]?.id || '';
 
     const persist = () => {
@@ -1028,11 +1076,12 @@ function openStyleLibrary({ back = false } = {}) {
         if (editorStyleId !== (style?.id || '')) {
             editorStyleId = style?.id || '';
             name.value = style?.name || ''; value.value = style?.value || '';
+            loadPreset(style?.preset || presetFromSettings(rootSettings));
         }
-        editorStatus.textContent = style ? (novelai.activeStyleId === style.id ? 'Активный стиль · автосохранение' : 'Выбран для редактирования · автосохранение') : 'Выбери или создай стиль.';
+        editorStatus.textContent = style ? (novelai.activeStyleId === style.id ? 'Активный стиль · автосохранение' : 'Выбран для редактирования · автосохранение') : 'Без пресета · базовые настройки · автосохранение';
     };
     const header = document.createElement('div'); header.className = 'spi-style-header';
-    const heading = document.createElement('h3'); heading.textContent = 'Библиотека стилей'; header.append(heading);
+    const heading = document.createElement('h3'); heading.textContent = 'Пресеты стилей'; header.append(heading);
     const controls = document.createElement('div'); controls.className = 'spi-style-controls'; header.append(controls);
     const rows = document.createElement('div'); rows.className = 'spi-style-rows';
     library.append(header, rows);
@@ -1041,14 +1090,13 @@ function openStyleLibrary({ back = false } = {}) {
         node.title = label; node.setAttribute('aria-label', label); return node;
     };
     const newStyle = iconButton('+', 'Новый стиль', controls, () => {
-        const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '' };
+        const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '', preset:clone(current()?.preset || activeStyle(novelai)?.preset || presetFromSettings(rootSettings)) };
         novelai.styles.push(style); selectedId = style.id; persist(); renderList(); syncEditor(); name.focus({preventScroll:true}); name.select();
         revealSelected();
     });
     newStyle.classList.add('spi-style-new');
     const noneStyleButton = iconButton('⊘', 'Без стиля', controls, () => {
-        if (!novelai.activeStyleId) return;
-        novelai.activeStyleId = ''; persist(); syncListState(); syncEditor();
+        novelai.activeStyleId = ''; selectedId=''; persist(); syncListState(); syncEditor();
     });
     noneStyleButton.dataset.styleNone = '';
     const syncListState = () => {
@@ -1129,6 +1177,26 @@ function openStyleLibrary({ back = false } = {}) {
         const row = [...library.querySelectorAll('.spi-style-row')].find(node => node.dataset.styleId === style.id);
         if (!row) renderList(); else { const summary=row.querySelector('.spi-style-summary'); summary.title=style.name; summary.setAttribute('aria-label',style.name); row.querySelector('strong').textContent = style.name; row.querySelector('small').textContent = style.value || 'Пустой стиль'; }
     };
+    const savePreset=()=>{
+      const style=current(),previous=style?.preset||presetFromSettings(rootSettings);
+      const next=readPreset(previous),v=next.settings;
+      const errors=cfgValidationErrors(v);
+      if(!Number.isInteger(v.steps)||v.steps<1||v.steps>50)errors.push('Steps: 1–50.');
+      if(next.provider==='novelai'&&(!Number.isInteger(v.seed)||v.seed< -1||v.seed>4294967295))errors.push('Seed: -1 или до 4294967295.');
+      if(errors.length){editorStatus.textContent=errors.join(' ');return;}
+      if(style){style.preset=next;persist();}
+      else{
+       rootSettings.imageProvider=next.provider;
+       if(next.provider==='novelai')Object.assign(novelai,v);else rootSettings.naistera={...rootSettings.naistera,...v};
+       persist();
+      }
+      editorStatus.textContent='Настройки пресета сохранены.';
+    };
+    presetProvider.onchange=()=>{loadPreset(presetFromSettings(rootSettings,presetProvider.value));savePreset();};
+    for(const field of [presetModel,presetMode,effort,proxyModel,resolution,steps,cfg,rescale,sampler,seed]){
+      field.addEventListener('change',()=>{syncPresetFields();savePreset();});
+    }
+    negative.addEventListener('input',savePreset);
     name.addEventListener('input', saveEditor); value.addEventListener('input', saveEditor);
     renderList(); syncEditor(); layout.append(library, editor);
     dialog.append(layout);
