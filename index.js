@@ -1,5 +1,6 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
 import { resolveImageStyle } from './image-style-selection.js';
+import { mountMovablePresetSwitch } from './movable-preset-switch.js';
 import { activeGenerationStyle, normalizeStylePresets, presetFromSettings, resolveGenerationPreset, publicGenerationSettings } from './generation-presets.js';
 import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles, promoteBuiltInProfiles, primaryProfileId, isStructuredDirectorPrompt } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
@@ -23,7 +24,7 @@ import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } fr
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.80';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.81';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -1594,22 +1595,26 @@ async function run(command, kind, request = null) {
     return call();
 }
 
-let quickStyleRoot=null;
+let quickStyleRoot=null,quickStyleDrag=null;
 function refreshQuickStyleSwitch(){
     if(!initialized||!document.body)return;
     const state=context().extensionSettings[EXTENSION_KEY];
-    if(!state?.quickStyleSwitch){quickStyleRoot?.remove();quickStyleRoot=null;return;}
+    if(!state?.quickStyleSwitch){quickStyleDrag?.dispose();quickStyleDrag=null;quickStyleRoot?.remove();quickStyleRoot=null;return;}
     if(!quickStyleRoot?.isConnected){
+        quickStyleDrag?.dispose();
         const root=document.createElement('div');root.className='spi-quick-style';root.id='spi-quick-style';
         const trigger=button('✦',root,()=>{list.hidden=!list.hidden;trigger.setAttribute('aria-expanded',String(!list.hidden));if(!list.hidden)drawQuickStyleList();});
-        trigger.classList.add('spi-quick-style-trigger');trigger.title='Быстро сменить пресет';trigger.setAttribute('aria-label','Быстро сменить пресет');trigger.setAttribute('aria-expanded','false');
+        trigger.classList.add('spi-quick-style-trigger');trigger.title='Нажми для выбора пресета, перетащи для перемещения';trigger.setAttribute('aria-label','Быстро сменить пресет');trigger.setAttribute('aria-expanded','false');
         const list=document.createElement('div');list.className='spi-quick-style-list';list.hidden=true;root.append(list);
         root.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();list.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}});
         root.addEventListener('focusout',e=>{if(e.relatedTarget&&!root.contains(e.relatedTarget)){list.hidden=true;trigger.setAttribute('aria-expanded','false');}});
-        quickStyleRoot=root;document.body.append(root);if(expandedDialogs.size)syncModalBackground();
+        quickStyleRoot=root;document.body.append(root);
+        quickStyleDrag=mountMovablePresetSwitch(root,trigger,list,{onClose:()=>{list.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+        if(expandedDialogs.size)syncModalBackground();
     }
     const selected=activeGenerationStyle(state);
     quickStyleRoot.querySelector('.spi-quick-style-trigger').textContent='✦ '+(selected?.name||'Без пресета');
+    quickStyleDrag?.refresh();
     if(!quickStyleRoot.querySelector('.spi-quick-style-list').hidden)drawQuickStyleList();
 }
 function drawQuickStyleList(){
