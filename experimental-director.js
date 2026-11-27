@@ -21,12 +21,12 @@ const JSON_SYNTAX='JSON SYNTAX\nReturn one complete valid JSON object. Use doubl
 const CORE=[
  'Direct one expressive illustration from the supplied roleplay. Plan the entire image coherently and return one JSON object matching the structure and descriptive approach of the SAMPLE. Maximize distinct visual information per token in all descriptive fields. '+VISUAL_DENSITY,
  'JSON schema:',
- '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"page type, number of panels, overall medium","scene":"spatial staging of the panels: layout, camera, visible setting, participants’ relative positions and central shared interaction","borders":"visible panel frames, stroke, shapes, gutters and ornamental details","bubbles":{{BUBBLES_EXAMPLE}},"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"panel-specific body poses, expressions, gestures, gaze, hand and prop details, clothing/hair movement and individual action"}],"lettering":{{LETTERING_EXAMPLE}}}',
+ '{"schema":"sp-imagen-slots-v1","aspect_ratio":"2:3","opening":"single illustration, overall medium","scene":"continuous scene, camera, visible setting, participants’ relative positions and central shared interaction","borders":"empty unless a frame is explicitly requested","bubbles":{{BUBBLES_EXAMPLE}},"characters":[{"subject":"boy","name":"character or library Prompt name","appearance":"[[NESS_VIS:actual_id:upper_front]] or exact established visible traits","wardrobe":"current clothes","action":"body poses, expressions, gestures, gaze, hand and prop details, clothing/hair movement and individual action"}],"lettering":{{LETTERING_EXAMPLE}}}',
  'Use the supplied schema and standard JSON strings. Include every field and use empty arrays where appropriate.',
- 'opening: illustration or page format and panel count. The extension calculates subject counts.{{OPENING_RULE}}',
- 'scene: stage the complete visual composition. For each panel, establish its place on the page, camera, visible setting, participants’ relative positions, and the central action or interaction connecting them. Keep clear spatial anchors for the characters and their shared interaction.{{PANEL_RULE}}',
- 'borders: design the actual visible frames around panels, including the edges, outline weight, ink; add decorative pattern or physical decorations to the border if composition welcomes it, gutter width and color, inset treatment and page margins. Give the borders a recognizable visual presence. Use one compact sentence for it.',
- 'characters: one entry per physically present participant. subject is boy, girl, cat, dog or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe: '+WARDROBE_FIDELITY+' action contains each character’s detailed panel-specific body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference each panel and the position established in scene to anchor the individual action. In every character entry, explicitly specify a gaze target within the scene: another participant, an object, an event, or a visible direction of attention. Describe established closed eyes where appropriate. Describe visible details rather than poetic surplus.{{CHARACTER_RULE}}',
+ 'opening: single illustration and relevant visual tags. The extension calculates subject counts.{{OPENING_RULE}}',
+ 'scene: stage the complete visual composition. Establish one camera view, visible setting, participants’ relative positions, and the central action or interaction connecting them in the same physical space. Keep clear spatial anchors for the characters and their shared interaction.{{PANEL_RULE}}',
+ 'borders: empty for an ordinary Snapshot.',
+ 'characters: one entry per physically present participant. subject is boy, girl, cat, dog or other. appearance uses the authoritative library NESS_VIS marker and NESS_SKIN marker when supplied. wardrobe: '+WARDROBE_FIDELITY+' action contains each character’s detailed body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props. Reference the position established in scene to anchor the individual action. In every character entry, explicitly specify a gaze target within the scene: another participant, an object, an event, or a visible direction of attention. Describe established closed eyes where appropriate. Describe visible details rather than poetic surplus.{{CHARACTER_RULE}}',
  ACTION_TAGS,
  '{{BUBBLE_RULE}}',
  '{{LETTERING_RULE}}',
@@ -44,7 +44,7 @@ const PAGE=[
  'OUTPUT\nUse all SAMPLE fields with their shown JSON types; use empty arrays for absent entries. Keep text and speech bubble tags, cast counts, Text: and pipe separators out of descriptive fields. Return valid JSON only.'
 ].join('\n\n');
 const SNAPSHOT=[
- 'Create one cinematic still near the latest established state from the last {{POST_COUNT}} RP posts. Keep the visible setting, camera, lighting and participants’ relative positions clear in scene, with a central shared interaction. Use the character actions for precise poses, expressions, gaze and gestures within that single instant.',
+ 'Create one cinematic still near the latest established state from the last {{POST_COUNT}} RP posts. Keep the visible setting, camera, lighting and participants’ relative positions clear in scene, with a central shared interaction. Use the character actions for precise poses, expressions, gaze and gestures within that single instant. For ordinary scenes, compose one continuous illustration with a unified camera perspective and all visible participants sharing the same physical space; avoid split-screen, diptychs or separate character views. Preserve the existing intimacy exceptions.',
  'Set borders to an empty string unless the scene explicitly requests an illustrated frame. If an actual note/sign/screen is visually important, put its exact words in lettering.'
 ].join('\n\n');
 /**
@@ -70,9 +70,9 @@ export function normalizeExperimentalSceneLabels(text){
   (full,prefix,index)=>prefix+(ORDINALS[Number(index)-1]||'another')+' panel: ');
 }
 // A complete page example uses the same schema and active text policy as the director.
-function snapshotSample(includeText){
+function snapshotSample(includeText,ratio='2:3'){
  return JSON.stringify({
-  schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
+  schema:'sp-imagen-slots-v1',aspect_ratio:ratio,
   opening:'single cinematic illustration, slice of life, romantic atmosphere',
   scene:'Cozy cafe interior, sunny afternoon, warm natural window light; eye-level medium two-shot, Alex seated on the left facing Rita on the right, small wooden table between them, holding hands beside two ceramic mugs, handwritten chalkboard menu in the background, soft window reflections',
   borders:'',bubbles:[],
@@ -83,11 +83,11 @@ function snapshotSample(includeText){
   lettering:includeText?[{panel:1,design:'small handwritten inscription on the background chalkboard, white chalk lettering',words:'Coffee'}]:[]
  },null,2);
 }
-function pageSample(kind,includeText,maxLines,maxWords) {
+function pageSample(kind,includeText,maxLines,maxWords,ratio='2:3') {
  const first=includeText&&maxLines>0, second=first&&kind==='story_page'&&maxLines>1;
  const story=kind==='story_page';
  return JSON.stringify({
-  schema:'sp-imagen-slots-v1',aspect_ratio:'2:3',
+  schema:'sp-imagen-slots-v1',aspect_ratio:ratio,
   opening:story?'story page; 2 panels: splash panel, inset panel':'comic page; 2 panels: splash panel, inset panel',
   scene:story?'Cozy cafe interior, sunny afternoon, warm natural daylight, romantic atmosphere; Panel 1: splash panel, upper panel occupying three quarters of the page, wide three-quarter view, Alex on the left approaching Rita on the right beside a sunlit window, Alex offering her a small bouquet of daisies; Panel 2: inset panel, smaller panel slightly overlapping the splash panel at the lower right corner, tight over-the-shoulder view from behind Alex, Rita hugging Alex with one arm while holding the received bouquet':'Sunny day, natural daylight, romantic atmosphere; Panel 1: splash panel, upper side of the page, 3/4 of the page, large upper chest-up two-shot, Alex on the left facing Rita on the right by a sunlit window, embracing each other; Panel 2: inset panel, small panel slightly overlapping splash panel, lower corner of the page, tight over-the-shoulder close-up of Rita looking toward Alex',
   borders:story?'Warm sepia hand-inked borders, softly irregular splash panel outline, torn-paper inset frame, narrow ivory gutters. Neutral textured cream paper beyond panel edges, generous outer margins decorated with delicate hand-drawn daisy motifs.':'warm sepia hand-inked borders with gently irregular strokes, a broad splash panel frame with slightly rounded corners, an inset panel edged like torn cream paper, a neutral, subtly textured ivory paper page background visible beyond the panel edges, in narrow gutters and generous outer margins, delicate hand-drawn window-light flourishes at the page corners',
@@ -102,9 +102,15 @@ function pageSample(kind,includeText,maxLines,maxWords) {
   lettering:[]
  },null,2);
 }
-export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,maxLines=2,maxWords=10}={}){
+export function directorRatioInstruction(kind,ratio){
+ if(!RATIOS.has(ratio))return '';
+ const shape=ratio==='1:1'?'square':ratio==='3:2'?'horizontal':'vertical';
+ return '\n\nCURRENT IMAGE FORMAT: Set aspect_ratio to '+ratio+' and compose for a '+shape+' canvas. '+(kind==='snapshot'?'Keep all participants in one continuous scene, adapting camera distance, crop and spatial staging to fit the canvas; ordinary scenes must not split into separate views. Preserve existing intimacy exceptions.':'Adapt the page layout and panel framing to fit the canvas.');
+}
+export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,maxLines=2,maxWords=10,aspectRatio='auto'}={}){
  check(Object.values(EXPERIMENTAL_DIRECTOR_IDS).includes(kind),'Неизвестный формат');
  const page=kind!=='snapshot', allowBubbles=page&&includeText&&maxLines>0;
+ const ratio=RATIOS.has(aspectRatio)?aspectRatio:'2:3';
  if(page){
   const textRules=includeText?[
    'DIALOGUE AND LETTERING',
@@ -121,10 +127,10 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
    .replace('{{BEAT_RULE}}',kind==='story_page'?' Reflect established changes in actions, expressions, positions and surroundings as events progress.':'')
    .replace('{{TEXT_POLICY}}',textRules);
   const legacy=experimentalLegacyIntimacy(kind);
-  return pageRules+(legacy?'\n\n'+legacy:'')+'\n\n'+JSON_SYNTAX+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines,maxWords)+'\n\nReturn one valid JSON object.';
+  return pageRules+(legacy?'\n\n'+legacy:'')+'\n\n'+JSON_SYNTAX+'\n\nSAMPLE:\n'+pageSample(kind,includeText,maxLines,maxWords,ratio)+'\n\nReturn one valid JSON object.';
  }
  const choice=SNAPSHOT.replaceAll('{{POST_COUNT}}',String(postCount));
- const core=CORE
+ const core=CORE.replace('"aspect_ratio":"2:3"','"aspect_ratio":"'+ratio+'"')
   .replace('{{OPENING_RULE}}','')
   .replace('{{PANEL_RULE}}','')
   .replace('{{CHARACTER_RULE}}','')
@@ -139,7 +145,7 @@ export function experimentalDirectorPrompt(kind,{includeText=true,postCount=2,ma
   .replace(/\n{3,}/gu,'\n\n');
  const legacy=experimentalLegacyIntimacy(kind);
  const intimacy=legacy?'\n\nFor established adult intimacy, use these original scene and character guidelines:\n'+legacy:'';
- return core+'\n\n'+choice+intimacy+'\n\n'+JSON_SYNTAX+'\n\nSAMPLE:\n'+snapshotSample(includeText)+'\n\nFINAL: output only one valid JSON object matching the SAMPLE structure. Silently verify artistic consistency, chronology, identities and syntax.';
+ return core+'\n\n'+choice+intimacy+'\n\n'+JSON_SYNTAX+'\n\nSAMPLE:\n'+snapshotSample(includeText,ratio)+'\n\nFINAL: output only one valid JSON object matching the SAMPLE structure. Silently verify artistic consistency, chronology, identities and syntax.';
 }
 function stringField(obj,key,{empty=false,max=16000}={}){
  const v=obj?.[key];check(typeof v==='string'&&v.length<=max&&(empty||v.trim()),'Поле '+key+' пусто либо слишком длинное');
