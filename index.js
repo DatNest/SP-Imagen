@@ -1552,6 +1552,43 @@ async function run(command, kind, request = null) {
     return call();
 }
 
+let quickStyleRoot=null;
+function refreshQuickStyleSwitch(){
+    if(!initialized||!document.body)return;
+    const state=context().extensionSettings[EXTENSION_KEY];
+    if(!state?.quickStyleSwitch){quickStyleRoot?.remove();quickStyleRoot=null;return;}
+    if(!quickStyleRoot?.isConnected){
+        const root=document.createElement('div');root.className='spi-quick-style';root.id='spi-quick-style';
+        const trigger=button('✦',root,()=>{list.hidden=!list.hidden;trigger.setAttribute('aria-expanded',String(!list.hidden));if(!list.hidden)drawQuickStyleList();});
+        trigger.classList.add('spi-quick-style-trigger');trigger.title='Быстро сменить пресет';trigger.setAttribute('aria-label','Быстро сменить пресет');trigger.setAttribute('aria-expanded','false');
+        const list=document.createElement('div');list.className='spi-quick-style-list';list.hidden=true;root.append(list);
+        root.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();list.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}});
+        root.addEventListener('focusout',e=>{if(e.relatedTarget&&!root.contains(e.relatedTarget)){list.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+        quickStyleRoot=root;document.body.append(root);if(expandedDialogs.size)syncModalBackground();
+    }
+    const selected=activeGenerationStyle(state);
+    quickStyleRoot.querySelector('.spi-quick-style-trigger').textContent='✦ '+(selected?.name||'Без пресета');
+    if(!quickStyleRoot.querySelector('.spi-quick-style-list').hidden)drawQuickStyleList();
+}
+function drawQuickStyleList(){
+    const root=quickStyleRoot;if(!root)return;
+    const list=root.querySelector('.spi-quick-style-list'),state=context().extensionSettings[EXTENSION_KEY];
+    const trigger=root.querySelector('.spi-quick-style-trigger');
+    list.replaceChildren();
+    for(const style of [{id:'',name:'Без пресета',preset:presetFromSettings(state)},...state.novelai.styles]){
+        const row=button('',list,()=>{
+            const current=settings();
+            if(style.id&&!current.novelai.styles.some(item=>item.id===style.id))return;
+            current.novelai.activeStyleId=style.id;list.hidden=true;trigger.setAttribute('aria-expanded','false');saveSettings();trigger.focus();
+        });
+        row.className='menu_button spi-quick-style-option';row.setAttribute('aria-pressed',String(style.id===state.novelai.activeStyleId));
+        const title=document.createElement('strong');title.textContent=style.name;
+        const detail=document.createElement('small');const p=style.preset;
+        const model=p?.settings?.model;
+        detail.textContent=p?.provider==='naistera'?'NAISTERA · '+(NAISTERA_MODELS[model]||model): (NOVELAI_MODELS[model]||'NovelAI')+' · '+(p?.settings?.mode==='furry'?'Furry':'Anime');
+        row.append(title,detail);
+    }
+}
 function settingsPanel() {
     if (document.getElementById('spi-extension-settings')) return;
     const mount = document.getElementById('extensions_settings2');
@@ -1569,7 +1606,7 @@ function settingsPanel() {
 
 async function initialize() {
     migratePreviousChatData();
-    if (initialized) { settingsPanel(); mediaSlots?.refresh?.(); return; }
+    if (initialized) { settingsPanel(); refreshQuickStyleSwitch(); mediaSlots?.refresh?.(); return; }
     if (initializing) return;
     initializing = true;
     try {
@@ -1583,6 +1620,7 @@ async function initialize() {
         settingsPanel();
         refreshNewIndicators();
         initialized = true;
+        refreshQuickStyleSwitch();
         if (Object.keys(settings().pendingPrompts).length) setTimeout(() => openPromptCenter({ askUpdates: true }), 800);
     } catch (error) {
         console.error('[SP Imagen]', error);
@@ -1623,5 +1661,5 @@ const extensionApi = {
 };
 
 eventSource.on(event_types.APP_READY, initialize);
-if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, stopQuickGuide);
+if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, ()=>{stopQuickGuide();const list=quickStyleRoot?.querySelector('.spi-quick-style-list');if(list)list.hidden=true;quickStyleRoot?.querySelector('.spi-quick-style-trigger')?.setAttribute('aria-expanded','false');refreshQuickStyleSwitch();});
 if (document.readyState !== 'loading') void initialize();
