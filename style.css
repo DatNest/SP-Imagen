@@ -2062,3 +2062,9 @@ body:has(.spi-overlay:not(.spi-collapsed),#sp-imagen-review-overlay:not([data-mi
 .spi-novelai-tabbar [aria-selected=true]{border-color:var(--SmartThemeBorderColor,#666);background:var(--SmartThemeBlurTintColor,#24232a);color:var(--SmartThemeQuoteColor,#b9a2c6)}
 .spi-novelai-tabbody{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}
 .spi-novelai-tabbody .spi-form-grid{flex:none}
+
+.spi-quick-style{width:max-content}
+.spi-quick-style .spi-quick-style-trigger{touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.spi-quick-style[data-dragging=true] .spi-quick-style-trigger{cursor:grabbing}
+.spi-quick-style .spi-quick-style-list{position:absolute;box-sizing:border-box;top:calc(100% + 4px);bottom:auto;overscroll-behavior:contain}
+.spi-quick-style[data-menu-above=true] .spi-quick-style-list{top:auto;bottom:calc(100% + 4px)}
