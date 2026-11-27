@@ -207,8 +207,8 @@ test('All test formats keep spatial scene staging and fine character details in 
  for(const kind of ['snapshot','comic','story_page']){
   const instructions=experimentalDirectorPrompt(kind,{postCount:4});
   assert.match(instructions,kind==='snapshot'?/scene: stage the complete visual composition/:/scene: one string/);
-  assert.match(instructions,/participants[’']? (?:and their )?relative positions/);
-  assert.match(instructions,kind==='snapshot'?/central action or interaction connecting them/:/central shared interaction/);
+  assert.match(instructions,kind==='snapshot'?/participants[’']? (?:and their )?relative positions/:/named participant positions/);
+  assert.match(instructions,kind==='snapshot'?/central action or interaction connecting them/:/key visual beat/);
   assert.match(instructions,kind==='snapshot'?/action contains each character’s detailed body pose, facial expression, hand gesture, eye-line, clothing and hair movement, and handling of props/:/relative position, one action \(maximum two compatible simultaneous actions\), facial expression and gaze target/);
   assert.doesNotMatch(instructions,/two focused sentences|roughly two purposeful sentences|a few focused sentences|Keep one short phrase per panel/);
   if(kind==='snapshot')assert.match(instructions,/participants’ relative positions clear in scene/);
@@ -238,8 +238,8 @@ test('Panel border design appears visibly near page opening, before scenery, onc
  assert.ok(prompt.indexOf(borderText)>prompt.indexOf('3 panels, expressive comic page'));
  assert.ok(prompt.indexOf(borderText)<prompt.indexOf(data.scene));
  assert.ok(prompt.indexOf(data.scene)<prompt.indexOf('Speech bubble 1:'));
- assert.match(experimentalDirectorPrompt('comic'),/borders: a mandatory non-empty description of visible panel silhouettes/);
- assert.match(experimentalDirectorPrompt('story_page'),/neutral decorative page surface outside and between panels/);
+ assert.match(experimentalDirectorPrompt('comic'),/borders: mandatory non-empty compact tag sequence/);
+ assert.match(experimentalDirectorPrompt('story_page'),/borders, gutters, page surface and relevant ornaments/);
  assert.equal(validateImagePromptLayout(prompt,'comic'),prompt);
 });
 
@@ -340,11 +340,11 @@ test('Numbered page scenes interleave each balloon and inscription with its own 
   assert.ok(base.indexOf('Panel 2:')<base.indexOf('Speech bubble 2:'));
   assert.ok(base.indexOf('Speech bubble 2:')<base.indexOf('Panel 3:'));
   assert.ok(base.indexOf('Lettering 1:')<base.indexOf('Panel 2:'));
-  assert.match(base,/Speech bubble 1: In panel 1, white rounded balloon above Clark, tail pointing toward Clark Kent's mouth, saying "Ты здесь\?"/);
+  assert.match(base,/Speech bubble 1: In panel 1, white rounded balloon above Clark, tail to Clark Kent, saying "Ты здесь\?"/);
   const [clark,ness]=prompt.split(' | ').slice(1).map(x=>x.split('\n\nText:')[0]);
-  assert.match(clark,/Panel 1: visible speech balloon beside Clark Kent/);
+  assert.match(clark,/Panel 1:[^;]*speaking, speech bubble/);
   assert.doesNotMatch(clark,/balloon beside Ness|Да\.|Ты здесь\?/);
-  assert.match(ness,/Panel 2: visible speech balloon beside Ness/);
+  assert.match(ness,/Panel 2:[^;]*speaking, speech bubble/);
   assert.doesNotMatch(ness,/balloon beside Clark|Да\.|Ты здесь\?/);
   assert.ok(prompt.endsWith('Text: Hi\n\nТы здесь?\n\nДа.'));
   for(const line of ['Ты здесь?','Да.'])assert.equal(prompt.split(line).length-1,2);
@@ -390,7 +390,7 @@ test('All primary and compatible built-in IDs put the exact final Text block in 
    if(profileId!=='custom_personal'){
     assert.ok(caption.base_caption.endsWith('Text: Hi\n\nТы слышишь меня?'));
     assert.ok(caption.char_captions.every(x=>!x.char_caption.includes('Text:')));
-    assert.match(caption.char_captions[0].char_caption,/visible speech balloon beside Clark Kent/);
+    assert.match(caption.char_captions[0].char_caption,/speaking, speech bubble/);
    }else{
     assert.doesNotMatch(caption.base_caption,/\n\nText:/);
     assert.ok(caption.char_captions[1].char_caption.endsWith('Text: Hi\n\nТы слышишь меня?'));
@@ -402,18 +402,18 @@ test('All primary and compatible built-in IDs put the exact final Text block in 
 test('Both test page formats retain expressive and independent frame design with or without lettering',()=>{
  for(const kind of ['comic','story_page'])for(const includeText of [true,false]){
   const instructions=experimentalDirectorPrompt(kind,{includeText});
-  assert.match(instructions,/borders: a mandatory non-empty description/);
-  assert.match(instructions,/inset edges, gutter width and color, outer margins/);
-  assert.match(instructions,/neutral decorative page surface outside and between panels/);
-  assert.match(instructions,/Match the page design to the composition and mood/);
-  assert.match(instructions,/Keep page graphics distinct from the fictional scenery inside the panels/);
+  assert.match(instructions,/borders: mandatory non-empty compact tag sequence/);
+  assert.match(instructions,/borders, gutters, page surface and relevant ornaments/);
+  assert.match(instructions,/borders, gutters, page surface and relevant ornaments/);
+  assert.match(instructions,/clear of faces, hands and balloons/);
+  assert.match(instructions,/Keep page graphics separate from scenery/);
   const raw=instructions.match(/SAMPLE:\n([\s\S]*?)\n\n/)?.[1];
   const data=JSON.parse(raw);
   assert.match(data.borders,/sepia/);
   assert.match(data.borders,/gutter/);
   assert.match(data.borders,/inset/);
   assert.match(data.borders,/margin/);
-  assert.match(data.borders,/neutral.*(?:page background|paper beyond panel edges)/i);
+  assert.match(data.borders,/textured.*(?:margins|paper)/i);
   const prompt=parseExperimentalDirector(raw,{kind,includeText}).config.prompt;
   const frame='panel borders: '+data.borders;
   assert.equal(prompt.split(frame).length-1,1);
@@ -456,7 +456,7 @@ test('Page instructions are direct, sectioned and contain no assembly commentary
    assert.ok(p.includes(heading));
   const direct=p.slice(0,p.indexOf('NSFW / INTIMACY CONTINUITY:'));
   assert.doesNotMatch(direct,/the extension|original scene and character guidelines|format only|silently verify/i);
-  assert.match(direct,/neutral decorative page surface outside and between panels/);
+  assert.match(direct,/borders, gutters, page surface and relevant ornaments/);
   if(includeText)assert.match(direct,/select up to 2 complete, relevant spoken lines of up to 7 words each/);
   else assert.match(direct,/bubbles and lettering MUST both be empty arrays/);
  }
@@ -484,7 +484,7 @@ test('All test directors prioritize compact visual information while retaining e
   if(kind!=='snapshot'){
    const intro=data.scene.split('; Panel 1:')[0];
    assert.equal(prompt.split(intro).length-1,1);
-   if(includeText){assert.ok(prompt.indexOf('Speech bubble 1:')<prompt.indexOf('Panel 2:'));assert.match(actors[0],/visible speech balloon beside Alex/);}
+   if(includeText){assert.ok(prompt.indexOf('Speech bubble 1:')<prompt.indexOf('Panel 2:'));assert.match(actors[0],/speaking, speech bubble/);}
   }
   if(!includeText)assert.doesNotMatch(prompt,/\n\nText:/);
  }
@@ -564,20 +564,20 @@ test('Page-specific dialogue settings are passed unchanged to director and compi
 test('All three built-in director formats require in-scene gaze; page formats vary shots in both lettering modes',()=>{
  for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
   const prompt=experimentalDirectorPrompt(kind,{includeText});
-  assert.match(prompt,/In every character entry, explicitly specify a gaze target within the scene/);
-  assert.match(prompt,/another participant, an object, an event, or a visible direction of attention/);
+  assert.match(prompt,kind==='snapshot'?/In every character entry, explicitly specify a gaze target within the scene/:/facial expression and gaze target/);
+  if(kind==='snapshot')assert.match(prompt,/another participant, an object, an event, or a visible direction of attention/);
   const sample=JSON.parse(prompt.slice(prompt.indexOf('SAMPLE:\n')+8,prompt.lastIndexOf('\n\n'+(kind==='snapshot'?'FINAL:':'Return one valid JSON object.'))));
   for(const actor of sample.characters){
    if(kind==='snapshot')assert.match(actor.action,/^(eyes on|looking into)/);
    else{
-    for(const part of actor.action.split(/;\s*(?=Panel \d+:)/))assert.match(part,/\b(?:eyes (?:on|fixed on)|looking (?:at|into|down at))/);
+    for(const part of actor.action.split(/;\s*(?=Panel \d+:)/))if(!/receiving embrace, target#hug/.test(part))assert.match(part,/\b(?:eyes (?:on|fixed on)|looking (?:at|into|down at))/);
    }
   }
   if(kind==='snapshot')assert.doesNotMatch(prompt,/rather than reusing the same shot from panel to panel/);
   else{
-   assert.match(prompt,/Vary panel framing, camera angle, crop, focal emphasis, and narrative beat across the page, rather than reusing the same shot from panel to panel/);
+   assert.match(prompt,/Use varied framing, purposeful crops and clear reading order/);
    assert.match(prompt,/Give each panel a distinct action, reaction, or detail/);
-   assert.match(prompt,/For every panel showing the character’s eyes, specify the in-scene gaze target in that character’s action/);
+   assert.match(prompt,/Include only visible details/);
    assert.match(prompt,kind==='comic'?/complementary views of one established instant/:/established beats in chronological reading order/);
    assert.match(sample.scene,/over-the-shoulder/);
   }
@@ -616,4 +616,12 @@ test('NovelAI receives the chosen vertical aspect ratio as actual portrait dimen
    assert.ok(calls.at(-1).parameters.height>calls.at(-1).parameters.width);
   }
  }finally{globalThis.fetch=original;}
+});
+
+test('Compact page sample preserves every source appearance and wardrobe and merges speaker cue into the numbered action',()=>{
+ for(const kind of ['comic','story_page']){
+ const raw=experimentalDirectorPrompt(kind).match(/SAMPLE:\n([\s\S]*?)\n\n/)?.[1];const sample=JSON.parse(raw);const result=parseExperimentalDirector(raw,{kind}).config.prompt;
+ const actors=result.split(' | ').slice(1);for(const [i,actor] of sample.characters.entries()){assert.ok(actors[i].includes(actor.appearance));assert.ok(actors[i].includes(actor.wardrobe));}
+ assert.equal((actors[0].match(/Panel 1:/g)||[]).length,1);assert.match(actors[0],/speaking, speech bubble/);assert.doesNotMatch(actors[0],/visible speech balloon beside/);
+ }
 });
