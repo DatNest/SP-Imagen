@@ -2056,3 +2056,9 @@
 .spi-quick-style-option[aria-pressed=true]{border-color:var(--SmartThemeQuoteColor,#9b8cb6);outline:1px solid var(--SmartThemeQuoteColor,#9b8cb6)}
 body:has(.spi-overlay:not(.spi-collapsed),#sp-imagen-review-overlay:not([data-minimized=true]),.spi-onboarding) .spi-quick-style{visibility:hidden}
 @media(max-width:670px){.spi-quick-style{top:26%;right:max(5px,env(safe-area-inset-right))}.spi-quick-style .spi-quick-style-trigger{max-width:125px;font-size:11px}}
+
+.spi-novelai-tabbar{display:flex;gap:4px;flex:none;border-bottom:1px solid var(--SmartThemeBorderColor,#666);padding:0 3px}
+.spi-novelai-tabbar .menu_button{flex:1 1 0;min-width:0;margin:0;padding:7px 10px;border-radius:8px 8px 0 0;background:transparent;border:1px solid transparent;border-bottom:0;font-size:13px}
+.spi-novelai-tabbar [aria-selected=true]{border-color:var(--SmartThemeBorderColor,#666);background:var(--SmartThemeBlurTintColor,#24232a);color:var(--SmartThemeQuoteColor,#b9a2c6)}
+.spi-novelai-tabbody{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.spi-novelai-tabbody .spi-form-grid{flex:none}
