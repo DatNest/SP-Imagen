@@ -565,7 +565,7 @@ test('All three built-in director formats require in-scene gaze; page formats va
  for(const kind of ['snapshot','comic','story_page'])for(const includeText of [true,false]){
   const prompt=experimentalDirectorPrompt(kind,{includeText});
   assert.match(prompt,kind==='snapshot'?/In every character entry, explicitly specify a gaze target within the scene/:/facial expression and gaze target/);
-  if(kind==='snapshot')assert.match(prompt,/another participant, an object, an event, or a visible direction of attention/);
+  if(kind==='snapshot')if(kind==='snapshot')assert.match(prompt,/another participant, an object, an event, or a visible direction of attention/);
   const sample=JSON.parse(prompt.slice(prompt.indexOf('SAMPLE:\n')+8,prompt.lastIndexOf('\n\n'+(kind==='snapshot'?'FINAL:':'Return one valid JSON object.'))));
   for(const actor of sample.characters){
    if(kind==='snapshot')assert.match(actor.action,/^(eyes on|looking into)/);
