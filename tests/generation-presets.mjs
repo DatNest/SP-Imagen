@@ -60,3 +60,16 @@ test('Quick style selector only changes the selected id, with a persistent visib
  const connection=src.slice(src.indexOf('function openNovelAISettings'),src.indexOf('function openStyleLibrary'));
  assert.doesNotMatch(connection,/formField\(grid,\s*'Негативный промпт'/);
 });
+
+test('Unified settings has two real tabs, one menu entry and matching guide targets',()=>{
+ const src=readFileSync(new URL('../index.js',import.meta.url),'utf8'),guide=readFileSync(new URL('../onboarding.js',import.meta.url),'utf8');
+ assert.match(src,/\['connection','Подключение'\],\['styles','Стили'\]/);
+ assert.match(src,/button\('Настройки NovelAI', body/);
+ assert.doesNotMatch(src,/button\('Стили', body/);
+ assert.match(src,/openStyleLibrary\(\{host:\{dialog:body,closed:window.closed\}\}\)/);
+ assert.match(src,/style\.preset=presetFromSettings\(root,'novelai',\{\.\.\.next,negativePrompt:style\.preset\.settings\.negativePrompt\}\)/);
+ assert.doesNotMatch(guide,/data-spi-action="styles"/);
+ assert.match(guide,/selector:'\.spi-novelai-tabbar'/);
+ assert.match(guide,/selector:'\.spi-quick-style-setting'/);
+ assert.match(src,/classList\.add\('spi-quick-style-setting'\)/);
+});
