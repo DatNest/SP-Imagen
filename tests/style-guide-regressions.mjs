@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {resolveImageStyle,NO_IMAGE_STYLE} from '../image-style-selection.js';
-import {defaultNovelAISettings,generateNovelAI} from '../novelai.js';
+import {defaultNovelAISettings,generateNovelAI,normalizeNovelAISettings,NOVELAI_MODEL_CHOICES,V5_FULL_MODEL,MEDIUM_MODEL,NOVELAI_SAMPLERS,novelAIModelControls,novelAIModelFromControls,cfgValidationErrors} from '../novelai.js';
+import {NAISTERA_MODELS,normalizeNaisteraSettings} from '../naistera.js';
+import {normalizeStylePresets,presetFromSettings} from '../generation-presets.js';
 import {makeGuideSteps} from '../onboarding.js';
 import {readableNessColor} from '../theme-runtime.js';
 
@@ -300,8 +302,9 @@ test('Mobile library uses one compact action bar, collapsible search and shared 
  assert.match(css,/\.ness-library-workspace\{order:2/);
  assert.match(css,/overscroll-behavior:auto!important/);
  assert.doesNotMatch(index,/formField\(grid, 'Генерировать напрямую через NovelAI'/);
- assert.match(index,/function directGenerationEnabled\(config, reuseSnapshot = false\)/);
- assert.match(index,/state\[imageProvider\(state,config,reuseSnapshot\)\]\?\.apiKey/);
+ assert.match(index,/function directGenerationEnabled\(config, reuseSnapshot = false, useActiveStyle = false\)/);
+ assert.match(index,/resolveGenerationPreset\(settings\(\),config,\{reuseSnapshot,useActiveStyle\}\)/);
+ assert.match(index,/Boolean\(resolved.apiKey\)/);
  assert.ok(guide.some(s=>s.text.includes('SillyImages не используется')));
 });
 
@@ -389,11 +392,13 @@ test('Compact style actions retain rows, preserve input, duplicate current conte
   querySelector(s){return this.querySelectorAll(s)[0]||null;}
   click(){(this.events.click||this.onclick)?.({stopPropagation(){}});}
  }
- const create=tag=>new Node(tag),root={novelai:{styles:[{id:'a',name:'A',value:'old'},{id:'b',name:'B',value:'second'}],activeStyleId:'a',apiKey:'unchanged'}},dialog=create('div');
+ const create=tag=>new Node(tag),root=normalizeStylePresets({imageProvider:'novelai',novelai:normalizeNovelAISettings({styles:[{id:'a',name:'A',value:'old'},{id:'b',name:'B',value:'second'}],activeStyleId:'a',apiKey:'unchanged'}),naistera:normalizeNaisteraSettings()}),dialog=create('div');
  const doc={createElement:create,createElementNS:(ns,tag)=>create(tag)};
  const btn=(label,parent,action)=>{const n=create('button');n.textContent=label;n.className='menu_button';n.addEventListener('click',action);parent.append(n);return n;};
  const field=(parent,label,node)=>{const wrap=create('label');wrap.append(node);parent.append(wrap);return node;};
- const open=new Function('document','settings','shell','input','formField','button','normalizeNovelAISettings','saveSettings','clone','confirm',body+'\nreturn openStyleLibrary;')(doc,()=>root,()=>({dialog,closed:Promise.resolve()}),()=>create('input'),field,btn,structuredClone,()=>{},structuredClone,()=>true);
+ const select=(options,value)=>{const n=create('select');n.value=value;return n;};
+ const activeStyle=nai=>nai.styles.find(x=>x.id===nai.activeStyleId);
+ const open=new Function('document','settings','shell','input','formField','button','normalizeNovelAISettings','saveSettings','clone','confirm','select','NOVELAI_MODEL_CHOICES','V5_FULL_MODEL','MEDIUM_MODEL','NOVELAI_SAMPLERS','NAISTERA_MODELS','novelAIModelControls','novelAIModelFromControls','presetFromSettings','cfgValidationErrors','activeStyle',body+'\nreturn openStyleLibrary;')(doc,()=>root,()=>({dialog,closed:Promise.resolve()}),()=>create('input'),field,btn,normalizeNovelAISettings,()=>{},structuredClone,()=>true,select,NOVELAI_MODEL_CHOICES,V5_FULL_MODEL,MEDIUM_MODEL,NOVELAI_SAMPLERS,NAISTERA_MODELS,novelAIModelControls,novelAIModelFromControls,presetFromSettings,cfgValidationErrors,activeStyle);
  open();
  const rows=dialog.querySelector('.spi-style-rows'),header=dialog.querySelector('.spi-style-controls'),first=rows.children[0],second=rows.children[1],name=dialog.querySelector('input'),value=dialog.querySelector('textarea');
  assert.equal(first.querySelector('strong').textContent,'A');
@@ -404,8 +409,8 @@ test('Compact style actions retain rows, preserve input, duplicate current conte
  assert.equal(first.querySelector('strong').textContent,'Edited');
  assert.equal(first.querySelector('small').textContent,'new content');
  assert.equal(first.querySelector('.spi-style-summary').attrs['aria-label'],'Edited');
- header.children[1].click();assert.equal(root.novelai.activeStyleId,'');assert.equal(value.value,'new content ');assert.strictEqual(rows.children[0],first);
- first.children[2].click();assert.equal(root.novelai.styles[2].name,'Edited — копия');assert.equal(root.novelai.styles[2].value,'new content ' .trim());
+ header.children[1].click();assert.equal(root.novelai.activeStyleId,'');assert.equal(value.value,'');assert.equal(root.novelai.styles[0].value,'new content');assert.strictEqual(rows.children[0],first);
+ first.children[2].click();assert.equal(root.novelai.styles[2].name,'Edited — копия');assert.equal(root.novelai.styles[2].value,'new content ' .trim());assert.deepEqual(root.novelai.styles[2].preset,root.novelai.styles[0].preset);
  assert.strictEqual(rows.children[0],first);assert.strictEqual(rows.children[1],second);
  header.children[0].click();assert.equal(root.novelai.styles.length,4);assert.strictEqual(rows.children[0],first);
  first.children[0].click();assert.equal(root.novelai.activeStyleId,'a');

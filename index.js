@@ -1,5 +1,6 @@
 import { startQuickGuide, stopQuickGuide, makeGuideSteps, addFieldHelp } from './onboarding.js';
 import { resolveImageStyle } from './image-style-selection.js';
+import { activeGenerationStyle, normalizeStylePresets, presetFromSettings, resolveGenerationPreset, publicGenerationSettings } from './generation-presets.js';
 import { PROFILE_KINDS, PROFILE_SWITCHES, normalizeProfile, normalizeExtraRule, normalizeProfileStore, profileById, generationFormats, baseKindFor, migrateLegacyProfiles, promoteBuiltInProfiles, primaryProfileId, isStructuredDirectorPrompt } from './profiles.js';
 import { CODE_PROMPT_LABELS, CODE_PROMPT_DEFAULTS, resolveCodePrompt } from './code-prompts.js';
 import { mountViewportOverlay } from './viewport-overlay.js';
@@ -15,14 +16,14 @@ import { SP_IMAGEN_PROMPTS, SP_IMAGEN_RELEASE } from './official-prompts.js';
 import { pageTextEnabled } from './page-text-mode.js';
 import { experimentalProfileFor, experimentalDirectorPrompt } from './experimental-director.js';
 import { decidePromptUpdate } from './update-policy.js';
-import { NAISTERA_MODELS, NAISTERA_ORIGIN, normalizeNaisteraSettings, validateNaisteraSettings, checkNaisteraConnection, generateNaistera, imageProvider, publicNaisteraSettings } from './naistera.js';
-import { NOVELAI_MODELS, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings, cfgValidationErrors, resolveSnapshotCfg } from './novelai.js';
+import { NAISTERA_MODELS, NAISTERA_ORIGIN, normalizeNaisteraSettings, validateNaisteraSettings, checkNaisteraConnection, generateNaistera, publicNaisteraSettings } from './naistera.js';
+import { NOVELAI_MODELS, NOVELAI_MODEL_CHOICES, V5_FULL_MODEL, MEDIUM_MODEL, novelAIModelControls, novelAIModelFromControls, NOVELAI_SAMPLERS, checkNovelAISubscription, defaultNovelAISettings, generateNovelAI, normalizeNovelAISettings, cfgValidationErrors } from './novelai.js';
 import { defaultTextApiSettings, generateTextCompletion, listSillyTavernProfiles, normalizeTextApiSettings, reasoningRequestOptions, testSillyTavernProfile, testTextApi } from './text-api.js';
 import { OFFICIAL_NOVELAI_ORIGIN, directTextOrigin, officialNovelAIEndpoint } from './security-network.js';
 
 const EXTENSION_KEY = 'spImagen';
 // Change with every extension build. Including packaged hashes also detects changed shipped instructions.
-const SP_IMAGEN_BUNDLE_VERSION = '2.9.78';
+const SP_IMAGEN_BUNDLE_VERSION = '2.9.79';
 const PROFILE_LABELS = {
     sp_ness_snapshot_director: 'Snapshot',
     sp_ness_comic_director: 'Comic',
@@ -100,6 +101,7 @@ function settings() {
     value.novelai = normalizeNovelAISettings(value.novelai);
     value.naistera = normalizeNaisteraSettings(value.naistera);
     value.imageProvider = value.imageProvider === 'naistera' ? 'naistera' : 'novelai';
+    normalizeStylePresets(value);
     value.textApi = normalizeTextApiSettings(value.textApi);
     value.prompts ??= {};
     value.codePrompts ??= {};
@@ -113,6 +115,7 @@ function settings() {
 
 function saveSettings() {
     context().saveSettingsDebounced?.();
+    refreshQuickStyleSwitch();
 }
 
 // A backup contains only bundled prompt slots. User-created profiles are never replaced.
@@ -880,17 +883,39 @@ function openTextApiSettings({ back = false } = {}) {
     return closed;
 }
 
-function openNovelAISettings({ back = false } = {}) {
+function openNovelAISettings({back=false,tab='connection'}={}){
+    const window=shell('SP Imagen · Настройки NovelAI','spi-connection-window spi-style-window spi-novelai-tabs',{back});
+    const tabs=document.createElement('div');tabs.className='spi-novelai-tabbar';tabs.setAttribute('role','tablist');
+    const body=document.createElement('div');body.className='spi-novelai-tabbody';
+    window.dialog.append(tabs,body);body.id='spi-novelai-tabpanel';body.setAttribute('role','tabpanel');
+    let active='',connectionDirty=()=>false;
+    const show=(next,force=false)=>{
+        if(active===next)return;
+        if(!force&&active==='connection'&&connectionDirty()&&!confirm('Перейти без сохранения изменений подключения?'))return;
+        active=next;body.replaceChildren();
+        for(const [id,node] of controls){node.setAttribute('aria-selected',String(id===next));node.tabIndex=id===next?0:-1;}
+        body.setAttribute('aria-labelledby','spi-novelai-tab-'+next);
+        if(next==='styles')openStyleLibrary({host:{dialog:body,closed:window.closed}});
+        else connectionDirty=renderNovelAIConnection({dialog:body,close:window.close,closed:window.closed,onSaved:()=>show('styles',true)});
+    };
+    const controls=new Map([['connection','Подключение'],['styles','Стили']].map(([id,label])=>{
+        const node=button(label,tabs,()=>show(id));node.setAttribute('role','tab');node.id='spi-novelai-tab-'+id;node.setAttribute('aria-controls',body.id);return [id,node];
+    }));
+    tabs.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const next=e.key==='Home'?'connection':e.key==='End'?'styles':active==='connection'?'styles':'connection';show(next);controls.get(active)?.focus();}});
+    show(tab,true);
+    return window.closed;
+}
+function renderNovelAIConnection({dialog,close,closed,onSaved}) {
     const state = settings();
-    const draft = clone(state.novelai || defaultNovelAISettings());
-    const proxy = normalizeNaisteraSettings(state.naistera);
-    const { dialog, close, closed } = shell('SP Imagen · Подключение NovelAI', 'spi-connection-window', { back });
+    const selected=activeGenerationStyle(state),effective=resolveGenerationPreset(state);
+    const draft = clone({...state.novelai,...(effective.provider==='novelai'?effective.settings:{})});
+    const proxy = normalizeNaisteraSettings({...state.naistera,...(effective.provider==='naistera'?effective.settings:{})});
     const grid = document.createElement('div'); grid.className = 'spi-form-grid';
     const status = document.createElement('p'); status.className = 'spi-status'; status.setAttribute('role', 'status');
     const actions = document.createElement('div'); actions.className = 'spi-dialog-actions';
     dialog.append(grid, status, actions);
     try {
-    const provider = select({novelai:'NovelAI напрямую',naistera:'NAISTERA'},state.imageProvider);
+    const provider = select({novelai:'NovelAI напрямую',naistera:'NAISTERA'},effective.provider);
     formField(grid,'Способ подключения',provider);
     const providerField=provider.parentElement;
     const intro=document.createElement('p');intro.className='spi-status';intro.textContent='SP Imagen самостоятельно генерирует изображения через NovelAI. SillyImages не используется.';grid.append(intro);
@@ -903,17 +928,24 @@ function openNovelAISettings({ back = false } = {}) {
     const endpoint = input(OFFICIAL_NOVELAI_ORIGIN);
     endpoint.readOnly = true;
     formField(grid, 'Защищённый адрес NovelAI', endpoint, 'Фиксирован: ключ отправляется только на официальный сервер. Сторонние адреса запрещены.');
-    const model = select(NOVELAI_MODELS, draft.model); formField(grid, 'Модель', model);
+    const initialModel=novelAIModelControls(draft.model);
+    const model = select(NOVELAI_MODEL_CHOICES, initialModel.model); formField(grid, 'Model', model);
+    const dataset=select({anime:'Anime',furry:'Furry'},draft.mode);formField(grid,'Mode',dataset);
+    const effort=select({medium:'Medium',high:'High'},initialModel.effort);const effortField=formField(grid,'Effort',effort,'Medium доступен только для V5 Full.');
+    const modelId=()=>novelAIModelFromControls(model.value,effort.value);
+    const note=document.createElement('p');note.className='spi-status';note.textContent=selected?'Параметры активного пресета: '+selected.name+'. Негатив — во вкладке «Стили».':'Базовые параметры без пресета. Негатив — во вкладке «Стили».';
+    grid.append(note);
     const resolution = select({ small: 'Small', normal: 'Normal', big: 'Big' }, draft.resolution); formField(grid, 'Размер', resolution, 'При защите Anlas используется Normal.');
     const steps = input(draft.steps, 'number'); steps.min = '1'; steps.max = '50'; formField(grid, 'Steps', steps);
     const cfg = input(Number.isFinite(draft.cfgScale) ? draft.cfgScale : ''); cfg.inputMode = 'decimal'; formField(grid, 'CFG scale', cfg, 'От 0 до 10; дробные числа через точку или запятую.');
     const rescale = input(Number.isFinite(draft.cfgRescale) ? draft.cfgRescale : ''); rescale.inputMode = 'decimal'; formField(grid, 'CFG rescale', rescale, 'От 0 до 1; дробные числа через точку или запятую.');
     const sampler = select(NOVELAI_SAMPLERS, draft.sampler); formField(grid, 'Sampler', sampler);
     const seed = input(draft.seed, 'number'); seed.min = '-1'; seed.max = '4294967295'; formField(grid, 'Seed', seed, '-1 создаёт новый вариант при каждом запуске.');
-    const negative = document.createElement('textarea'); negative.className = 'spi-short-area'; negative.value = draft.negativePrompt;
-    const negativeField=formField(grid, 'Негативный промпт', negative, 'Настраивается для Full/Curated; в V5 Full Medium NovelAI использует собственный фиксированный Undesired Content.');
-    const updateModelFields=()=>{negativeField.parentElement.hidden=model.value==='nai-diffusion-5-full-medium';};
-    model.addEventListener('change',updateModelFields);updateModelFields();
+    const updateModelFields=()=>{
+      effortField.parentElement.hidden=model.value!==V5_FULL_MODEL;
+      const medium=modelId()===MEDIUM_MODEL;
+      for(const field of [steps,rescale,sampler])field.disabled=medium;
+    };
     const directFields=[...grid.children].filter(node=>node!==providerField);
     const proxyIntro=document.createElement('p');proxyIntro.className='spi-status';proxyIntro.textContent='NAISTERA · генерация расходует квоту или кредиты сервиса. Защита Anlas не применяется.';grid.append(proxyIntro);
     const proxyToken=input(proxy.apiKey,'password');proxyToken.autocomplete='off';
@@ -926,26 +958,26 @@ function openNovelAISettings({ back = false } = {}) {
     const proxyCfg=input(Number.isFinite(proxy.cfgScale)?proxy.cfgScale:'');proxyCfg.inputMode='decimal';formField(grid,'CFG scale',proxyCfg,'От 0 до 10; через точку или запятую.');
     const proxyRescale=input(Number.isFinite(proxy.cfgRescale)?proxy.cfgRescale:'');proxyRescale.inputMode='decimal';formField(grid,'CFG rescale',proxyRescale,'От 0 до 1; через точку или запятую.');
     const proxySampler=select(NOVELAI_SAMPLERS,proxy.sampler);formField(grid,'Sampler',proxySampler);
-    const proxyNegative=document.createElement('textarea');proxyNegative.className='spi-short-area';proxyNegative.value=proxy.negativePrompt;formField(grid,'Негативный промпт',proxyNegative);
     const proxyFields=[...grid.children].filter(node=>node!==providerField&&!directFields.includes(node));
+    const quick=input('', 'checkbox');quick.checked=state.quickStyleSwitch;formField(grid,'Плавающий переключатель пресетов',quick);
     const show=(node,visible)=>{node.hidden=!visible;node.style.display=visible?'':'none';};
     const updateProvider=()=>{
         const isProxy=provider.value==='naistera', medium=proxyModel.value==='novelai-v5-medium';
         directFields.forEach(node=>show(node,!isProxy));proxyFields.forEach(node=>show(node,isProxy));
-        if(!isProxy)show(negativeField.parentElement,model.value!=='nai-diffusion-5-full-medium');
+        if(!isProxy){show(effortField.parentElement,model.value===V5_FULL_MODEL);updateModelFields();}
         else {
-            show(proxyRescale.parentElement,!medium);show(proxyNegative.parentElement,!medium);
+            show(proxyRescale.parentElement,!medium);
             show(proxySteps.parentElement,!medium);show(proxySampler.parentElement,!medium);
             proxyIntro.textContent='NAISTERA · генерация расходует квоту или кредиты сервиса. Защита Anlas не применяется.'+(medium?' Medium: 14 Steps, Euler Ancestral.':'');
         }
     };
-    model.addEventListener('change',updateProvider);proxyModel.addEventListener('change',updateProvider);provider.addEventListener('change',()=>{status.textContent='';updateProvider();});updateProvider();
-    const readProxy=()=>normalizeNaisteraSettings({apiKey:proxyToken.value,model:proxyModel.value,steps:proxySteps.value,cfgScale:proxyCfg.value,cfgRescale:proxyRescale.value,sampler:proxySampler.value,negativePrompt:proxyNegative.value});
+    model.addEventListener('change',updateProvider);effort.addEventListener('change',updateProvider);proxyModel.addEventListener('change',updateProvider);provider.addEventListener('change',()=>{status.textContent='';updateProvider();});updateProvider();
+    const readProxy=()=>normalizeNaisteraSettings({apiKey:proxyToken.value,model:proxyModel.value,steps:proxySteps.value,cfgScale:proxyCfg.value,cfgRescale:proxyRescale.value,sampler:proxySampler.value,negativePrompt:proxy.negativePrompt});
     const readDraft = () => normalizeNovelAISettings({
         ...draft, enabled: true, neverSpendAnlas: neverSpend.checked,
-        apiKey: token.value, endpoint: OFFICIAL_NOVELAI_ORIGIN, model: model.value, resolution: resolution.value,
+        apiKey: token.value, endpoint: OFFICIAL_NOVELAI_ORIGIN, model: modelId(), mode:dataset.value, resolution: resolution.value,
         steps: Number(steps.value), cfgScale: cfg.value, cfgRescale: rescale.value,
-        sampler: sampler.value, seed: Number(seed.value), negativePrompt: negative.value,
+        sampler: sampler.value, seed: Number(seed.value),
     });
     button('Проверить подключение', actions, async event => {
         const control = event.currentTarget; control.disabled = true; status.textContent = 'Проверяю подписку NovelAI…';
@@ -963,13 +995,18 @@ function openNovelAISettings({ back = false } = {}) {
         } catch (error) { status.textContent = String(error?.message || error); }
         finally { control.disabled = false; }
     });
+    const initial=JSON.stringify([readDraft(),readProxy(),provider.value,quick.checked]);
+    const dirty=()=>initial!==JSON.stringify([readDraft(),readProxy(),provider.value,quick.checked]);
     button('Отмена', actions, close);
     button('Сохранить', actions, () => {
         if(provider.value==='naistera'){
             const next=readProxy();
             try{validateNaisteraSettings(next);}
             catch(error){status.textContent=String(error?.message||error);return;}
-            const root=settings();root.naistera=next;root.imageProvider='naistera';saveSettings();close();return;
+            const root=settings();const style=activeGenerationStyle(root);
+            if(style){root.naistera.apiKey=next.apiKey;style.preset=presetFromSettings(root,'naistera',{...next,negativePrompt:style.preset.settings.negativePrompt});}
+            else{root.naistera=next;root.imageProvider='naistera';}
+            root.novelai.apiKey=token.value.trim();root.novelai.neverSpendAnlas=neverSpend.checked;root.quickStyleSwitch=quick.checked;saveSettings();onSaved();return;
         }
         const next = readDraft();
         const cfgErrors = cfgValidationErrors(next);
@@ -977,21 +1014,24 @@ function openNovelAISettings({ back = false } = {}) {
         try { officialNovelAIEndpoint(next.endpoint); }
         catch(error){status.textContent=String(error?.message||error);return;}
         if (!next.apiKey) { status.textContent = 'Поле «API-токен NovelAI» пустое. Для автономной генерации требуется токен NovelAI.'; token.focus(); return; }
-        const root = settings(); root.novelai = next; root.imageProvider='novelai'; saveSettings(); close();
+        const root=settings();const style=activeGenerationStyle(root);
+        if(style){root.novelai.apiKey=next.apiKey;root.novelai.neverSpendAnlas=next.neverSpendAnlas;style.preset=presetFromSettings(root,'novelai',{...next,negativePrompt:style.preset.settings.negativePrompt});}
+        else{root.novelai={...next,styles:root.novelai.styles,activeStyleId:root.novelai.activeStyleId};root.imageProvider='novelai';}
+        root.naistera.apiKey=proxyToken.value.trim();root.quickStyleSwitch=quick.checked;saveSettings();onSaved();
     }, true);
-    requestAnimationFrame(() => (provider.value==='naistera'?proxyToken:token).focus());
+    return dirty;
     } catch (error) {
         status.textContent = 'Не удалось открыть настройки: ' + String(error?.message || error);
         button('Закрыть', actions, close);
         console.error('[SP Imagen] NovelAI settings', error);
     }
-    return closed;
+    return ()=>false;
 }
 
-function openStyleLibrary({ back = false } = {}) {
+function openStyleLibrary({ back = false, host = null } = {}) {
     const rootSettings = settings();
     let novelai = rootSettings.novelai;
-    const { dialog, closed } = shell('SP Imagen · Стили', 'spi-style-window', { back });
+    const { dialog, closed } = host || shell('SP Imagen · Стили', 'spi-style-window', { back });
     const layout = document.createElement('div'); layout.className = 'spi-style-layout';
     const library = document.createElement('section'); library.className = 'spi-style-library';
     const editor = document.createElement('section'); editor.className = 'spi-style-editor';
@@ -1002,8 +1042,56 @@ function openStyleLibrary({ back = false } = {}) {
     const nameField = formField(editor, 'Название', name);
     const valueField = formField(editor, 'Стиль-префикс', value);
     nameField.parentElement.hidden = true; valueField.parentElement.hidden = true;
+    const presetGrid=document.createElement('div');presetGrid.className='spi-preset-grid';
+    const presetProvider=select({novelai:'NovelAI напрямую',naistera:'NAISTERA'},rootSettings.imageProvider);
+    const providerField=formField(presetGrid,'Подключение',presetProvider);
+    const presetModel=select(NOVELAI_MODEL_CHOICES,V5_FULL_MODEL);
+    const modelField=formField(presetGrid,'Model',presetModel);
+    const presetMode=select({anime:'Anime',furry:'Furry'},'anime');
+    const modeField=formField(presetGrid,'Mode',presetMode);
+    const effort=select({medium:'Medium',high:'High'},'high');
+    const effortField=formField(presetGrid,'Effort',effort);
+    const proxyModel=select(NAISTERA_MODELS,'novelai-v5');
+    const proxyModelField=formField(presetGrid,'Model',proxyModel);
+    const resolution=select({small:'Small',normal:'Normal',big:'Big'},'normal');
+    const resolutionField=formField(presetGrid,'Размер',resolution);
+    const steps=input(23,'number');steps.min='1';steps.max='50';formField(presetGrid,'Steps',steps);
+    const cfg=input(7);cfg.inputMode='decimal';formField(presetGrid,'CFG scale',cfg);
+    const rescale=input(0);rescale.inputMode='decimal';formField(presetGrid,'CFG rescale',rescale);
+    const sampler=select(NOVELAI_SAMPLERS,'k_euler_ancestral');formField(presetGrid,'Sampler',sampler);
+    const seed=input(-1,'number');seed.min='-1';seed.max='4294967295';const seedField=formField(presetGrid,'Seed',seed);
+    const negative=document.createElement('textarea');negative.className='spi-style-negative';negative.placeholder='bad anatomy, low quality, ...';
+    const negativeField=formField(editor,'Негативный промпт',negative);
+    const mediumNote=document.createElement('p');mediumNote.className='spi-status';mediumNote.textContent='Medium: 14 Steps, Euler Ancestral, фиксированный негатив NovelAI. Твой негатив сохранён, но не отправляется.';
+    editor.append(presetGrid,mediumNote);
+    const quick=input('', 'checkbox');quick.checked=rootSettings.quickStyleSwitch;formField(editor,'Плавающий переключатель пресетов',quick);quick.parentElement.classList.add('spi-quick-style-setting');
+    quick.onchange=()=>{rootSettings.quickStyleSwitch=quick.checked;saveSettings();};
     editor.prepend(editorTitle);
     editor.append(editorStatus);
+    const show=(control,on)=>{control.parentElement.hidden=!on;};
+    function syncPresetFields(){
+      const direct=presetProvider.value==='novelai',full=direct&&presetModel.value===V5_FULL_MODEL;
+      const medium=direct?novelAIModelFromControls(presetModel.value,effort.value)===MEDIUM_MODEL:proxyModel.value==='novelai-v5-medium';
+      show(modelField,direct);show(modeField,direct);show(effortField,full);show(proxyModelField,!direct);
+      show(resolutionField,direct);show(seedField,direct);
+      for(const field of [steps,rescale,sampler])field.disabled=medium;
+      negative.disabled=medium;mediumNote.hidden=!medium;
+    }
+    function loadPreset(preset){
+      const p=preset||presetFromSettings(rootSettings),v=p.settings;
+      presetProvider.value=p.provider;
+      if(p.provider==='novelai'){
+       const controls=novelAIModelControls(v.model);presetModel.value=controls.model;effort.value=controls.effort;
+       presetMode.value=v.mode||'anime';resolution.value=v.resolution||'normal';seed.value=v.seed??-1;
+      }else proxyModel.value=v.model;
+      steps.value=v.steps;cfg.value=v.cfgScale;rescale.value=v.cfgRescale;sampler.value=v.sampler;negative.value=v.negativePrompt||'';
+      syncPresetFields();
+    }
+    function readPreset(previous){
+      const direct=presetProvider.value==='novelai',provider=presetProvider.value;
+      const model=direct?novelAIModelFromControls(presetModel.value,effort.value):proxyModel.value;
+      return presetFromSettings(rootSettings,provider,{...(previous?.provider===provider?previous.settings:{}),model,steps:Number(steps.value),cfgScale:cfg.value,cfgRescale:rescale.value,sampler:sampler.value,negativePrompt:negative.value,...(direct?{mode:presetMode.value,resolution:resolution.value,seed:Number(seed.value)}:{})});
+    }
     let selectedId = novelai.activeStyleId || novelai.styles[0]?.id || '';
 
     const persist = () => {
@@ -1018,11 +1106,12 @@ function openStyleLibrary({ back = false } = {}) {
         if (editorStyleId !== (style?.id || '')) {
             editorStyleId = style?.id || '';
             name.value = style?.name || ''; value.value = style?.value || '';
+            loadPreset(style?.preset || presetFromSettings(rootSettings));
         }
-        editorStatus.textContent = style ? (novelai.activeStyleId === style.id ? 'Активный стиль · автосохранение' : 'Выбран для редактирования · автосохранение') : 'Выбери или создай стиль.';
+        editorStatus.textContent = style ? (novelai.activeStyleId === style.id ? 'Активный стиль · автосохранение' : 'Выбран для редактирования · автосохранение') : 'Без пресета · базовые настройки · автосохранение';
     };
     const header = document.createElement('div'); header.className = 'spi-style-header';
-    const heading = document.createElement('h3'); heading.textContent = 'Библиотека стилей'; header.append(heading);
+    const heading = document.createElement('h3'); heading.textContent = 'Пресеты стилей'; header.append(heading);
     const controls = document.createElement('div'); controls.className = 'spi-style-controls'; header.append(controls);
     const rows = document.createElement('div'); rows.className = 'spi-style-rows';
     library.append(header, rows);
@@ -1031,14 +1120,13 @@ function openStyleLibrary({ back = false } = {}) {
         node.title = label; node.setAttribute('aria-label', label); return node;
     };
     const newStyle = iconButton('+', 'Новый стиль', controls, () => {
-        const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '' };
+        const style = { id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: `Стиль ${novelai.styles.length + 1}`, value: '', preset:clone(current()?.preset || activeStyle(novelai)?.preset || presetFromSettings(rootSettings)) };
         novelai.styles.push(style); selectedId = style.id; persist(); renderList(); syncEditor(); name.focus({preventScroll:true}); name.select();
         revealSelected();
     });
     newStyle.classList.add('spi-style-new');
     const noneStyleButton = iconButton('⊘', 'Без стиля', controls, () => {
-        if (!novelai.activeStyleId) return;
-        novelai.activeStyleId = ''; persist(); syncListState(); syncEditor();
+        novelai.activeStyleId = ''; selectedId=''; persist(); syncListState(); syncEditor();
     });
     noneStyleButton.dataset.styleNone = '';
     const syncListState = () => {
@@ -1119,6 +1207,26 @@ function openStyleLibrary({ back = false } = {}) {
         const row = [...library.querySelectorAll('.spi-style-row')].find(node => node.dataset.styleId === style.id);
         if (!row) renderList(); else { const summary=row.querySelector('.spi-style-summary'); summary.title=style.name; summary.setAttribute('aria-label',style.name); row.querySelector('strong').textContent = style.name; row.querySelector('small').textContent = style.value || 'Пустой стиль'; }
     };
+    const savePreset=()=>{
+      const style=current(),previous=style?.preset||presetFromSettings(rootSettings);
+      const next=readPreset(previous),v=next.settings;
+      const errors=cfgValidationErrors(v);
+      if(!Number.isInteger(v.steps)||v.steps<1||v.steps>50)errors.push('Steps: 1–50.');
+      if(next.provider==='novelai'&&(!Number.isInteger(v.seed)||v.seed< -1||v.seed>4294967295))errors.push('Seed: -1 или до 4294967295.');
+      if(errors.length){editorStatus.textContent=errors.join(' ');return;}
+      if(style){style.preset=next;persist();}
+      else{
+       rootSettings.imageProvider=next.provider;
+       if(next.provider==='novelai')Object.assign(novelai,v);else rootSettings.naistera={...rootSettings.naistera,...v};
+       persist();
+      }
+      editorStatus.textContent='Настройки пресета сохранены.';
+    };
+    presetProvider.onchange=()=>{const keepNegative=negative.value;loadPreset(presetFromSettings(rootSettings,presetProvider.value,{negativePrompt:keepNegative}));savePreset();};
+    for(const field of [presetModel,presetMode,effort,proxyModel,resolution,steps,cfg,rescale,sampler,seed]){
+      field.addEventListener('change',()=>{syncPresetFields();savePreset();});
+    }
+    negative.addEventListener('input',savePreset);
     name.addEventListener('input', saveEditor); value.addEventListener('input', saveEditor);
     renderList(); syncEditor(); layout.append(library, editor);
     dialog.append(layout);
@@ -1154,8 +1262,7 @@ function openHub(page = 'home') {
         } else {
             button('Генерация', body, () => void openRuntimeChild(() => getRuntime().then(api => api.openSettings()))).dataset.spiAction = 'generation';
             button('Текстовая модель', body, () => void openTextApiSettings({ back: true })).dataset.spiAction = 'text-api';
-            button('NovelAI', body, () => void openNovelAISettings({ back: true })).dataset.spiAction = 'novelai';
-            button('Стили', body, () => void openStyleLibrary({ back: true })).dataset.spiAction = 'styles';
+            button('Настройки NovelAI', body, () => void openNovelAISettings({ back: true })).dataset.spiAction = 'novelai';
         }
         // A quiet, always-accessible entry, not another large menu button.
         const quick = document.createElement('button');
@@ -1240,6 +1347,11 @@ async function showGuideSection(view) {
         }
         return;
     }
+    const novelaiWindow=document.querySelector('.spi-novelai-tabs');
+    if(novelaiWindow&&['novelai','styles'].includes(view)){
+        const tab=novelaiWindow.querySelector('#spi-novelai-tab-'+(view==='styles'?'styles':'connection'));
+        if(tab?.getAttribute('aria-selected')!=='true')tab?.click();return;
+    }
     // All previous feature panels are dismissed by their existing close handlers.
     const otherOverlays = [...document.querySelectorAll('.spi-overlay')].filter(node => !node.querySelector('.spi-hub'));
     for (const overlay of otherOverlays.reverse()) overlay.querySelector('.spi-close')?.click();
@@ -1262,7 +1374,7 @@ async function showGuideSection(view) {
     if (view === 'prompts') openPromptCenter();
     else if (view === 'text-api') void openTextApiSettings().catch(error => console.warn('[SP Imagen] guide text API:',error));
     else if (view === 'novelai') void openNovelAISettings().catch(error => console.warn('[SP Imagen] guide NovelAI:',error));
-    else if (view === 'styles') void openStyleLibrary().catch(error => console.warn('[SP Imagen] guide styles:',error));
+    else if (view === 'styles') void openNovelAISettings({tab:'styles'}).catch(error => console.warn('[SP Imagen] guide styles:',error));
     else if (isLibrary) {
         const api = await getLibraryRuntime();
         void api.openLibraryEditor().catch(error => console.warn('[SP Imagen] guide library:',error));
@@ -1362,16 +1474,16 @@ function activeStyle(novelai = settings().novelai) {
     return novelai.styles.find(style => style.id === novelai.activeStyleId) || null;
 }
 
-function directGenerationEnabled(config, reuseSnapshot = false) {
-    const state=settings();
-    return Boolean(state[imageProvider(state,config,reuseSnapshot)]?.apiKey);
+function directGenerationEnabled(config, reuseSnapshot = false, useActiveStyle = false) {
+    const {settings:resolved}=resolveGenerationPreset(settings(),config,{reuseSnapshot,useActiveStyle});
+    return Boolean(resolved.apiKey);
 }
 
 function listImageStyles() {
-    return settings().novelai.styles.map(style => ({id: style.id, name: style.name, value: style.value}));
+    return settings().novelai.styles.map(style => clone(style));
 }
 
-function saveImageStyle({name, value}) {
+function saveImageStyle({name, value, preset}) {
     const title = String(name || '').trim().slice(0, 90);
     const description = String(value || '').trim().slice(0, 20000);
     if (!title) throw new Error('Укажи название нового стиля.');
@@ -1379,7 +1491,7 @@ function saveImageStyle({name, value}) {
     const state = settings();
     const duplicate = state.novelai.styles.some(style => style.name.toLocaleLowerCase() === title.toLocaleLowerCase());
     if (duplicate) throw new Error('Стиль с таким названием уже есть. Укажи другое название.');
-    const style = {id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: title, value: description};
+    const style = {id: `spi-style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: title, value: description, preset:preset?.settings?presetFromSettings(state,preset.provider,preset.settings):presetFromSettings(state,resolveGenerationPreset(state).provider,resolveGenerationPreset(state).settings)};
     // Never change activeStyleId here: saving a style from a single image must not
     // apply it to the user's other images or chats.
     state.novelai.styles.push(style);
@@ -1388,9 +1500,9 @@ function saveImageStyle({name, value}) {
 }
 
 function snapshotGenerationConfig(config, kind='snapshot') {
-    const state=settings(), saved=state.novelai, provider=imageProvider(state);
-    const {apiKey, endpoint, enabled, styles, activeStyleId, ...directSettings}=saved;
-    const publicSettings=provider==='naistera'?publicNaisteraSettings(state.naistera):directSettings;
+    const state=settings(), saved=state.novelai;
+    const {provider,settings:resolved}=resolveGenerationPreset(state);
+    const publicSettings=publicGenerationSettings(provider,resolved);
     const profile=profileById(settings(),kind);
     if(profile?.parser?.options?.useNegativePrompt===false)publicSettings.negativePrompt='';
     const style=profile?.parser?.options?.useArtStyle===false
@@ -1404,10 +1516,9 @@ function snapshotGenerationConfig(config, kind='snapshot') {
 
 async function generateImage(config, { reuseSnapshot = false, useActiveStyle = false, signal } = {}) {
     const state=settings();
-    const provider=imageProvider(state,config,reuseSnapshot);
+    const {provider,settings:requestSettings,snapshot}=resolveGenerationPreset(state,config,{reuseSnapshot,useActiveStyle});
     const saved=state.novelai;
-    if (!directGenerationEnabled(config,reuseSnapshot)) throw new Error('Проверь подключение '+(provider==='naistera'?'NAISTERA':'NovelAI')+' в SP Imagen.');
-    const snapshot = reuseSnapshot ? config?.spImagenDirect : null;
+    if (!requestSettings.apiKey) throw new Error('Проверь подключение '+(provider==='naistera'?'NAISTERA':'NovelAI')+' в SP Imagen.');
     const profileId = config?.kind || config?.spImagenKind || context().chatMetadata?.variables?.sp_imagen_active_kind || 'snapshot';
     const profile = profileById(settings(),profileId);
     const style = resolveImageStyle({
@@ -1417,13 +1528,10 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
         allowArtStyle:profile?.parser?.options?.useArtStyle!==false,
     });
     if(provider==='naistera'){
-        const current=state.naistera;
-        const requestSettings=normalizeNaisteraSettings({...current,...(snapshot?.settings?resolveSnapshotCfg(current,snapshot.settings):{}),apiKey:current.apiKey});
         if(!snapshot&&profile?.parser?.options?.useNegativePrompt===false)requestSettings.negativePrompt='';
         const result=await generateNaistera({settings:requestSettings,prompt:config.prompt,style:style.value,aspectRatio:config.aspect_ratio||'2:3',signal});
         return {src:result.src,config:{...config,spImagenDirect:{version:1,provider,style:clone(style),settings:publicNaisteraSettings(result.settings),generatedSeed:result.seed}}};
     }
-    const requestSettings = snapshot?.settings ? { ...saved, ...resolveSnapshotCfg(saved, snapshot.settings), apiKey: saved.apiKey, endpoint: saved.endpoint, enabled: true } : {...saved};
     if (!snapshot && profile?.parser?.options?.useNegativePrompt === false) requestSettings.negativePrompt = '';
     const result = await generateNovelAI({
         settings: requestSettings,
@@ -1435,7 +1543,7 @@ async function generateImage(config, { reuseSnapshot = false, useActiveStyle = f
         signal,
     });
     const publicSettings = {
-        model: result.settings.model, neverSpendAnlas: result.settings.neverSpendAnlas,
+        model: result.settings.model, mode: result.settings.mode, neverSpendAnlas: result.settings.neverSpendAnlas,
         resolution: result.settings.resolution, steps: result.settings.steps,
         cfgScale: result.settings.cfgScale, cfgRescale: result.settings.cfgRescale,
         sampler: result.settings.sampler, noiseSchedule: result.settings.noiseSchedule,
@@ -1478,6 +1586,43 @@ async function run(command, kind, request = null) {
     return call();
 }
 
+let quickStyleRoot=null;
+function refreshQuickStyleSwitch(){
+    if(!initialized||!document.body)return;
+    const state=context().extensionSettings[EXTENSION_KEY];
+    if(!state?.quickStyleSwitch){quickStyleRoot?.remove();quickStyleRoot=null;return;}
+    if(!quickStyleRoot?.isConnected){
+        const root=document.createElement('div');root.className='spi-quick-style';root.id='spi-quick-style';
+        const trigger=button('✦',root,()=>{list.hidden=!list.hidden;trigger.setAttribute('aria-expanded',String(!list.hidden));if(!list.hidden)drawQuickStyleList();});
+        trigger.classList.add('spi-quick-style-trigger');trigger.title='Быстро сменить пресет';trigger.setAttribute('aria-label','Быстро сменить пресет');trigger.setAttribute('aria-expanded','false');
+        const list=document.createElement('div');list.className='spi-quick-style-list';list.hidden=true;root.append(list);
+        root.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();list.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}});
+        root.addEventListener('focusout',e=>{if(e.relatedTarget&&!root.contains(e.relatedTarget)){list.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+        quickStyleRoot=root;document.body.append(root);if(expandedDialogs.size)syncModalBackground();
+    }
+    const selected=activeGenerationStyle(state);
+    quickStyleRoot.querySelector('.spi-quick-style-trigger').textContent='✦ '+(selected?.name||'Без пресета');
+    if(!quickStyleRoot.querySelector('.spi-quick-style-list').hidden)drawQuickStyleList();
+}
+function drawQuickStyleList(){
+    const root=quickStyleRoot;if(!root)return;
+    const list=root.querySelector('.spi-quick-style-list'),state=context().extensionSettings[EXTENSION_KEY];
+    const trigger=root.querySelector('.spi-quick-style-trigger');
+    list.replaceChildren();
+    for(const style of [{id:'',name:'Без пресета',preset:presetFromSettings(state)},...state.novelai.styles]){
+        const row=button('',list,()=>{
+            const current=settings();
+            if(style.id&&!current.novelai.styles.some(item=>item.id===style.id))return;
+            current.novelai.activeStyleId=style.id;list.hidden=true;trigger.setAttribute('aria-expanded','false');saveSettings();trigger.focus();
+        });
+        row.className='menu_button spi-quick-style-option';row.setAttribute('aria-pressed',String(style.id===state.novelai.activeStyleId));
+        const title=document.createElement('strong');title.textContent=style.name;
+        const detail=document.createElement('small');const p=style.preset;
+        const model=p?.settings?.model;
+        detail.textContent=p?.provider==='naistera'?'NAISTERA · '+(NAISTERA_MODELS[model]||model): (NOVELAI_MODELS[model]||'NovelAI')+' · '+(p?.settings?.mode==='furry'?'Furry':'Anime');
+        row.append(title,detail);
+    }
+}
 function settingsPanel() {
     if (document.getElementById('spi-extension-settings')) return;
     const mount = document.getElementById('extensions_settings2');
@@ -1495,7 +1640,7 @@ function settingsPanel() {
 
 async function initialize() {
     migratePreviousChatData();
-    if (initialized) { settingsPanel(); mediaSlots?.refresh?.(); return; }
+    if (initialized) { settingsPanel(); refreshQuickStyleSwitch(); mediaSlots?.refresh?.(); return; }
     if (initializing) return;
     initializing = true;
     try {
@@ -1509,6 +1654,7 @@ async function initialize() {
         settingsPanel();
         refreshNewIndicators();
         initialized = true;
+        refreshQuickStyleSwitch();
         if (Object.keys(settings().pendingPrompts).length) setTimeout(() => openPromptCenter({ askUpdates: true }), 800);
     } catch (error) {
         console.error('[SP Imagen]', error);
@@ -1549,5 +1695,5 @@ const extensionApi = {
 };
 
 eventSource.on(event_types.APP_READY, initialize);
-if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, stopQuickGuide);
+if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, ()=>{stopQuickGuide();const list=quickStyleRoot?.querySelector('.spi-quick-style-list');if(list)list.hidden=true;quickStyleRoot?.querySelector('.spi-quick-style-trigger')?.setAttribute('aria-expanded','false');refreshQuickStyleSwitch();});
 if (document.readyState !== 'loading') void initialize();

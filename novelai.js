@@ -17,7 +17,28 @@ export const NOVELAI_SAMPLERS = Object.freeze({
     k_dpmpp_sde: 'DPM++ SDE',
 });
 
-const MEDIUM_MODEL = 'nai-diffusion-5-full-medium';
+export const MEDIUM_MODEL = 'nai-diffusion-5-full-medium';
+export const V5_FULL_MODEL = 'nai-diffusion-5-full';
+export const NOVELAI_MODEL_CHOICES = Object.freeze(Object.fromEntries(Object.entries(NOVELAI_MODELS).filter(([id])=>id!==MEDIUM_MODEL)));
+export function novelAIModelControls(model){
+    return {model:model===MEDIUM_MODEL?V5_FULL_MODEL:model,effort:model===MEDIUM_MODEL?'medium':'high'};
+}
+export function novelAIModelFromControls(model,effort){
+    return model===V5_FULL_MODEL&&effort==='medium'?MEDIUM_MODEL:model;
+}
+export function normalizeNovelAIMode(mode){return mode==='furry'?'furry':'anime';}
+export function applyNovelAIMode(prompt,mode){
+    // Furry mode is the documented dataset prefix, not an undocumented API flag.
+    if(mode!=='furry')return prompt;
+    return /^\s*fur dataset\s*,/i.test(prompt)?prompt:'fur dataset, '+prompt;
+}
+const PRESET_KEYS=['model','mode','resolution','steps','cfgScale','cfgRescale','sampler','noiseSchedule','seed','skipCfgAboveSigma','negativePrompt'];
+export function sanitizeStylePreset(value){
+    if(!value||typeof value!=='object'||!value.settings||typeof value.settings!=='object')return undefined;
+    const provider=value.provider==='naistera'?'naistera':'novelai';
+    const settings=Object.fromEntries(PRESET_KEYS.filter(k=>Object.hasOwn(value.settings,k)).map(k=>[k,value.settings[k]]));
+    return {provider,settings};
+}
 const DIMENSIONS = Object.freeze({
     small: { '1:1': [640, 640], '2:3': [512, 768], '3:2': [768, 512], '9:16': [448, 832], '16:9': [832, 448] },
     normal: { '1:1': [1024, 1024], '2:3': [832, 1216], '3:2': [1216, 832], '9:16': [768, 1344], '16:9': [1344, 768] },
@@ -30,6 +51,7 @@ export function defaultNovelAISettings() {
         endpoint: OFFICIAL_NOVELAI_ORIGIN,
         apiKey: '',
         model: 'nai-diffusion-5-full',
+        mode: 'anime',
         neverSpendAnlas: true,
         resolution: 'normal',
         steps: 23,
@@ -88,6 +110,7 @@ export function normalizeNovelAISettings(value) {
     settings.endpoint = String(settings.endpoint || defaults.endpoint).trim().replace(/\/+$/, '');
     settings.apiKey = String(settings.apiKey || '').trim();
     if (!Object.hasOwn(NOVELAI_MODELS, settings.model)) settings.model = defaults.model;
+    settings.mode = normalizeNovelAIMode(settings.mode);
     if (!Object.hasOwn(DIMENSIONS, settings.resolution)) settings.resolution = defaults.resolution;
     if (!Object.hasOwn(NOVELAI_SAMPLERS, settings.sampler)) settings.sampler = defaults.sampler;
     for (const key of ['steps', 'seed', 'skipCfgAboveSigma']) settings[key] = Number(settings[key]);
@@ -97,6 +120,7 @@ export function normalizeNovelAISettings(value) {
         id: String(style?.id || `spi-style-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`),
         name: String(style?.name || '').trim() || `Стиль ${index + 1}`,
         value: String(style?.value || '').trim(),
+        ...(sanitizeStylePreset(style?.preset)?{preset:sanitizeStylePreset(style.preset)}:{}),
     })) : [];
     if (!settings.styles.some(style => style.id === settings.activeStyleId)) settings.activeStyleId = '';
     return settings;
@@ -225,8 +249,9 @@ async function verifyFreeAccess(settings, signal) {
 
 export async function generateNovelAI({ settings: input, prompt, style = '', aspectRatio = '2:3', profileId, baseLettering, signal }) {
     const settings = resolveRequestSettings(input);
-    const fullPrompt = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
-    if (!fullPrompt) throw new Error('Промпт изображения пуст.');
+    const combined = [String(style || '').trim(), String(prompt || '').trim()].filter(Boolean).join(', ');
+    if (!combined) throw new Error('Промпт изображения пуст.');
+    const fullPrompt = applyNovelAIMode(combined,settings.mode);
     officialNovelAIEndpoint(settings.endpoint);
     const { parameters, basePrompt } = buildParameters(settings, fullPrompt, settings.negativePrompt, aspectRatio, profileId, baseLettering);
     if (settings.neverSpendAnlas) await verifyFreeAccess(settings, signal);
